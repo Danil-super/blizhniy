@@ -20,23 +20,27 @@ export const exportDownloadForm=`<h1>Архив моих данных</h1><form 
  <p><label>Номер выдачи <input name="id" required maxlength="36" autocomplete="off"></label></p>
  <p><label>Способ входа <select name="access"><option value="account">Кабинет</option>
  <option value="data-subject">Вход для обращения об обработке данных</option></select></label></p>
- <button>Скачать архив</button><p role="status"></p>
+<button hidden data-ready type="button">Скачать готовый архив</button>
+<button type="submit">Скачать архив</button><p role="status"></p>
+ </form><p><a href="/cabinet">Перейти в кабинет</a></p><script src="/__local/account-export.js" defer></script>`;
+export const exportCabinetForm=`<h1>Мои персональные данные</h1><form id="export-form">
+ <button hidden data-ready type="button">Скачать готовый архив</button><p role="status"></p>
  </form><p><a href="/cabinet">Перейти в кабинет</a></p><script src="/__local/account-export.js" defer></script>`;
 export const exportDownloadScript=`
 const form = document.querySelector('#export-form');
 const status = form.querySelector('[role=status]');
-const button = form.querySelector('button');
-form.addEventListener('submit', async event => {
- event.preventDefault();
- button.disabled = true;
+const button = form.querySelector('button[type="submit"]');
+const ready = form.querySelector('[data-ready]');
+const requestArchive = input => fetch('/api/account/export', {
+ method: 'POST', credentials: 'same-origin', cache: 'no-store',
+ headers: {'Content-Type': 'application/json', 'X-Blizhniy-Request': '1'},
+ body: JSON.stringify(input)
+});
+async function download(input, control) {
+ control.disabled = true;
  status.textContent = 'Проверяем доступ к архиву…';
  try {
-  const {id, access} = Object.fromEntries(new FormData(form));
-  const response = await fetch('/api/account/export', {
-   method: 'POST', credentials: 'same-origin', cache: 'no-store',
-   headers: {'Content-Type': 'application/json', 'X-Blizhniy-Request': '1'},
-   body: JSON.stringify({id: id.trim(), access})
-  });
+  const response = await requestArchive(input);
   if (!response.ok) {
    status.textContent = response.status === 401 ? 'Войдите в аккаунт и повторите запрос.' :
     response.status === 404 ? 'Архив недоступен. Проверьте номер выдачи.' : 'Не удалось скачать архив. Попробуйте позже.';
@@ -52,12 +56,32 @@ form.addEventListener('submit', async event => {
  } catch {
   status.textContent = 'Не удалось скачать архив. Попробуйте позже.';
  } finally {
-  button.disabled = false;
+  control.disabled = false;
  }
+}
+if (button) form.addEventListener('submit', event => {
+ event.preventDefault();
+ const {id, access} = Object.fromEntries(new FormData(form));
+ void download({id: id.trim(), access}, button);
+});
+requestArchive({access: 'account', action: 'available'}).then(async response => {
+ if (!response.ok) {
+  if (!button) status.textContent = response.status === 401 ? 'Войдите в аккаунт.' : 'Не удалось проверить готовность архива.';
+  return;
+ }
+ const {id} = await response.json();
+ if (!id) {
+  if (!button) status.textContent = 'Готового архива пока нет.';
+  return;
+ }
+ ready.addEventListener('click', () => void download({id, access: 'account'}, ready));
+ ready.hidden = false;
+}).catch(() => {
+ if (!button) status.textContent = 'Не удалось проверить готовность архива.';
 });
 `;
 
-async function privateDirectory(path){
+export async function privateDirectory(path){
  if(!isAbsolute(path)||await realpath(path)!==path)throw Error('Unsafe export directory');
  const directory=await open(path,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);
  try{
@@ -67,7 +91,7 @@ async function privateDirectory(path){
  }catch(error){await directory.close();throw error;}
 }
 
-async function readPrivateFile(path,limit,check=()=>true){
+export async function readPrivateFile(path,limit,check=()=>true){
  const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   const info=await file.stat();
@@ -109,19 +133,28 @@ export async function purgeExpiredLocalAccountArchives(delivery){
  }finally{await root.close();}
 }
 
-export async function publishLocalAccountArchive(input,delivery,ownerId,disclosure){
- deletionId(ownerId);
+export function validateLocalExportNotice(disclosure){
  const notice=deletionObject(disclosure,['processingConfirmed','purpose','basis','methods','operatorName','operatorAddress',
   'sources','recipients','retention','rights','internationalTransfers','processors','safeguards','otherInformation']);
  const {processingConfirmed,...details}=notice;
  if(processingConfirmed!==true||Object.values(details).some(text=>typeof text!=='string'||!text.trim()||text.length>1000))
   throw new DeletionInputError();
+ return notice;
+}
+
+export async function publishLocalAccountArchive(input,delivery,ownerId,disclosure,includeReport=false){
+ deletionId(ownerId);
+ const notice=validateLocalExportNotice(disclosure),processing=JSON.stringify(notice,null,2)+'\n';
  const source=await privateDirectory(input);
  try{
   const anchor='/proc/self/fd/'+source.fd;
   const account=await readPrivateFile(join(anchor,'account.json'),localArchiveMaximumBytes);
   if(!account||JSON.parse(account.toString()).account?.id!==ownerId)throw new DeletionAccessError();
-  await writeFile(join(anchor,'processing.json'),JSON.stringify(notice,null,2)+'\n',{flag:'wx',mode:0o600});
+  if(includeReport){
+   const existing=await readPrivateFile(join(anchor,'processing.json'),65536);
+   const pdf=await readPrivateFile(join(anchor,'report.pdf'),localArchiveMaximumBytes);
+   if(existing?.toString()!==processing||pdf?.subarray(0,5).toString()!=='%PDF-')throw new DeletionInputError();
+  }else await writeFile(join(anchor,'processing.json'),processing,{flag:'wx',mode:0o600});
  }finally{await source.close();}
  const root=await privateDirectory(delivery);
  let temporary;
@@ -130,7 +163,8 @@ export async function publishLocalAccountArchive(input,delivery,ownerId,disclosu
   const path=join(temporary,'archive.tar.gz');
   await writeFile(path,'',{flag:'wx',mode:0o600});
   // The trusted input contains only generated JSON files and verified WebP entries.
-  await run('/usr/bin/tar',['-czf',path.replace('/proc/self/fd/','/proc/'+process.pid+'/fd/'),'-C',input,'--','account.json','processing.json','media'],
+  await run('/usr/bin/tar',['-czf',path.replace('/proc/self/fd/','/proc/'+process.pid+'/fd/'),'-C',input,'--','account.json','processing.json','media',
+   ...(includeReport?['report.pdf']:[])],
    {env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},timeout:10000,maxBuffer:32768});
   const archive=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try{
@@ -147,20 +181,57 @@ export async function publishLocalAccountArchive(input,delivery,ownerId,disclosu
  }
 }
 
+export async function revokeLocalAccountArchive(delivery,ownerId,id){
+ deletionId(ownerId);deletionId(id);
+ try{
+  const root=await privateDirectory(delivery);
+  try{
+   await unlink(join('/proc/self/fd',String(root.fd),ownerId+'_'+id+'.tar.gz'));
+   await root.sync();
+   return true;
+  }finally{await root.close();}
+ }catch(error){
+  if(error.code==='ENOENT')return false;
+  throw error;
+ }
+}
+
 export function createLocalAccountExportHandler({origin,delivery,session,allow}){
  return async request=>{
   try{
-   const data=deletionObject(await readAuthJson(request,{origin}),['access','id']);
-   const id=deletionId(data.id),access=deletionAccess(data.access);
+   const input=await readAuthJson(request,{origin}),available=input?.action==='available';
+   const data=deletionObject(input,available?['access','action']:['access','id']);
+   const id=available?null:deletionId(data.id),access=deletionAccess(data.access);
    const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
    const token=access==='account'?readAccountSessionToken(request):readDataSubjectToken(request);
    if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
    if(!await allow(ip))throw new AuthRequestError(429,'RATE_LIMITED');
-   const current=await session(token),ownerId=deletionId(current.id),root=await privateDirectory(delivery);
+   const current=await session(token),ownerId=deletionId(current.id);
+   const root=await privateDirectory(delivery).catch(error=>{
+    if(available&&error.code==='ENOENT')return null;
+    throw error;
+   });
+   if(!root)return authJson({id:null});
    let bytes;
    try{
     const now=Date.now();
-    bytes=await readPrivateFile(join('/proc/self/fd',String(root.fd),ownerId+'_'+id+'.tar.gz'),localArchiveMaximumBytes,
+    const anchor=join('/proc/self/fd',String(root.fd));
+    if(available){
+     const match=new RegExp('^'+ownerId+'_([a-f0-9-]{36})\\.tar\\.gz$');
+     let latest=null;
+     for await(const entry of await opendir(anchor)){
+      const file=match.exec(entry.name);
+      if(!file||!entry.isFile())continue;
+      const info=await lstat(join(anchor,entry.name)).catch(error=>{
+       if(error.code==='ENOENT')return null;
+       throw error;
+      });
+      if(info&&privateSingleFile(info,localArchiveMaximumBytes)&&now-info.mtimeMs>=0&&now-info.mtimeMs<accessMs&&
+       (!latest||info.mtimeMs>latest.at))latest={id:deletionId(file[1]),at:info.mtimeMs};
+     }
+     return authJson({id:latest?.id??null});
+    }
+    bytes=await readPrivateFile(join(anchor,ownerId+'_'+id+'.tar.gz'),localArchiveMaximumBytes,
      info=>now-info.mtimeMs>=0&&now-info.mtimeMs<accessMs);
    }finally{await root.close();}
    if(!bytes)throw new AuthRequestError(404,'NOT_FOUND');

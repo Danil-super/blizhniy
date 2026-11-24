@@ -7,7 +7,8 @@ import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {docker,localPrimaryDatabaseConfig,stateDirectory,stateFile} from './local-primary-fixture.mjs';
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
-import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive} from './local-account-export-delivery.mjs';
+import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive,revokeLocalAccountArchive} from './local-account-export-delivery.mjs';
+import {prepareLocalAccountEmail,readReviewedAccountReport,writeLocalAccountReport} from './local-account-export-report.mjs';
 
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const {DeletionAccessError,deletionId}=load('account-deletion-contract');
@@ -80,12 +81,19 @@ const applicationProfileKeys=['name','profession','price','skills','about','phon
 const verifiedSession=`from app.users u join app.sessions s on s.user_id=u.id and s.auth_version=u.auth_version
  where s.token_hash=$1 and u.id=$2 and u.email_verified_at is not null and s.scope in ('app','data-subject')
  and s.expires_at>clock_timestamp() and s.last_seen_at>clock_timestamp()-interval '30 minutes'`;
+const verifiedOperator=`from app.users u where u.id=$2 and u.email_verified_at is not null
+ and exists(select 1 from app.users actor join app.sessions s on s.user_id=actor.id and s.auth_version=actor.auth_version
+  where actor.id=$3 and actor.id<>u.id and actor.role='admin' and not actor.is_blocked and actor.email_verified_at is not null
+  and s.token_hash=$1 and s.scope='app' and s.expires_at>clock_timestamp()
+  and s.last_seen_at>clock_timestamp()-interval '30 minutes')`;
 
-export async function readAccountExport(db,token,confirmedOwnerId){
+export async function readAccountExport(db,token,confirmedOwnerId,operatorId){
  assert.equal(process.env.NODE_ENV,'test');
  const ownerId=deletionId(confirmedOwnerId),hash=hashSessionToken(token);
  if(!hash)throw new DeletionAccessError();
- const credentials=[hash,ownerId],timeoutMs=5000,options={timeoutMs,deadline:performance.now()+timeoutMs};
+ const credentials=operatorId===undefined?[hash,ownerId]:[hash,ownerId,deletionId(operatorId)];
+ const access=operatorId===undefined?verifiedSession:verifiedOperator;
+ const timeoutMs=5000,options={timeoutMs,deadline:performance.now()+timeoutMs};
  const data=await db.readTransaction(async tx=>{
   const context=(await tx.query(`select current_user='blizhniy_local_export_reader' as reader,current_user=session_user and (
     (current_user='postgres' and current_database() in ('blizhniy_test','blizhniy_prod','blizhniy_erasure_test'))
@@ -94,7 +102,7 @@ export async function readAccountExport(db,token,confirmedOwnerId){
   assert.equal(context?.allowed,true);
   const account=(await tx.query(`select u.id,u.email,u.is_blocked as "isBlocked",u.email_verified_at,u.created_at,
     to_char(transaction_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as snapshot
-    ${verifiedSession}`,credentials)).rows[0];
+    ${access}`,credentials)).rows[0];
   if(!account)throw new DeletionAccessError();
   if(context.reader)await tx.query("select set_config('blizhniy.account_export_owner',$1,true)",[ownerId]);
   const stored=(await tx.query('select profile from app.cabinet_profiles where user_id=$1',[ownerId])).rows[0];
@@ -151,7 +159,8 @@ export async function readAccountExport(db,token,confirmedOwnerId){
  },options);
  // The earlier snapshot cannot see a session revoked during the export.
  await db.readTransaction(async tx=>{
-  if((await tx.query('select 1 '+verifiedSession,credentials)).rowCount!==1)throw new DeletionAccessError();
+  const current=(await tx.query('select u.email '+access,credentials)).rows[0];
+  if(!current||current.email!==data.account.email)throw new DeletionAccessError();
  },options);
  return data;
 }
@@ -175,7 +184,7 @@ export async function writeAccountExportFiles(data,directory,mediaRoot,maximumBy
  return ready.length;
 }
 
-async function writeLocalExport(ownerId,token,notice){
+async function withLocalExportDatabase(work){
  assert.equal(process.env.NODE_ENV,'test');
  const info=await lstat(stateDirectory);
  assert.ok(info.isDirectory()&&info.uid===process.getuid()&&(info.mode&0o777)===0o700&&await realpath(stateDirectory)===stateDirectory);
@@ -184,10 +193,12 @@ async function writeLocalExport(ownerId,token,notice){
  const {PostgresDatabase}=load('postgres');
  const ca=await readFile(join(stateDirectory,'refund-db-ca.pem'));
  const db=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),ssl:{ca,rejectUnauthorized:true},max:1}));
- let data;
- try{
-  data=await readAccountExport(db,token,ownerId);
- }finally{await db.close();}
+ try{return await work(db,state);}
+ finally{await db.close();}
+}
+
+async function writeLocalExport(ownerId,token,notice){
+ const {data,state}=await withLocalExportDatabase(async(db,state)=>({data:await readAccountExport(db,token,ownerId),state}));
  const directory=await mkdtemp(join(stateDirectory,'account-export-'));
  try{
   const verifiedFiles=await writeAccountExportFiles(data,directory,join(stateDirectory,'media'),notice?localArchiveMaximumBytes:Infinity);
@@ -205,8 +216,48 @@ async function writeLocalExport(ownerId,token,notice){
  }
 }
 
+async function runOperatorExport([operatorFlag,operator,ownerFlag,owner,action,value,caseId],token){
+ assert.equal(operatorFlag,'--operator');assert.equal(ownerFlag,'--owner');
+ const operatorId=deletionId(operator),ownerId=deletionId(owner);
+ if(action==='--prepare'){
+  const info=await lstat(value);
+  assert.ok(info.isFile()&&info.size>0&&info.size<=32768);
+  const notice=JSON.parse(await readFile(value,'utf8'));
+  const data=await withLocalExportDatabase(db=>readAccountExport(db,token,ownerId,operatorId));
+  assert.ok(data.account.email.endsWith('.invalid'));
+  const directory=await mkdtemp(join(stateDirectory,'account-export-reviewed-'));
+  try{
+   const verifiedFiles=await writeAccountExportFiles(data,directory,join(stateDirectory,'media'),localArchiveMaximumBytes);
+   await writeLocalAccountReport(directory,data,caseId,notice);
+   return {directory,report:'report.pdf',verifiedFiles};
+  }catch(error){await rm(directory,{recursive:true,force:true});throw error;}
+ }
+ assert.ok(['--cabinet','--email','--revoke'].includes(action)&&caseId===undefined);
+ const hash=hashSessionToken(token);
+ if(!hash)throw new DeletionAccessError();
+ const {email,state}=await withLocalExportDatabase(async(db,state)=>{
+  const account=await db.readTransaction(async tx=>(await tx.query('select u.email '+verifiedOperator,
+   [hash,ownerId,operatorId])).rows[0],{timeoutMs:5000});
+  if(!account?.email.endsWith('.invalid'))throw new DeletionAccessError();
+  return {email:account.email,state};
+ });
+ const delivery=archiveRoot(stateDirectory,state.containerId);
+ if(action==='--revoke')return {revoked:await revokeLocalAccountArchive(delivery,ownerId,value)};
+ const notice=await readReviewedAccountReport(value,stateDirectory,ownerId,email);
+ if(action==='--email')return prepareLocalAccountEmail(value,stateDirectory,email);
+ await mkdir(delivery,{recursive:true,mode:0o700});
+ return publishLocalAccountArchive(value,delivery,ownerId,notice,true);
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
+  let token='';
+  process.stdin.setEncoding('utf8');
+  for await(const chunk of process.stdin){token+=chunk;if(token.length>65)throw new DeletionAccessError();}
+  if(process.argv[2]==='--operator'){
+   assert.ok(process.argv.length===8||process.argv.length===9);
+   console.log(JSON.stringify(await runOperatorExport(process.argv.slice(2),token.trimEnd())));
+  }else{
   assert.ok(process.argv.length===4||process.argv.length===6&&process.argv[4]==='--delivery-notice');
   assert.equal(process.argv[2],'--owner');
   const noticePath=process.argv[5];let notice;
@@ -214,9 +265,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    const info=await lstat(noticePath);assert.ok(info.isFile()&&info.size>0&&info.size<=32768);
    notice=JSON.parse(await readFile(noticePath,'utf8'));assert.ok(notice&&typeof notice==='object');
   }
-  let token='';
-  process.stdin.setEncoding('utf8');
-  for await(const chunk of process.stdin){token+=chunk;if(token.length>65)throw new DeletionAccessError();}
   console.log(JSON.stringify(await writeLocalExport(deletionId(process.argv[3]),token.trimEnd(),notice)));
+  }
  }catch{console.error('Local account export failed');process.exitCode=1;}
 }

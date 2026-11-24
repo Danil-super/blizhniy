@@ -36,6 +36,10 @@ test('a reviewed archive is downloadable only with its owner session before expi
    ...(token?{cookie:'__Host-blizhniy_data_subject='+token}:{}),...overrides},body:JSON.stringify(body)});
  assert.equal((await handler(request(null))).status,401);
  assert.equal((await handler(request(b))).status,404);
+ const available={access:'data-subject',action:'available'};
+ assert.equal((await handler(request(null,available))).status,401);
+ assert.deepEqual(await (await handler(request(b,available))).json(),{id:null});
+ assert.deepEqual(await (await handler(request(a,available))).json(),{id});
  assert.equal((await handler(request(a,{access:'data-subject',id:'../outside'}))).status,422);
  assert.equal((await handler(request(a,undefined,{origin:'https://other.invalid'}))).status,403);
  const received=await handler(request(a));
@@ -56,6 +60,7 @@ test('a reviewed archive is downloadable only with its owner session before expi
  const stale=new Date(Date.now()-16*60*1000);
  await utimes(file,stale,stale);
  assert.equal((await handler(request(a))).status,404);
+ assert.deepEqual(await (await handler(request(a,available))).json(),{id:null});
 });
 
 test('expired synthetic archives are removed without touching current files, links or other names',async t=>{

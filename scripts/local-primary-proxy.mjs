@@ -4,7 +4,7 @@ import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 import {createServer} from 'node:https';
 import {request as httpRequest} from 'node:http';
 import {serveLocalUserAccessRequest} from './local-user-access-request.mjs';
-import {archiveRoot,createLocalAccountExportHandler,exportDownloadCsp,exportDownloadForm,exportDownloadScript,purgeExpiredLocalAccountArchives} from './local-account-export-delivery.mjs';
+import {archiveRoot,createLocalAccountExportHandler,exportCabinetForm,exportDownloadCsp,exportDownloadForm,exportDownloadScript,purgeExpiredLocalAccountArchives} from './local-account-export-delivery.mjs';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -101,8 +101,8 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
  }));
  const localPage=async path=>{
-  if(path==='/__local/account-export'){
-   const page=html(exportDownloadForm);
+  if(path==='/__local/account-export'||path==='/cabinet/moi-dannye'){
+   const page=html(path==='/cabinet/moi-dannye'?exportCabinetForm:exportDownloadForm);
    page.headers.set('Content-Security-Policy',page.headers.get('Content-Security-Policy')+'; '+exportDownloadCsp);
    return page;
   }

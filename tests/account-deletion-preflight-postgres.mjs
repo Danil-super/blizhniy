@@ -120,6 +120,15 @@ test('deletion advisory plans bind one request and observe real domain blockers 
     'set role postgres',
    ])await assert.rejects(pool.query(sql),{code:'42501'});
   });
+  await suite.test('only an active administrator can prepare a reviewed archive for another verified account',async()=>{
+   const actor=await person(),peer=await person(),admin=await person('admin');
+   const data=await readAccountExport(db,admin.token,actor.id,admin.id);
+   assert.equal(data.account.email,actor.id+'@deletion.invalid');
+   await assert.rejects(readAccountExport(db,peer.token,actor.id,peer.id),{name:'DeletionAccessError'});
+   await assert.rejects(readAccountExport(db,admin.token,actor.id,peer.id),{name:'DeletionAccessError'});
+   await owner.query('update app.users set email_verified_at=null where id=$1',[actor.id]);
+   await assert.rejects(readAccountExport(db,admin.token,actor.id,admin.id),{name:'DeletionAccessError'});
+  });
   await suite.test('an export fails if the verified session is revoked during snapshot reads',async()=>{
    for(const revoke of ['session','auth version']){
     const actor=await person();
