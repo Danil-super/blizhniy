@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { request as requestHttp } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,14 +96,27 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
   const nextAfter={id:first.at(-1).id,createdAt};
   let role='admin', refuse=false, lost=false;
   const authOrigin=env.BLIZHNIY_AUTH_ORIGIN;
-  const invokeRefund=(value,headers={})=>fetch(origin+'/api/admin/refunds',{method:'POST',signal:AbortSignal.timeout(8000),
-   headers:{host:new URL(authOrigin).host,origin:authOrigin,'content-type':'application/json','x-real-ip':'127.0.0.1',
-    'x-blizhniy-request':'1',cookie:'__Host-blizhniy_session='+session,...headers},body:JSON.stringify(value)});
+  // Mirror the local ingress's canonical Host on a connection to our loopback fixture.
+  const invokeRefund=(value,headers={})=>new Promise((resolve,reject)=>{
+   const body=JSON.stringify(value);
+   const request=requestHttp(origin+'/api/admin/refunds',{method:'POST',signal:AbortSignal.timeout(8000),
+    headers:{host:new URL(authOrigin).host,origin:authOrigin,'content-type':'application/json','x-real-ip':'127.0.0.1',
+     'content-length':Buffer.byteLength(body),'x-blizhniy-request':'1',cookie:'__Host-blizhniy_session='+session,...headers}},
+    async response=>{
+     try {
+      let data='';response.setEncoding('utf8');
+      for await(const chunk of response)data+=chunk;
+      resolve({status:response.statusCode,body:JSON.parse(data)});
+     }catch(error){reject(error);}
+    });
+   request.on('error',reject);
+   request.end(body);
+  });
   const list={action:'list',input:null,expectedAdminId:adminId};
-  assert.equal((await invokeRefund(list)).status,refunds?422:404);
+  assert.deepEqual(await invokeRefund(list),{status:refunds?422:404,body:{error:{code:refunds?'INVALID_INPUT':'NOT_FOUND'}}});
   if(refunds){
-   assert.equal((await invokeRefund(list,{origin:'https://foreign.invalid'})).status,403);
-   assert.equal((await invokeRefund(list,{cookie:''})).status,401);
+   assert.deepEqual(await invokeRefund(list,{origin:'https://foreign.invalid'}),{status:403,body:{error:{code:'FORBIDDEN_ORIGIN'}}});
+   assert.deepEqual(await invokeRefund(list,{cookie:''}),{status:401,body:{error:{code:'UNAUTHENTICATED'}}});
    assert.deepEqual(commands,[]);
   }
   page.on('pageerror',error=>errors.push(error.message));
@@ -123,10 +137,9 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
     assert.equal(request.method(),'POST');
     assert.equal(request.headers()['x-blizhniy-request'],'1');
     const body=request.postDataJSON(),response=await invokeRefund(body);
-    const result=await response.json();
-    assert.equal(response.status,200,JSON.stringify(result));
+    assert.equal(response.status,200,JSON.stringify(response.body));
     if(body.action==='approve'&&dropApproval){dropApproval=false;return route.abort();}
-    return route.fulfill({json:result});
+    return route.fulfill({json:response.body});
    }
    if (url.pathname.startsWith('/api/admin/')) { legacy.push(url.pathname);return route.abort(); }
    return route.continue();

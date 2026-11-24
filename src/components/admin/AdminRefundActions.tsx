@@ -32,7 +32,7 @@ function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:Re
   <div className="mt-3 flex flex-wrap gap-2"><button type="submit" disabled={busy} className={refundButton}>{kind==='approve'?'Подтвердить возврат':'Сверить возврат'}</button><button type="button" disabled={busy} className={refundButton} onClick={onCancel}>Отмена</button></div>
  </form>;
 }
-export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(state:'recorded'|'rejected')=>void){
+export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(state:'recorded'|'rejected')=>void,loading=false){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [storageError,setStorageError]=useState(''),[storageReady,setStorageReady]=useState(false);
  const [pending,setPending]=useState<Action|null>(null),[selection,setSelection]=useState<Selection|null>(null);
@@ -72,8 +72,8 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
   {storageError&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{storageError}</p>}
   {notice&&<p role="status" className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
   {error&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
-  {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy} onCancel={()=>setSelection(null)} onSubmit={action=>void perform(action)}/></div>}
+  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
+  {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy||loading} onCancel={()=>setSelection(null)} onSubmit={action=>void perform(action)}/></div>}
  </>;
- return{panel,busy,disabled:busy||!!pending||!storageReady,select:setSelection,life,working,clearNotice:()=>setNotice('')};
+ return{panel,busy,disabled:busy||!!pending||!storageReady,select:setSelection,life,working,clearFeedback:()=>{setError('');setNotice('');}};
 }

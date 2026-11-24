@@ -21,7 +21,7 @@ function RefundWorkspace({actor}:{actor:string}){
  const serviceCheckout=useServiceCheckout();
  const [page,setPage]=useState<AdminRefundPage|null>(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState('');
  const scroll=useRef<HTMLDivElement>(null);
- const actions=useAdminRefundActions(actor,true,state=>{if(state==='rejected')setPage(null);});
+ const actions=useAdminRefundActions(actor,true,state=>{if(state==='rejected')setPage(null);},loading);
  const {life,working}=actions;
  const load=useCallback(async(after:string|null=null)=>{
   const scope=life.current;if(!scope?.active||working.current)return;
@@ -34,7 +34,7 @@ function RefundWorkspace({actor}:{actor:string}){
  useEffect(()=>{void load();},[load]);
  const busy=loading||actions.busy;
  return <section aria-label="Локальный журнал возвратов" aria-busy={busy}>
-  <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-950">Платежи и возвраты</h2><p className="mt-1 text-sm text-slate-600">Локальный TEST-контур · реальные деньги не списываются.</p></div><button type="button" className={button} disabled={busy} onClick={()=>{actions.clearNotice();void load();}}>Обновить журнал</button></div>
+  <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-950">Платежи и возвраты</h2><p className="mt-1 text-sm text-slate-600">Локальный TEST-контур · реальные деньги не списываются.</p></div><button type="button" className={button} disabled={busy} onClick={()=>{actions.clearFeedback();void load();}}>Обновить журнал</button></div>
   {loadError&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{loadError}</p>}
   {actions.panel}
   {busy&&!page&&<p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
@@ -46,7 +46,7 @@ function RefundWorkspace({actor}:{actor:string}){
     <div className="mt-2 flex flex-wrap gap-2">{(['listing','vacancy','workRequest'].includes(row.targetType)||serviceCheckout&&['fair_application','ad_marquee'].includes(row.targetType))&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={()=>actions.select({row,kind:'approve'})}>Вернуть плату</button>}
     {row.operationId&&row.attempted&&!row.appliedAt&&row.refundStatus!=='canceled'&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={()=>actions.select({row,kind:'recover'})}>{row.providerRefundId?'Сверить возврат':'Сверить по номеру ЮKassa'}</button>}</div>
    </li>)}
-  </ul>{page.items.length===0&&<p className="p-6 text-center text-sm text-slate-600">В этом TEST-магазине платежей пока нет.</p>}</div>{page.nextAfter&&<button type="button" className={button+' mt-3'} disabled={busy} onClick={()=>void load(page.nextAfter)}>Следующие платежи</button>}</>}
+  </ul>{page.items.length===0&&<p className="p-6 text-center text-sm text-slate-600">В этом TEST-магазине платежей пока нет.</p>}</div>{page.nextAfter&&<button type="button" className={button+' mt-3'} disabled={busy} onClick={()=>{actions.clearFeedback();void load(page.nextAfter);}}>Следующие платежи</button>}</>}
  </section>;
 }
 export function PrimaryAdminRefunds(){
