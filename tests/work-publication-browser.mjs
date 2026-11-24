@@ -100,7 +100,7 @@ test('work publication production pages preserve complete forms and use Russian 
     const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage();
     page.setDefaultTimeout(10000);
     const state={active:owner,sessionGate:null,loseCreate:false,records:new Map(),intents:new Map(),media:new Map(),moderation:new Map(),
-     profiles:new Map(),profileGates:new Map(),profileReads:[],
+     profiles:new Map(),profileGates:new Map(),profileReads:[],cancellations:[],loseCancellation:false,cancelledOrder:null,
      workCalls:[],moderationCalls:[],uploads:[],sequence:[],foreign:[],legacy:[],errors:[],sessionReads:0};
     const collection=()=>{const key=state.active+':'+kind;if(!state.records.has(key))state.records.set(key,new Map());return state.records.get(key);};
     context.on('page',item=>item.on('pageerror',()=>state.errors.push('pageerror')));page.on('pageerror',()=>state.errors.push('pageerror'));
@@ -163,6 +163,21 @@ test('work publication production pages preserve complete forms and use Russian 
       else assert.equal(request.method(),'POST');
       return route.fulfill({json:state.moderation.get(saved.id)??{id:null,revision:null,state:'not_submitted',note:null}});
      }
+     if(url.pathname==='/api/account/checkout-cancellation'){
+      const saved=collection().get(chosen[kind].id);
+      const checkout=saved?.activeCheckout??state.cancelledOrder;
+      assert.ok(checkout);
+      assert.deepEqual(body,{expectedOwnerId:state.active,paymentId:checkout.paymentId,targetType:kind});
+      state.cancellations.push(request.method());
+      if(request.method()==='PUT'){
+       assert.equal(saved.activeCheckout.status,'created');
+       state.cancelledOrder=saved.activeCheckout;
+       const {activeCheckout,...draft}=saved;assert.equal(activeCheckout.paymentId,body.paymentId);
+       collection().set(saved.id,draft);
+       if(state.loseCancellation)return route.abort('connectionreset');
+      }else assert.equal(request.method(),'POST');
+      return route.fulfill({json:{paymentId:body.paymentId,targetType:kind,state:'cancelled'}});
+     }
      if(url.pathname!=='/api/account/work-publications')return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
      state.workCalls.push({method:request.method(),body});state.sequence.push('work:'+body.action);assert.equal(body.kind,kind);
      const keys={list:['action','after','expectedOwnerId','kind'],read:['action','expectedOwnerId','kind','publicationId'],intent:['action','creationKey','expectedOwnerId','kind'],
@@ -173,6 +188,7 @@ test('work publication production pages preserve complete forms and use Russian 
      if(body.action==='intent')return route.fulfill({json:collection().get(state.intents.get(state.active+':'+kind+':'+body.creationKey))??null});
      if(body.action==='read'){
       const saved=collection().get(body.publicationId);
+      if(saved?.activeCheckout)assert.equal(request.headers()['x-blizhniy-active-checkout'],'1');
       return route.fulfill(saved?{json:saved}:{status:404,json:{error:{code:'PUBLICATION_NOT_FOUND'}}});
      }
      const form=parseWorkPublicationForm(kind,body.form);
@@ -259,6 +275,29 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.goto(origin+(kind==='vacancy'?'/rabota/vakansii/':'/rabota/zakazy/')+chosen[kind].id+'/edit');
     await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),nextTitle,'the canonical edit URL also reads the cookie-owned Russian record');
     assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,2);
+   });
+   await run(kind+' opens the original checkout before save and recovers a lost cancellation before editing',kind,async({page,state,collection})=>{
+    const {id,title}=chosen[kind],paymentId='62345678-1234-4321-8765-123456789abc';
+    const draft={id,kind,revision:'1',status:'draft',paid:false,form:parseWorkPublicationForm(kind,{title}),photos:[],
+     createdAt:stamp,updatedAt:stamp,publishedAt:null,expiresAt:null};
+    const url=origin+(kind==='vacancy'?'/rabota/vakansii/':'/rabota/zakazy/')+id+'/edit';
+    collection().set(id,{...draft,activeCheckout:{paymentId,status:'pending'}});
+    await page.goto(url);
+    let order=page.getByRole('region',{name:'Исходный заказ'});
+    await order.waitFor();
+    assert.equal(await order.getByRole('link',{name:'Продолжить',exact:true}).getAttribute('href'),`/oplata/${paymentId}?type=${kind}`);
+    assert.equal(await order.getByRole('button',{name:'Отменить подготовку и редактировать',exact:true}).count(),0);
+    collection().set(id,{...draft,activeCheckout:{paymentId,status:'created'}});
+    state.loseCancellation=true;
+    await page.reload();
+    order=page.getByRole('region',{name:'Исходный заказ'});
+    await order.getByRole('button',{name:'Отменить подготовку и редактировать',exact:true}).click();
+    await order.getByRole('button',{name:'Проверить отмену',exact:true}).click();
+    await page.locator('input[name="title"]').waitFor();
+    assert.equal(await page.locator('input[name="title"]').inputValue(),title);
+    assert.deepEqual(state.cancellations,['PUT','POST']);
+    assert.deepEqual(collection().get(id),draft);
+    assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,0);
    });
    await run(kind+' owner switch removes a private unsaved form and its selected file without writing it under another account',kind,async({page,state})=>{
     await page.goto(origin+chosen[kind].path);await fillWorkForm(page,kind,pixels);

@@ -229,6 +229,27 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
     }
    }
   });
+  await suite.test('a work editor returns the original admitted order before a save and clears it after cancellation',async()=>{
+   await admin.query('grant select on app.work_publications,app.work_publication_photos,app.media_objects,app.specialist_categories to checkout_cancel_runtime;grant select(intent_id) on app.payment_fulfillments to checkout_cancel_runtime');
+   const {PostgresWorkPublicationStore,WorkPublicationAccessError}=load('postgres-work-publications'),{parseWorkPublicationForm}=load('work-publication-contract');
+   const shopId='12345678',publicationMode='account-test-v1';
+   const policy={vacancy:{ownerId:owner.id,shopId,publicationMode},workRequest:{ownerId:owner.id,shopId,publicationMode}};
+   const forms=new PostgresWorkPublicationStore(db,policy),checkout=new PostgresCheckoutCancellation(db,policy);
+   for(const kind of ['vacancy','workRequest']){
+    const targetId=(await admin.query('insert into app.work_publications(author_id,kind,creation_key,form) values($1,$2,$3,$4) returning id',
+     [owner.id,kind,randomUUID(),parseWorkPublicationForm(kind,{title:'Синтетическая публикация'})])).rows[0].id;
+    const original=await purchase({targetType:kind,targetId,shopId,publicationMode});
+    const saved=await forms.read(owner.token,owner.id,kind,targetId,true);
+    assert.deepEqual(saved.activeCheckout,{paymentId:original.id,status:'created'});
+    assert.equal((await forms.read(owner.token,owner.id,kind,targetId)).activeCheckout,undefined);
+    await assert.rejects(forms.read(other.token,other.id,kind,targetId,true),WorkPublicationAccessError);
+    await checkout.cancel(owner.token,owner.id,{paymentId:original.id,targetType:kind});
+    const after=await forms.read(owner.token,owner.id,kind,targetId,true);
+    assert.equal(after.activeCheckout,undefined);
+    assert.deepEqual(after.form,saved.form);
+    assert.equal(after.revision,saved.revision);
+   }
+  });
   await suite.test('a paid response requires the original immutable admission and keeps the draft after cancellation',async()=>{
    await admin.query('create role blizhniy_payment_reconciler nologin');
    await admin.query(await readFile(new URL('../database/candidates/0067-paid-response-test.sql',import.meta.url),'utf8'));

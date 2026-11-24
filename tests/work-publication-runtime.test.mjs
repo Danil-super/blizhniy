@@ -7,6 +7,7 @@ function setup({enabled=true,failed=false}={}){
  const calls=[];const db={query:async(sql)=>{calls.push(sql);if(failed)throw Error('Synthetic secret database failure');}},limiter={};
  class Store{constructor(value){assert.equal(value,db);calls.push('store');}}
  const {handleProductionWorkPublicationRequest}=workPublicationModule('production-work-publication-runtime',{
+  './checkout-cancellation-policy':{readCheckoutCancellationPolicy:()=>null},
   './auth-http':http,'./production-auth-config':{readProductionAuthConfig:()=>enabled?{origin:'https://synthetic.invalid'}:null},
   './production-auth-runtime':{getProductionAccountDatabase:async()=>({db,limiter})},
   './postgres-work-publications':{PostgresWorkPublicationStore:Store},

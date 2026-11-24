@@ -36,7 +36,8 @@ export function createProductionWorkPublicationHandler(config:{origin:string},ru
    const {store,limiter}=await runtime();if(!await limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    switch(chosen){
     case 'list':return reply(await store.list(token,owner,kind,cursor),200);
-    case 'read':return reply(await store.read(token,owner,kind,id),200);
+    case 'read':return reply(await (request.headers.get('x-blizhniy-active-checkout')==='1'
+     ?store.read(token,owner,kind,id,true):store.read(token,owner,kind,id)),200);
     case 'intent':return reply(await store.readIntent(token,owner,kind,key),200);
     case 'create':return reply(await store.create(token,owner,kind,key,form),200);
     case 'update':return reply(await store.update(token,owner,kind,id,revision,form),200);
