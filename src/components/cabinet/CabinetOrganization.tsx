@@ -1,9 +1,19 @@
 "use client";
 import {useEffect,useState,type FormEvent} from "react";
-import type {CabinetProfile} from "@/lib/cabinet-profile";
+import type {CabinetProfile,OrganizationField} from "@/lib/cabinet-profile";
 import {CabinetFormValidation} from "@/components/CabinetFormValidation";
 import {CabinetProfileFailure,useCookieCabinetProfile} from "./CookieCabinetProfileProvider";
 import type {CabinetProfileData} from "./CabinetProfileBar";
+
+const organizationLabels: Record<OrganizationField,string> = {
+  organizationName: "Название организации или ИП",
+  organizationInn: "ИНН",
+  organizationOgrn: "ОГРН / ОГРНИП",
+  organizationAddress: "Адрес",
+  organizationWebsite: "Сайт или профиль",
+  organizationDescription: "Краткое описание",
+};
+const organizationFields = Object.keys(organizationLabels) as OrganizationField[];
 
 export function CookieCabinetOrganization(){
  const cookie=useCookieCabinetProfile(),profile=cookie?.profile??null;
@@ -16,17 +26,55 @@ export function CookieCabinetOrganization(){
 
 export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
   const { identity, profile, profileError, loading, saveProfile, reloadProfile } = data;
-  const [form, setForm] = useState<CabinetProfile | null>(profile);
+  const cookie = useCookieCabinetProfile();
+  const primary = Boolean(cookie);
+  const [legacyForm, setLegacyForm] = useState<CabinetProfile | null>(profile);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setForm(profile);
-  }, [profile]);
+    if (!primary) setLegacyForm(profile);
+  }, [primary, profile]);
 
   if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
-  if (loading || !identity || !profile || !form) {
+  if (loading || !identity || !profile || (!primary && !legacyForm)) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем профиль...</div>;
+  }
+
+  const savedProfile = profile;
+  const draft = cookie?.organizationDraft;
+  const form = { ...(primary ? profile : legacyForm ?? profile) };
+  const changedFields = organizationFields.filter(field => draft?.[field] !== undefined);
+  for (const field of changedFields) {
+    form[field] = draft?.[field]?.value ?? savedProfile[field];
+  }
+  const conflicts = changedFields.filter(field => draft?.[field]?.original !== savedProfile[field] && form[field].trim() !== savedProfile[field]);
+  const matchesSaved = changedFields.length > 0 && changedFields.every(field => form[field].trim() === savedProfile[field]);
+
+  function changeField(field: OrganizationField, value: string) {
+    if (!cookie) {
+      setLegacyForm({ ...form, [field]: value });
+      return;
+    }
+    cookie.updateOrganizationDraft(current => {
+      const next = { ...current };
+      if (value === savedProfile[field]) delete next[field];
+      else next[field] = { original: current[field]?.original ?? savedProfile[field], value };
+      return next;
+    });
+    setMessage("");
+  }
+
+  function settleConflicts(keepInput: boolean) {
+    cookie?.updateOrganizationDraft(current => {
+      const next = { ...current };
+      for (const field of conflicts) {
+        const edit = current[field];
+        if (keepInput && edit) next[field] = { ...edit, original: savedProfile[field] };
+        else delete next[field];
+      }
+      return next;
+    });
   }
 
   const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
@@ -35,7 +83,7 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!identity || !form) {
+    if (conflicts.length) {
       return;
     }
 
@@ -78,8 +126,11 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
 
     try {
       if (!saveProfile) throw new Error("Не удалось сохранить профиль организации.");
-      const saved = await saveProfile(nextProfile);
-      setForm(saved);
+      if (!matchesSaved) {
+        const saved = await saveProfile(nextProfile);
+        if (!cookie) setLegacyForm(saved);
+      }
+      cookie?.updateOrganizationDraft(current => current === draft ? {} : current);
       setMessage("Профиль организации сохранен.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить профиль организации.");
@@ -114,6 +165,20 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
         </div>
       </div>
       {profileError ? <p role="alert" className="mt-4 text-sm font-semibold text-amber-700">{profileError}</p> : null}
+      {conflicts.length > 0 && <div role="group" aria-label="Сверка реквизитов" className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+        <p className="font-semibold">Эти поля были изменены после того, как вы начали редактирование.</p>
+        <dl className="grid gap-2">
+          {conflicts.map(field => <div key={field} className="min-w-0 break-words">
+            <dt className="font-semibold">{organizationLabels[field]}</dt>
+            <dd>В профиле <span className="whitespace-pre-wrap">{savedProfile[field] || "Не заполнено"}</span></dd>
+            <dd>Ваш ввод <span className="whitespace-pre-wrap">{form[field] || "Не заполнено"}</span></dd>
+          </div>)}
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => settleConflicts(false)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 py-2 font-semibold">Использовать сохранённые значения</button>
+          <button type="button" onClick={() => settleConflicts(true)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 py-2 font-semibold">Оставить мой ввод</button>
+        </div>
+      </div>}
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
         <CabinetFormValidation/>
         <div className="grid gap-4 md:grid-cols-2">
@@ -123,7 +188,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationName}
               name="organizationName"
-              onChange={(event) => setForm({ ...form, organizationName: event.target.value.slice(0, 120) })}
+              onChange={(event) => changeField("organizationName", event.target.value.slice(0, 120))}
+              disabled={saving}
               placeholder="ООО РемДом"
               minLength={2}
               maxLength={120}
@@ -137,7 +203,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               value={form.organizationWebsite}
               name="organizationWebsite"
               type="url"
-              onChange={(event) => setForm({ ...form, organizationWebsite: event.target.value.slice(0, 120) })}
+              onChange={(event) => changeField("organizationWebsite", event.target.value.slice(0, 120))}
+              disabled={saving}
               placeholder="https://example.ru"
               maxLength={120}
             />
@@ -149,7 +216,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               value={form.organizationInn}
               name="organizationInn"
               pattern="([0-9]{10}|[0-9]{12})"
-              onChange={(event) => setForm({ ...form, organizationInn: event.target.value.replace(/\D/g, "").slice(0, 12) })}
+              onChange={(event) => changeField("organizationInn", event.target.value.replace(/\D/g, "").slice(0, 12))}
+              disabled={saving}
               placeholder="10 или 12 цифр"
               inputMode="numeric"
               maxLength={12}
@@ -162,7 +230,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               value={form.organizationOgrn}
               name="organizationOgrn"
               pattern="([0-9]{13}|[0-9]{15})"
-              onChange={(event) => setForm({ ...form, organizationOgrn: event.target.value.replace(/\D/g, "").slice(0, 15) })}
+              onChange={(event) => changeField("organizationOgrn", event.target.value.replace(/\D/g, "").slice(0, 15))}
+              disabled={saving}
               placeholder="13 или 15 цифр"
               inputMode="numeric"
               maxLength={15}
@@ -175,7 +244,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
             className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
             value={form.organizationAddress}
             name="organizationAddress"
-            onChange={(event) => setForm({ ...form, organizationAddress: event.target.value.slice(0, 160) })}
+            onChange={(event) => changeField("organizationAddress", event.target.value.slice(0, 160))}
+            disabled={saving}
             placeholder="Краснодар, ул. Красная, 1"
             maxLength={160}
           />
@@ -186,16 +256,17 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
             className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]"
             value={form.organizationDescription}
             name="organizationDescription"
-            onChange={(event) => setForm({ ...form, organizationDescription: event.target.value.slice(0, 500) })}
+            onChange={(event) => changeField("organizationDescription", event.target.value.slice(0, 500))}
+            disabled={saving}
             placeholder="Чем занимается компания, кого обычно нанимаете, важные условия для соискателей."
             maxLength={500}
           />
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={saving || Boolean(profileError)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
+          <button type="submit" disabled={saving || Boolean(profileError) || conflicts.length > 0} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
             {saving ? "Сохраняем..." : "Сохранить профиль организации"}
           </button>
-          {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
+          {message || matchesSaved ? <p role="status" className="text-sm font-semibold text-slate-600">{message || "Введённые реквизиты совпадают с сохранёнными."}</p> : null}
         </div>
       </form>
     </section>
