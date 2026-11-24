@@ -17,6 +17,7 @@ import {checkSpecialistServiceStartup} from './specialist-service-startup-cases.
 import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
 import {listingViewDigest} from '../src/lib/listing-view-history.ts';
+import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -414,6 +415,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
    });
+   if(inbox){await testAdminPaymentJournal(suite,{admin,config,load,full:false});assert.equal(await check(),true);}
    return;
   }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");

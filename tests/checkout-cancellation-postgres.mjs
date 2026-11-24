@@ -1,6 +1,7 @@
 // Owned disposable PostgreSQL only; synthetic identities and fake provider HTTP.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
-import {readFile,readdir} from 'node:fs/promises';import {randomBytes,randomUUID} from 'node:crypto';import {createRequire} from 'node:module';import pg from 'pg';
+import {readFile,readdir} from 'node:fs/promises';import {randomBytes,randomUUID} from 'node:crypto';import {createRequire} from 'node:module';import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
+import pg from 'pg';
 import {testUnpaidDraftRemoval} from './unpaid-draft-removal-integration.mjs';
 import {testPaymentReconciliationRecovery} from './payment-reconciliation-recovery-integration.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
@@ -274,5 +275,6 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    assert.notEqual(replacement.id,binding.id);
   });
   await testPaymentReconciliationRecovery(suite,{admin,config,ownerDb,actor,purchase,intents,load});
+  await testAdminPaymentJournal(suite,{admin,config,load,full:true});
  }finally{await db?.close();await ownerDb?.close();await admin?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels['blizhniy.checkout-cancel'],name);await docker(['rm','--force','--volumes',container]);}}
 });
