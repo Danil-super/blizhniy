@@ -1,0 +1,19 @@
+[Unit]
+Description=Render a reviewed account archive
+
+[Service]
+Type=exec
+User=blizhniy-web
+Group=blizhniy-web
+Environment=NODE_ENV=production BLIZHNIY_AUTH_MODE=postgres HOME=/tmp
+LoadCredential=case.json:/run/blizhniy-account-export-control/case.json
+LoadCredential=reader.env:/run/blizhniy-account-export-control/reader.env
+ExecStart=/opt/blizhniy-node22/bin/node /opt/blizhniy-account-export-operator/scripts/prepare-approved-account-export.mjs --reviewed-case
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=38s
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ReadWritePaths=/run/blizhniy-account-export-work

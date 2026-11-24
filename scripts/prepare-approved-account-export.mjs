@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { rm, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { lstat, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseEnv } from 'node:util';
 import pg from 'pg';
 import { prepareApprovedProductionAccountExport } from './account-export-snapshot.mjs';
-import { localArchiveMaximumBytes, readPrivateFile } from './local-account-export-delivery.mjs';
+import { localArchiveMaximumBytes, readBoundedExportFile, readPrivateFile, validateLocalExportNotice } from './local-account-export-delivery.mjs';
 import { packReviewedAccountReport } from './local-account-export-report.mjs';
 
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -34,29 +35,57 @@ export async function prepareOperatorArchive(db,input,{outputRoot,mediaRoot,list
  }
 }
 
+export function bindReviewedAccountExport(input,review){
+ const {caseId,operatorToken}=deletionObject(input,['caseId','operatorToken']);
+ const {approval,disclosure}=deletionObject(review,['approval','disclosure']);
+ assert.match(caseId,/^[A-Za-z0-9_-]{6,80}$/);
+ assert.equal(caseId,approval.caseId);
+ return{operatorToken,approval,disclosure:validateLocalExportNotice(disclosure)};
+}
+
 async function main(){
- assert.equal(process.argv.length,2);
+ const reviewed=process.argv.length===3&&process.argv[2]==='--reviewed-case';
+ assert.ok(reviewed||process.argv.length===2);
  assert.equal(process.env.NODE_ENV,'production');
  const outputRoot='/run/blizhniy-account-export-work',mediaRoot='/var/lib/blizhniy-web/media';
  load('media-runtime-policy').assertMediaRuntime(process,mediaRoot);
- assert.match(process.env.BLIZHNIY_AUTH_RATE_SECRET,/^[a-f0-9]{64}$/);
- const {readPostgresConfig,PostgresDatabase}=load('postgres');
- const config=readPostgresConfig();
- assert.ok(config.database==='blizhniy_prod'&&config.user==='blizhniy_account_export_reader'&&config.ssl?.rejectUnauthorized===true);
  process.env.PLAYWRIGHT_BROWSERS_PATH=fileURLToPath(new URL('../browser',import.meta.url));
 
  let size=0;
  const chunks=[];
  for await(const chunk of process.stdin){
   size+=chunk.length;
-  assert.ok(size<=65536);
+  assert.ok(size<=(reviewed?512:65536));
   chunks.push(chunk);
  }
- const input=JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
+ let input=JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
+ let environment=process.env;
+ if(reviewed){
+  const directory=process.env.CREDENTIALS_DIRECTORY;
+  assert.ok(directory&&dirname(directory)==='/run/credentials'&&
+   /^blizhniy-account-export-prepare@[^/]+\.service$/.test(basename(directory)));
+  const info=await lstat(directory);
+  assert.ok(info.isDirectory()&&info.uid===0&&info.gid===0&&[0o500,0o550].includes(info.mode&0o7777));
+  const credential=async name=>{
+   const bytes=await readBoundedExportFile(join(directory,name),65536,stat=>
+    stat.uid===0&&stat.gid===0&&stat.nlink===1&&[0o400,0o440].includes(stat.mode&0o7777));
+   assert.ok(bytes);
+   return bytes.toString('utf8');
+  };
+  input=bindReviewedAccountExport(input,JSON.parse(await credential('case.json')));
+  environment={...parseEnv(await credential('reader.env')),NODE_ENV:'production'};
+ }
+ assert.match(environment.BLIZHNIY_AUTH_RATE_SECRET,/^[a-f0-9]{64}$/);
+ const {readPostgresConfig,PostgresDatabase}=load('postgres');
+ const config=readPostgresConfig(environment);
+ assert.ok(config.database==='blizhniy_prod'&&config.user==='blizhniy_account_export_reader'&&config.ssl?.rejectUnauthorized===true);
  const db=new PostgresDatabase(new pg.Pool({...config,max:1,application_name:'blizhniy-approved-account-export'}));
  try{
-  const prepared=await prepareOperatorArchive(db,input,{outputRoot,mediaRoot,listingViewRateSecret:process.env.BLIZHNIY_AUTH_RATE_SECRET});
-  console.log(JSON.stringify(prepared));
+  const prepared=await prepareOperatorArchive(db,input,{outputRoot,mediaRoot,listingViewRateSecret:environment.BLIZHNIY_AUTH_RATE_SECRET});
+  if(reviewed){
+   console.error(JSON.stringify({event:'approved_account_archive_prepared',directory:prepared.directory}));
+   console.log('prepared');
+  }else console.log(JSON.stringify(prepared));
  }finally{await db.close();}
 }
 

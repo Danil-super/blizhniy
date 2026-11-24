@@ -182,6 +182,11 @@ test('approved operator exports only the confirmed owner in a disposable product
  const operator=await import('../scripts/prepare-approved-account-export.mjs');
  const publisher=await import('../scripts/stage-approved-account-export.mjs');
  const approvalRequest={operatorToken:administrator.token,approval,disclosure};
+ const reviewed={approval,disclosure};
+ const reviewCommand={caseId:approval.caseId,operatorToken:administrator.token};
+ assert.deepEqual(operator.bindReviewedAccountExport(reviewCommand,reviewed),approvalRequest);
+ assert.throws(()=>operator.bindReviewedAccountExport({...reviewCommand,caseId:'WRONG_CASE'},reviewed));
+ assert.throws(()=>operator.bindReviewedAccountExport({...reviewCommand,ownerId:other.id},reviewed));
  const operatorOptions={outputRoot,mediaRoot,listingViewRateSecret};
  const beforeInvalid=await readdir(outputRoot);
  await assert.rejects(operator.prepareOperatorArchive(reader,{...approvalRequest,unexpected:true},operatorOptions));
@@ -199,14 +204,14 @@ test('approved operator exports only the confirmed owner in a disposable product
   import {readFileSync} from 'node:fs';
   import {createRequire} from 'node:module';
   import pg from 'pg';
-  import {prepareOperatorArchive} from './scripts/prepare-approved-account-export.mjs';
+  import {bindReviewedAccountExport,prepareOperatorArchive} from './scripts/prepare-approved-account-export.mjs';
   const {PostgresDatabase}=createRequire(import.meta.url)('./compiled/lib/postgres.js');
   const data=JSON.parse(readFileSync(0,'utf8'));
   const db=new PostgresDatabase(new pg.Pool(data.readerConfig));
-  try{console.log(JSON.stringify(await prepareOperatorArchive(db,data.approvalRequest,data.operatorOptions)));}
+  try{console.log(JSON.stringify(await prepareOperatorArchive(db,bindReviewedAccountExport(data.command,data.review),data.operatorOptions)));}
   finally{await db.close();}
  `],{cwd:artifact,timeout:25000,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',NODE_ENV:'test',PLAYWRIGHT_BROWSERS_PATH:join(artifact,'browser')}});
- child.child.stdin.end(JSON.stringify({readerConfig,approvalRequest,operatorOptions}));
+ child.child.stdin.end(JSON.stringify({readerConfig,command:reviewCommand,review:reviewed,operatorOptions}));
  const prepared=JSON.parse((await child).stdout);
  reader=new(load('postgres').PostgresDatabase)(new pg.Pool(readerConfig));
  const stagedPath=join(outputRoot,prepared.directory,'archive.tar.gz');
