@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -177,6 +177,51 @@ test('approved operator exports only the confirmed owner in a disposable product
  assert.equal(account.profile.phone,'+79995550101');
  assert.deepEqual(account.media.map(item=>item.file),['media/'+image+'.webp']);
  assert.deepEqual(await readFile(join(packageResult.directory,account.media[0].file)),photo);
+
+ const reports=await import('../scripts/local-account-export-report.mjs');
+ const publisher=await import('../scripts/stage-approved-account-export.mjs');
+ const archive=await reports.packReviewedAccountReport(packageResult.directory,outputRoot,subject.id,subject.email);
+ const delivery=join(root,'delivery');
+ await mkdir(delivery,{mode:0o750});
+ await chmod(delivery,0o750);
+ const target={directory:delivery,authorityUid:process.getuid(),groupId:process.getgid()};
+ const deliveryBinding={ownerId:subject.id,emailSha256:digest(subject.email),archiveSha256:digest(archive)};
+ await assert.rejects(publisher.stageApprovedAccountArchive(target,{...deliveryBinding,ownerId:other.id},archive));
+ await assert.rejects(publisher.stageApprovedAccountArchive(target,{...deliveryBinding,archiveSha256:'0'.repeat(64)},archive));
+ assert.deepEqual(await readdir(delivery),[]);
+ await publisher.stageApprovedAccountArchive(target,deliveryBinding,archive);
+ await assert.rejects(publisher.stageApprovedAccountArchive(target,deliveryBinding,archive),{code:'EEXIST'});
+
+ const {createApprovedAccountExport}=load('production-account-export-trial');
+ const origin='https://xn----9sbphbgks4a4a.xn--p1ai';
+ const handle=createApprovedAccountExport({...target,origin,allow:async()=>true,
+  resolve:async token=>[subject,other].find(actor=>actor.token===token)??null});
+ const request=(action,actor)=>new Request(origin+'/api/account/export',{method:'POST',
+  headers:{host:new URL(origin).host,origin,'x-blizhniy-request':'1','x-real-ip':'127.0.0.1',
+   'content-type':'application/json',cookie:'__Host-blizhniy_session='+actor.token},
+  body:JSON.stringify({action})});
+ assert.deepEqual(await (await handle(request('available',other))).json(),{available:false});
+ assert.equal((await handle(request('download',other))).status,404);
+ const download=await handle(request('download',subject));
+ assert.equal(download.status,200);
+ assert.equal(download.headers.get('cache-control'),'private, no-store');
+ assert.deepEqual(Buffer.from(await download.arrayBuffer()),archive);
+ const [published]=await readdir(delivery);
+ const archivedPhoto=await run('/usr/bin/tar',['-xOzf',join(delivery,published),account.media[0].file],{encoding:'buffer'});
+ assert.deepEqual(archivedPhoto.stdout,photo);
+
+ const cleanupConfig=await readFile(new URL('../deploy/blizhniy-account-export-tmpfiles.conf',import.meta.url),'utf8');
+ const configPath=join(root,'cleanup.conf');
+ await writeFile(configPath,cleanupConfig.replace('/run/blizhniy-account-export',delivery)
+  .replace('root blizhniy-web',process.getuid()+' '+process.getgid()),{mode:0o600});
+ const expired=new Date(Date.now()-16*60_000);
+ await utimes(join(delivery,published),expired,expired);
+ const fresh=join(delivery,'fresh');
+ await writeFile(fresh,'not an expired file',{mode:0o440});
+ await run('/usr/bin/systemd-tmpfiles',['--clean',configPath],{timeout:5000});
+ assert.deepEqual(await readdir(delivery),['fresh']);
+ assert.equal((await handle(request('download',subject))).status,404);
+
 
  await assert.rejects(read(other.token),{name:'DeletionAccessError'});
  await assert.rejects(read(administrator.token,{...approval,ownerId:other.id}),{name:'DeletionAccessError'});

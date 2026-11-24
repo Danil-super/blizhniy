@@ -75,6 +75,15 @@ export async function readReviewedAccountReport(directory,stateDirectory,ownerId
  }finally{await root.close();}
 }
 
+export async function packReviewedAccountReport(directory,stateDirectory,ownerId,email){
+ await readReviewedAccountReport(directory,stateDirectory,ownerId,email);
+ const {stdout}=await run('/usr/bin/tar',['-czf','-','-C',directory,'--',...archiveEntries],{
+  encoding:'buffer',timeout:10000,maxBuffer:localArchiveMaximumBytes,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},
+ });
+ assert.ok(Buffer.isBuffer(stdout)&&stdout.length>0&&stdout.length<=localArchiveMaximumBytes);
+ return stdout;
+}
+
 export async function prepareLocalAccountEmail(directory,stateDirectory,email){
  assert.equal(process.env.NODE_ENV,'test');
  assert.match(email,/^[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-z0-9.-]+\.invalid$/);
