@@ -16,7 +16,7 @@ const stamp=column=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:
 test('new paid periods preserve historical purchases and undo only the latest extension',{timeout:120000},async suite=>{
  let container,admin,db;const previousFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
  const merchant={shopId:'renewal-fixture',isTest:true,secretKey:'test_synthetic_only'};
- const local={BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:14431'},savedEnv=Object.fromEntries(Object.keys(local).map(k=>[k,process.env[k]]));Object.assign(process.env,local);
+ const local={BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:14431',BLIZHNIY_PLACEMENT_RENEWALS:'disabled'},savedEnv=Object.fromEntries(Object.keys(local).map(k=>[k,process.env[k]]));Object.assign(process.env,local);
  try{
   container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
   const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);
@@ -57,6 +57,70 @@ test('new paid periods preserve historical purchases and undo only the latest ex
    const reader=new(load('postgres-refund-journal').PostgresRefundJournalStore)(db,merchant,async url=>String(url).includes('/payments/')?Response.json({id:item.providerPaymentId,amount:{value:'199.00',currency:'RUB'},paid:true,status:'succeeded',test:true,recipient:{account_id:merchant.shopId},captured_at:item.capturedAt,metadata:{localPaymentId:item.id,targetId:item.target,targetType:item.kind,tariffId:'renewal-placement'}}):Response.json({id:providerRefundId,payment_id:item.providerPaymentId,amount:{value:'199.00',currency:'RUB'},status:'succeeded',created_at:new Date(Date.now()+1000).toISOString(),metadata:{localRefundId:operation,localPaymentId:item.id}}));
    await reader.reconcile(operation,providerRefundId);const effects=new(load('postgres-placement-refund-effect').PostgresPlacementRefundEffectStore)(db,merchant);const result=await effects.apply(operation);assert.deepEqual(await effects.apply(operation),result);return result;
   }
+  await suite.test('owner archive expires at the exact PostgreSQL statement boundary with or without renewal',async()=>{
+   const {PostgresListingCabinetStore}=load('postgres-listing-cabinet');
+   for(const mode of ['disabled','local-v1'])for(const [offset,expected] of [[0,'expired'],[1,'archived'],[-1,'expired']]){
+    process.env.BLIZHNIY_PLACEMENT_RENEWALS=mode;
+    assert.equal(load('placement-renewal-config').readPlacementRenewalsEnabled(),mode==='local-v1');
+    const f=await fixture();
+    let expiresAt;
+    const ownedBoundary={transaction:work=>db.transaction(tx=>work({query:async(sql,values)=>{
+     if(!sql.startsWith('select l.id'))return tx.query(sql,values);
+     assert.deepEqual(values,[f.owner]);
+     // One simple query message gives the UPDATE and projection the same server timestamp.
+     const target=pg.escapeLiteral(f.target),actor=pg.escapeLiteral(f.owner);
+     const results=await admin.query(`begin;set local time zone 'America/Los_Angeles';
+      update app.listings set status='archived',is_paid=true,published_at=statement_timestamp()-interval '1 day',
+       expires_at=statement_timestamp()+${offset}*interval '1 microsecond'
+       where id=${target} returning ${stamp('expires_at')} as "expiresAt";
+      ${sql.replace('$1',actor)};commit`);
+     expiresAt=results[2].rows[0].expiresAt;
+     return results[3];
+    }}))};
+    const {items:[item]}=await new PostgresListingCabinetStore(ownedBoundary,true).list(f.token,f.owner,null);
+    assert.equal(item.card.status,expected);
+    assert.deepEqual(item.card.placement,{expiresAt,active:offset>0});
+   }
+  });
+  await suite.test('restore replay is idempotent while paid and a listing lock cannot prolong the period',async()=>{
+   const f=await fixture(),{PostgresListingOwnerActions}=load('postgres-listing-owner-actions');
+   const dates=(await admin.query(`update app.listings set status='archived',is_paid=true,
+     published_at=clock_timestamp()-interval '1 day',expires_at=clock_timestamp()+interval '3 seconds'
+     where id=$1 returning ${stamp('published_at')} "publishedAt",${stamp('expires_at')} "expiresAt"`,[f.target])).rows[0];
+   const purchase=await buy(f);
+   await admin.query('insert into app.payment_fulfillments(intent_id,published_at,expires_at) values($1,$2,$3)',
+    [purchase.id,dates.publishedAt,dates.expiresAt]);
+   const actions=new PostgresListingOwnerActions(db);
+   const restored={id:f.target,revision:'2',status:'published'};
+   assert.deepEqual(await actions.change(f.token,f.owner,f.target,'1','restore'),restored);
+   assert.deepEqual(await actions.change(f.token,f.owner,f.target,'2','restore'),restored);
+   await assert.rejects(actions.change(f.token,f.owner,f.target,'1','restore'),{name:'ListingDraftConflictError'});
+   const locker=await admin.connect();
+   let running;
+   try{
+    await locker.query('begin');
+    await locker.query('select id from app.listings where id=$1 for update',[f.target]);
+    let pid,announce;
+    const started=new Promise(resolve=>announce=resolve);
+    const waiting=new PostgresListingOwnerActions({transaction:work=>db.transaction(async tx=>{
+     pid=(await tx.query('select pg_backend_pid() pid')).rows[0].pid;announce();return work(tx);
+    })});
+    running=waiting.change(f.token,f.owner,f.target,'2','restore');running.catch(()=>{});
+    await started;
+    const deadline=Date.now()+2000;
+    for(;;){
+     if((await admin.query("select wait_event_type='Lock' waiting from pg_stat_activity where pid=$1",[pid])).rows[0]?.waiting)break;
+     assert.ok(Date.now()<deadline,'Restore did not reach the listing lock');
+     await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.equal((await locker.query('select $1::timestamptz>clock_timestamp() live',[dates.expiresAt])).rows[0].live,true);
+    await locker.query('select pg_sleep(greatest(extract(epoch from $1::timestamptz-clock_timestamp()),0)+0.02)',[dates.expiresAt]);
+    await locker.query('commit');
+    await assert.rejects(running,{name:'ListingDraftAccessError'});
+    assert.deepEqual(await window(f),{...dates,is_paid:true,status:'published'});
+    assert.equal((await admin.query('select revision::text from app.listings where id=$1',[f.target])).rows[0].revision,'2');
+   }finally{await locker.query('rollback');await running?.catch(()=>{});locker.release();}
+  });
   const baseline=await fixture(),original=await initial(baseline),originalReceipt=await receipt(original.id);
   await suite.test('migration preserves original receipts and the runtime has no renewal write privilege',async()=>{await admin.query(await readFile(new URL('../database/migrations/0056-placement-renewals.sql',import.meta.url),'utf8'));await admin.query(await readFile(new URL('../database/migrations/0056-placement-renewals.down.sql',import.meta.url),'utf8'));assert.deepEqual(await receipt(original.id),originalReceipt);await admin.query(await readFile(new URL('../database/migrations/0056-placement-renewals.sql',import.meta.url),'utf8'));assert.equal((await admin.query("select has_table_privilege('blizhniy_runtime','app.payment_renewals','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as allowed")).rows[0].allowed,false);});
   for(const kind of ['listing','vacancy','workRequest'])await suite.test(kind+': two extensions and latest-first refunds preserve every prior receipt and remaining service',async()=>{
@@ -105,7 +169,7 @@ test('new paid periods preserve historical purchases and undo only the latest ex
     const f=await fixture(kind),a=await initial(f,{expired:true}),before=await window(f),old=await receipt(a.id),b=await buy(f),extra=await renew(b,a),current=await window(f);
     assert.ok(current.publishedAt>before.expiresAt);assert.equal(current.publishedAt,extra.additionalStart);assert.equal(current.expiresAt,extra.additionalEnd);assert.deepEqual(await receipt(a.id),old);
     await refund(b);assert.deepEqual(await window(f),{...before,status:'archived'});assert.deepEqual(await receipt(a.id),old);
-    const store=kind==='listing'?new(load('postgres-listing-cabinet').PostgresListingCabinetStore)(db,true,true):new(load('postgres-work-cabinet').PostgresWorkCabinetStore)(db,true);
+    const store=kind==='listing'?new(load('postgres-listing-cabinet').PostgresListingCabinetStore)(db,true):new(load('postgres-work-cabinet').PostgresWorkCabinetStore)(db,true);
     const cards=kind==='listing'?await store.list(f.token,f.owner,null):await store.list(f.token,f.owner,kind,null),card=cards.items.find(item=>item.id===f.target);assert.equal(kind==='listing'?card.card.status:card.status,'expired');
 
    }

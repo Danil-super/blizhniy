@@ -23,7 +23,8 @@ function module(name, dependencies) {
 }
 const {createListingCabinetClient} = module('client-listing-cabinet', {'./listing-draft-contract.ts': draft, './listing-cabinet-contract.ts': cabinet});
 const {createListingCabinetHandler} = module('listing-cabinet-http', {'./auth-http': auth, './account-cookie': cookie,
-  './trusted-proxy-ip': ingress, './app-session-transaction': session, './listing-draft-contract.ts': draft});
+  './trusted-proxy-ip': ingress, './app-session-transaction': session, './listing-draft-contract.ts': draft,
+  './listing-cabinet-contract.ts': cabinet});
 const owner = '11111111-1111-4111-8111-111111111111', id = '22222222-2222-4222-8222-222222222222';
 const token = 'a'.repeat(64), origin = 'https://cabinet.example.invalid';
 const summary = {id, revision: '9007199254740993', kind: 'prodam', title: 'Комод', price: '3500.00',
@@ -87,12 +88,12 @@ test('cabinet client rejects and cancels a streamed body above 128 KiB, invalid 
   assert.equal(calls, 1);
 });
 
-function server({allow = true, failure = null} = {}) {
+function server({allow = true, failure = null, payload = page} = {}) {
   const calls = []; let runtimes = 0;
   const handle = createListingCabinetHandler({origin}, async () => {
     runtimes++;
     return {limiter: {allowProduction: async (...args) => {calls.push(['limit', ...args]); return allow;}},
-      store: {list: async (...args) => {calls.push(['list', ...args]); if (failure) throw failure; return page;}}};
+      store: {list: async (...args) => {calls.push(['list', ...args]); if (failure) throw failure; return payload;}}};
   });
   const request = ({headers = {}, body = {expectedOwnerId: owner, cursor: null}, query = '', method = 'POST'} = {}) => new Request(origin + '/api/account/listings' + query, {
     method, headers: {host: new URL(origin).host, origin, 'content-type': 'application/json', 'x-blizhniy-request': '1',
@@ -110,6 +111,17 @@ test('cabinet HTTP reads the owner-scoped page with canonical cookie and session
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(response.headers.get('set-cookie'), null);
+});
+test('clients request listing placement dates explicitly and the previous cabinet shape stays readable',async()=>{
+ const payload={...page,items:[{...summary,card:{...summary.card,
+  placement:{expiresAt:'2026-11-25T21:00:00.000001Z',active:false},
+ }}]};
+ const f=server({payload});
+ assert.deepEqual(await (await f.handle(f.request())).json(),page);
+ const updated=createListingCabinetClient((_url,options)=>f.handle(f.request({
+  headers:Object.fromEntries(new Headers(options.headers)),body:options.body,
+ })),{includePlacement:true});
+ assert.deepEqual(await updated.list(owner),payload);
 });
 for (const [description, input, status] of [
   ['missing cookie cannot use Bearer authority', {headers: {cookie: '', authorization: `Bearer ${token}`}}, 401],

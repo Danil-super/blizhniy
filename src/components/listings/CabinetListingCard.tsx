@@ -7,6 +7,7 @@ import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {ListingMediaClientError, productionListingMedia} from '@/lib/client-listing-media';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
+import {formatPublicationDateTime} from '@/lib/publication-time';
 import type {ListingCabinetSummary} from '@/lib/listing-cabinet-contract';
 import {ListingKindBadge, StatusBadge} from './ListingBadges';
 import {ListingOwnerVisibilityButton} from './ListingOwnerVisibilityButton';
@@ -55,6 +56,8 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
     const node=dialog.current;if(!node)return;
     node.showModal();return()=>node.close();
   },[open]);
+  const {placement}=item.card;
+  const canChangeVisibility=placement===undefined||placement?.active===true;
   const editable = item.card.status === 'draft';
   const title = item.title || 'Без названия';
   const href = editable ? `/razmestit/obyavlenie?draft=${item.id}` : item.card.status === 'published' ? `/obyavlenie/${item.id}` : null;
@@ -76,7 +79,8 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
         <p className="mt-1 flex min-h-5 items-start gap-1 text-xs text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"/><span className="truncate">{place||'Город не указан'}</span></p>
     {item.card.status === 'blocked' ? <p title={item.card.blockReason??''} className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-rose-900">
       <span className="font-semibold">Причина блокировки: </span>{item.card.blockReason || 'Обновите список, чтобы получить причину.'}
-    </p>:<p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{item.card.status==='published'?'Объявление доступно в каталоге.':item.card.status==='archived'?'Снято с публикации. Срок размещения продолжает идти.':item.card.status==='pending_payment'?'Продолжите оплату, чтобы разместить объявление.':item.card.status==='draft'?'Черновик сохранён. Можно продолжить заполнение.':item.card.status==='paid'?'Оплата подтверждена. Объявление не опубликовано.':'Объявление не показывается в каталоге.'}</p>}
+    </p>:<p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{item.card.status==='published'?'Объявление доступно в каталоге.':item.card.status==='archived'?(canChangeVisibility?'Снято с публикации. Срок размещения продолжает идти.':'Снято с публикации.'):item.card.status==='pending_payment'?'Продолжите оплату, чтобы разместить объявление.':item.card.status==='draft'?'Черновик сохранён. Можно продолжить заполнение.':item.card.status==='paid'?'Оплата подтверждена. Объявление не опубликовано.':'Объявление не показывается в каталоге.'}</p>}
+    {placement&&<p className="mt-2 text-xs leading-5 text-slate-700">Окончание размещения <time className="font-semibold" dateTime={placement.expiresAt}>{formatPublicationDateTime(placement.expiresAt)}</time></p>}
     <div className="mt-auto flex flex-wrap gap-2 pt-3">
       {!managePublication&&editable && <Link href={`/razmestit/obyavlenie?draft=${item.id}`} className={action}>Редактировать</Link>}
       {!managePublication&&editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
@@ -86,8 +90,8 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
        <div className="absolute bottom-full right-0 z-30 mb-2 w-60 max-w-[80vw] rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
         {['draft','published','archived','blocked'].includes(item.card.status)&&<Link href={`/razmestit/obyavlenie?draft=${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Редактировать</Link>}
         {item.card.status==='published'&&<Link href={`/obyavlenie/${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Посмотреть</Link>}
-        {renewals&&['published','expired'].includes(item.card.status)&&<Link href={`/cabinet/prodlit?type=listing&id=${item.id}&revision=${item.revision}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Продлить размещение</Link>}
-        {['published','archived'].includes(item.card.status)&&<ListingOwnerVisibilityButton owner={owner} id={item.id} revision={item.revision} restore={item.card.status==='archived'} onChanged={onChanged}/>}
+        {renewals&&placement!==null&&['published','expired'].includes(item.card.status)&&<Link href={`/cabinet/prodlit?type=listing&id=${item.id}&revision=${item.revision}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Продлить размещение</Link>}
+        {canChangeVisibility&&['published','archived'].includes(item.card.status)&&<ListingOwnerVisibilityButton owner={owner} id={item.id} revision={item.revision} restore={item.card.status==='archived'} onChanged={onChanged}/>}
         {item.card.status==='blocked'&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} onChanged={onChanged}/>}
         {editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
         {!['draft','published','archived','blocked'].includes(item.card.status)&&<p className="px-3 py-2 text-sm text-slate-600">Статус объявления указан в карточке.</p>}
