@@ -28,7 +28,7 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
    if(!url.pathname.startsWith('/api/account/')&&!url.pathname.startsWith('/api/payments'))return route.continue();
    assert.equal(request.headers().authorization,undefined);
-   if(url.pathname==='/api/account/session'){if(sessionGate)await sessionGate;return active?route.fulfill({json:{user:{id:active,email:'fixture@example.invalid',role:'user',isBlocked:false,...(active===owner?{workPublicationTest:true}:{})}}}):route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});}
+   if(url.pathname==='/api/account/session'){if(sessionGate)await sessionGate;return active?route.fulfill({json:{user:{id:active,email:'fixture@example.invalid',role:'user',isBlocked:false}},headers:active===owner?{'X-Blizhniy-Work-Publication-Test':'1'}:undefined}):route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});}
    if(url.pathname==='/api/account/checkout-cancellation'){
     assert.equal(request.method(),'PUT');
     const input={paymentId:id,targetType:'workRequest'};
@@ -49,7 +49,9 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
    snapshot={order:{...order,status:'succeeded'},fulfillment:null,testPublication:true,testOnly:true};
    const url=origin+`/oplata/${id}`+(type?'?type='+type:'');
    assert.equal((await page.goto(url,{waitUntil:'domcontentloaded'})).status(),200);
-   await page.getByRole('heading',{name:'Оплата подтверждена',exact:true}).waitFor();
+   await page.getByRole('heading',{name:'Оплата подтверждена',exact:true}).waitFor().catch(async error=>{
+    throw Error((type||'listing')+': '+(await page.locator('main').innerText())+' | order reads: '+calls.length,{cause:error});
+   });
    await page.getByText('Тестовый платёж · Без списания денег',{exact:true}).waitFor();
    await page.getByText('Размещение ещё не подтверждено. Не оплачивайте повторно; проверьте статус позже.',{exact:true}).waitFor();
    assert.equal(await page.getByText('Возвращаем в личный кабинет…',{exact:true}).count(),0);
