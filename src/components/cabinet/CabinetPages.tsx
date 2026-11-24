@@ -14,7 +14,8 @@ export function CabinetPage() {
 export function CabinetListingsPage() {
   return (
     <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
-      <CabinetDraftWorkspace footer={<div className="mt-8 border-t border-slate-200 pt-5 text-sm">
+      <CabinetDraftWorkspace footer={<div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-slate-200 pt-5 text-sm">
+        <Link href="/cabinet/moi-dannye" prefetch={false} className="font-semibold text-[#0875d1] underline">Мои персональные данные</Link>
         <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
       </div>}><CabinetPublicationsClient type="listing" /></CabinetDraftWorkspace>
     </Shell>
