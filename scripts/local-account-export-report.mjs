@@ -20,6 +20,10 @@ const archiveEntries=['report.pdf','account.json','processing.json','media'];
 
 export async function writeLocalAccountReport(directory,data,caseId,disclosure){
  assert.equal(process.env.NODE_ENV,'test');
+ return writeAccountReport(directory,data,caseId,disclosure);
+}
+
+export async function writeAccountReport(directory,data,caseId,disclosure){
  assert.match(caseId,/^[A-Za-z0-9_-]{1,80}$/);
  const notice=validateLocalExportNotice(disclosure);
  const {chromium}=await import('playwright');

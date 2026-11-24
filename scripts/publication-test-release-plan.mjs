@@ -112,7 +112,7 @@ export async function hasInboxPreferenceObjects(tx){
   or exists(select 1 from pg_trigger where tgrelid='app.notifications'::regclass and tgname='apply_inbox_preference') as installed`);
  return result.rows[0].installed;
 }
-async function assertListingViewsAccess(tx){
+export async function assertListingViewsAccess(tx){
  const catalog=await readRefundSchema(tx,{namespace:'app_stats'});
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  if(hash!=='4a7de678206ac4c93e294352275bbd540670cec0c04640c8cadcd1b66acb56bb')throw Error('Unexpected listing views schema');

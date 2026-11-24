@@ -7,25 +7,29 @@ import { AuthRequestError, authJson, readAuthJson } from './auth-http';
 import { getTrustedProxyIp } from './trusted-proxy-ip';
 
 const lifetime = 15 * 60_000;
-const maximumBytes = 1024 * 1024;
+const trialMaximumBytes = 1024 * 1024;
+const approvedMaximumBytes = 16 * 1024 * 1024;
 export const accountExportTrialDirectory = '/run/blizhniy-account-export-test';
+export const approvedAccountExportDirectory = '/run/blizhniy-account-export';
+export function approvedAccountExportEnabled() {
+  return process.env.BLIZHNIY_ACCOUNT_EXPORT === 'operator-approved';
+}
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 type Principal = { id: string; email: string };
-type Trial = {
+type ArchiveAccess = {
   origin: string;
   directory: string;
-  ownerId: string;
   authorityUid: number;
   resolve: (token: string) => Promise<Principal | null>;
   allow: (ip: string) => Promise<boolean>;
 };
 
-async function readTrialArchive({ directory, authorityUid }: Trial, { id, email }: Principal, download: boolean) {
-  // Root stages one reviewed synthetic archive. The web process can only read the directory.
+async function readArchive({ directory, authorityUid }: ArchiveAccess, { id, email }: Principal, download: boolean, maximumBytes: number) {
+  // The operator stages reviewed archives. The web process can only read the directory.
   const root = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
   try {
     const info = await root.stat();
-    if (info.uid !== authorityUid || (info.mode & 0o7777) !== 0o750) throw new Error('Unsafe TEST directory');
+    if (info.uid !== authorityUid || (info.mode & 0o7777) !== 0o750) throw new Error('Unsafe account export directory');
     const emailHash = createHash('sha256').update(email).digest('hex');
     const file = await open(join('/proc/self/fd', String(root.fd), id + '_' + emailHash + '.tar.gz'),
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -46,23 +50,31 @@ async function readTrialArchive({ directory, authorityUid }: Trial, { id, email 
   }
 }
 
-export function createAccountExportTrial(trial: Trial) {
+export function createAccountExportTrial(trial: ArchiveAccess & { ownerId: string }) {
+  if (!uuid.test(trial.ownerId)) return async () => authJson({ error: { code: 'NOT_FOUND' } }, 404);
+  return createArchiveDownload(trial, trialMaximumBytes, trial.ownerId);
+}
+
+export function createApprovedAccountExport(access: ArchiveAccess) {
+  return createArchiveDownload(access, approvedMaximumBytes);
+}
+
+function createArchiveDownload(access: ArchiveAccess, maximumBytes: number, trialOwnerId?: string) {
   return async (request: Request): Promise<Response> => {
     try {
-      if (!uuid.test(trial.ownerId)) throw new AuthRequestError(404, 'NOT_FOUND');
-      const input = await readAuthJson(request, trial);
+      const input = await readAuthJson(request, access);
       if (!input || typeof input !== 'object' || Object.keys(input).length !== 1 || !('action' in input) ||
           (input.action !== 'available' && input.action !== 'download')) throw new AuthRequestError(422, 'INVALID_INPUT');
       const ip = getTrustedProxyIp(request.headers);
       if (!ip) throw new AuthRequestError(403, 'UNTRUSTED_INGRESS');
       const token = readAccountSessionToken(request);
       if (!token) throw new AuthRequestError(401, 'UNAUTHENTICATED');
-      if (!await trial.allow(ip)) throw new AuthRequestError(429, 'RATE_LIMITED');
-      const principal = await trial.resolve(token);
+      if (!await access.allow(ip)) throw new AuthRequestError(429, 'RATE_LIMITED');
+      const principal = await access.resolve(token);
       if (!principal) throw new AuthRequestError(401, 'UNAUTHENTICATED');
-      if (principal.id !== trial.ownerId) throw new AuthRequestError(404, 'NOT_FOUND');
+      if (!uuid.test(principal.id) || (trialOwnerId !== undefined && principal.id !== trialOwnerId)) throw new AuthRequestError(404, 'NOT_FOUND');
 
-      const bytes = await readTrialArchive(trial, principal, input.action === 'download').catch((error: NodeJS.ErrnoException) => {
+      const bytes = await readArchive(access, principal, input.action === 'download', maximumBytes).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT' || error.code === 'ELOOP') return null;
         throw error;
       });

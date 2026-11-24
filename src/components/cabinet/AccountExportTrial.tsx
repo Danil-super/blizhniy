@@ -20,7 +20,7 @@ export function AccountExportTrial() {
       const ready = response.ok && (await response.json()).available === true;
       setAvailable(ready);
       setStatus(ready ? 'Архив готов к скачиванию.' : response.status === 401 ?
-        'Войдите в тестовый аккаунт, чтобы проверить архив.' : response.status === 404 || response.ok ?
+        'Войдите в аккаунт, чтобы проверить архив.' : response.status === 404 || response.ok ?
           'Готового архива пока нет.' : 'Не удалось проверить готовность архива.');
     }).catch(() => {
       if (!controller.signal.aborted) setStatus('Не удалось проверить готовность архива.');
@@ -34,7 +34,7 @@ export function AccountExportTrial() {
       const response = await requestArchive('download');
       if (response.status === 401 || response.status === 404) {
         setAvailable(false);
-        setStatus(response.status === 401 ? 'Войдите в тестовый аккаунт и повторите запрос.' : 'Архив больше недоступен.');
+        setStatus(response.status === 401 ? 'Войдите в аккаунт и повторите запрос.' : 'Архив больше недоступен.');
         return;
       }
       if (!response.ok) throw new Error('Download unavailable');

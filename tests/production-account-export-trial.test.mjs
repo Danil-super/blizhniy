@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 
 const { loadLocalPrimaryModule: load } = createRequire(import.meta.url)('../scripts/local-primary-modules.cjs');
-const { createAccountExportTrial } = load('production-account-export-trial');
+const { createAccountExportTrial, createApprovedAccountExport } = load('production-account-export-trial');
 const origin = 'https://xn----9sbphbgks4a4a.xn--p1ai';
 const owner = { id: '6d38cb19-e4fe-4895-be4f-8f49c2c08b83', email: 'test@blizhniy.invalid' };
 const token = 'b'.repeat(64);
@@ -56,5 +56,40 @@ test('a reviewed TEST archive is exposed only to the current eligible owner for 
   assert.equal((await handle(request('download'))).status, 404);
   await rm(file);
   await symlink('/etc/passwd', file);
+  assert.equal((await handle(request('download'))).status, 404);
+});
+
+test('approved cabinet archives are selected by the current account and verified email', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'account-export-approved-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await chmod(directory, 0o750);
+  const second = { id: '4b0abe09-9579-4039-95a0-87099126e493', email: 'peer@blizhniy.invalid' };
+  let principal = owner;
+  const handle = createApprovedAccountExport({ origin, directory, authorityUid: process.getuid(),
+    resolve: async (presented) => presented === token ? principal : null, allow: async () => true });
+  const name = account => join(directory, account.id + '_' + createHash('sha256').update(account.email).digest('hex') + '.tar.gz');
+  const large = Buffer.concat([archive, Buffer.alloc(1024*1024, 7)]);
+  await writeFile(name(owner), large, { mode: 0o440 });
+  const peerContent = Buffer.concat([archive, Buffer.from('peer')]);
+  await writeFile(name(second), peerContent, { mode: 0o440 });
+
+  assert.deepEqual(await (await handle(request('available'))).json(), { available: true });
+  const first = await handle(request('download'));
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual(Buffer.from(await first.arrayBuffer()), large);
+  principal = second;
+  const peer = await handle(request('download'));
+  assert.equal(peer.status, 200);
+  assert.deepEqual(Buffer.from(await peer.arrayBuffer()), peerContent);
+  principal = { ...owner, email: second.email };
+  assert.deepEqual(await (await handle(request('available'))).json(), { available: false });
+  assert.equal((await handle(request('download'))).status, 404);
+  principal = { ...owner, id: '../' + owner.id };
+  assert.equal((await handle(request('download'))).status, 404);
+  assert.equal((await handle(request('download', null))).status, 401);
+  const expired = new Date(Date.now() - 16 * 60_000);
+  await utimes(name(owner), expired, expired);
+  principal = owner;
   assert.equal((await handle(request('download'))).status, 404);
 });

@@ -45,9 +45,11 @@ grant select(id,owner_id,target_type,target_id,tariff_id,amount,duration_days,is
 grant select(id,owner_id,status) on app.payment_orders to blizhniy_local_export_reader;
 grant select(intent_id,status,captured_at) on app.payment_verifications to blizhniy_local_export_reader;
 grant select(intent_id,fulfilled_at) on app.payment_fulfillments to blizhniy_local_export_reader;
-grant select(id,user_id,category,tone,title,body,action_href,read_at,created_at) on app.notifications to blizhniy_local_export_reader;
+grant select(id,user_id,category,tone,title,body,action_href,read_at,dismissed_at,created_at) on app.notifications to blizhniy_local_export_reader;
 grant select(id,user_id,status,revision,requested_at,review_started_at,resolved_at,resolution)
  on app.account_deletion_requests to blizhniy_local_export_reader;
+grant select(id,request_id,actor_id,status,resolution,created_at)
+ on app.account_deletion_events to blizhniy_local_export_reader;
 grant select(id,owner_id,mime_type,width,height,size,sha256,state,created_at,ready_at) on app.media_objects to blizhniy_local_export_reader;
 grant select(listing_id,media_id,position) on app.listing_photos to blizhniy_local_export_reader;
 grant select(publication_id,media_id,position) on app.work_publication_photos,app.service_publication_photos to blizhniy_local_export_reader;
