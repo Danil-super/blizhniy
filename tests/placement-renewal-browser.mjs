@@ -9,6 +9,7 @@ test('renewal UI preserves one attempt through a lost reply/reload for all three
  try{
   const deadline=Date.now()+20000;for(;;){assert.equal(app.exitCode,null,'Owned UI server stays running');try{if((await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)})).ok)break;}catch{assert.equal(app.exitCode,null,'Owned UI stays alive while starting');}assert.ok(Date.now()<deadline,'Owned UI starts');await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage(),actor=randomUUID(),errors=[],foreign=[],prepared=new Map(),writes=[],reads=[];page.on('pageerror',e=>errors.push(e.message));
+  const conflictingId=randomUUID(),conflicts=[];
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.hostname);return route.abort();}
    if(url.pathname==='/api/account/session')return route.fulfill({json:{user:{id:actor,email:'synthetic-renewal@example.invalid',role:'user',isBlocked:false}}});
@@ -17,6 +18,7 @@ test('renewal UI preserves one attempt through a lost reply/reload for all three
     if(command.action==='testPreview')return route.fulfill({json:{listingId:command.listingId,revision:command.expectedRevision,tariff:{id:'renewal-offer',name:'Дополнительный срок',amount:'199.00',currency:'RUB',durationDays:30},activePayment:null}});
     if(command.action==='intent'){reads.push(command.creationKey);return route.fulfill({json:prepared.get(command.creationKey)??null});}
     if(command.action==='order'){const order=[...prepared.values()].find(o=>o.id===command.paymentId);assert.ok(order);return route.fulfill({json:{order,fulfillment:null}});}
+    if(command.listingId===conflictingId){assert.equal(request.method(),'PUT');conflicts.push(command);return route.fulfill({status:409,json:{error:{code:'CHECKOUT_CHANGED'}}});}
     assert.equal(request.method(),'PUT');writes.push(command);assert.equal(prepared.has(command.creationKey),false,'No second write for an unresolved key');
     const order={id:randomUUID(),creationKey:command.creationKey,targetId:command.listingId,targetRevision:command.expectedRevision,tariffId:command.expectedTariffId,amount:command.expectedAmount,durationDays:command.expectedDurationDays,status:'created',createdAt:new Date().toISOString().replace(/(\.\d{3})Z$/,'$1000Z')};prepared.set(command.creationKey,order);return route.abort('failed');
    }
@@ -29,6 +31,16 @@ test('renewal UI preserves one attempt through a lost reply/reload for all three
    await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'Проверить начатую оплату',exact:true}).waitFor();assert.equal(writes.length,count+1);assert.equal(await page.getByRole('button',{name:'Оплатить продление',exact:true}).count(),0);
    await page.getByRole('button',{name:'Проверить начатую оплату',exact:true}).click();await page.waitForURL(origin+'/oplata/'+prepared.get(key).id+(kind==='listing'?'':'?type='+kind),{waitUntil:'domcontentloaded',timeout:15000}).catch(async error=>{console.error(JSON.stringify({at:page.url(),readKeys:reads,lastKey:key,alerts:await page.getByRole('alert').allTextContents(),statuses:await page.getByRole('status').allTextContents()}));throw error;});assert.equal(reads.at(-1),key);assert.equal(writes.length,count+1);
   }
+  await page.goto(origin+`/cabinet/prodlit?type=listing&id=${conflictingId}&revision=2`,{waitUntil:'domcontentloaded'});
+  await page.getByRole('button',{name:'Оплатить продление',exact:true}).click();
+  await page.getByRole('alert').getByText('Условия продления изменились.',{exact:false}).waitFor({timeout:5000});
+  const rejectedKey=conflicts.at(-1).creationKey;
+  assert.equal(new URL(page.url()).hash,'#checkout='+rejectedKey);
+  await page.getByRole('button',{name:'Проверить начатую оплату',exact:true}).click();
+  await page.getByText('Заказ пока не найден.',{exact:false}).waitFor();
+  assert.equal(reads.at(-1),rejectedKey);
+  assert.equal(prepared.has(rejectedKey),false);
+  assert.equal(conflicts.length,1);
   assert.equal(writes.length,3);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);await context.close();
  }catch(error){console.error(JSON.stringify({uiFailure:String(error.message).slice(0,500)}));throw error;}finally{await browser?.close();if(app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true,force:true});}
 });

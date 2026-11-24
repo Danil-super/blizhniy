@@ -3,6 +3,7 @@ import Link from 'next/link';
 import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {accountTestPayment} from '@/lib/client-account-test-payment';
+import {ListingPaymentClientError} from '@/lib/client-listing-payment';
 import {vacancyPayment,workRequestPayment} from '@/lib/client-vacancy-payment';
 import {parseListingDraftId} from '@/lib/listing-draft-contract';
 import {ensurePhoneForPlacement} from '@/lib/phone-placement';
@@ -47,7 +48,12 @@ function Renewal({owner,id,revision,kind,visible}:{owner:string;id:string;revisi
     const order=await client.prepare(owner,{listingId:id,expectedRevision:revision,creationKey:key.current,expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays},{signal:controller.signal});
     open(order.id,controller.signal);
    }
-  }catch{if(live.current&&!controller.signal.aborted)setError('Результат не подтверждён. Проверьте начатую оплату перед повтором.');}
+  }catch(error){
+   if(live.current&&!controller.signal.aborted){
+    const changed=!read&&error instanceof ListingPaymentClientError&&error.code==='CHECKOUT_CHANGED';
+    setError(changed?'Условия продления изменились. Проверьте начатую оплату перед повтором.':'Результат не подтверждён. Проверьте начатую оплату перед повтором.');
+   }
+  }
   finally{if(scope.current===controller){working.current=false;if(!controller.signal.aborted)setBusy(false);}}
  }
  return <div hidden={!visible} inert={!visible} aria-busy={busy}>

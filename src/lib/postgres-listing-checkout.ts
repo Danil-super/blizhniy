@@ -5,7 +5,7 @@ import {PostgresListingFormStore} from './postgres-listing-form';
 import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavailableError,type ListingCheckoutInput} from './listing-checkout-contract.ts';
-import type {PostgresDatabase,PostgresQueries} from './postgres';
+import {PostgresError,type PostgresDatabase,type PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
@@ -229,6 +229,9 @@ export class PostgresListingCheckoutStore{
     await tx.query('insert into app.specialist_checkout_terms(intent_id) values($1)',[id]);
    }
    const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ListingCheckoutUnavailableError();return display(saved,this.targetType);
+  }).catch(error=>{
+   if(error instanceof PostgresError&&error.code==='PRN01')throw new ListingCheckoutConflictError();
+   throw error;
   });
  }
 }
