@@ -1,11 +1,16 @@
 // Disposable synthetic PostgreSQL only. The planner itself always runs read-only.
 import assert from 'node:assert/strict';import{test}from'node:test';
-import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID,randomInt}from'node:crypto';
+import{execFile}from'node:child_process';import{promisify}from'node:util';import{createHash,randomBytes,randomUUID,randomInt}from'node:crypto';
 import{readFile}from'node:fs/promises';import{createRequire}from'node:module';import pg from'pg';
+import{mkdtemp,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
 import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{localPrimaryImage}from'../scripts/local-primary-config.mjs';
+import{readAccountExport,writeAccountExportFiles}from'../scripts/export-local-account-data.mjs';
+import{createLocalAccountExportHandler,publishLocalAccountArchive}from'../scripts/local-account-export-delivery.mjs';
 import{inspectAccountDeletionCase}from'../src/lib/account-deletion-preflight.ts';
+import{loadMediaModule}from'./media-module.mjs';
+import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 
 test('deletion advisory plans bind one request and observe real domain blockers without changing data',{timeout:90000},async suite=>{
@@ -53,6 +58,153 @@ test('deletion advisory plans bind one request and observe real domain blockers 
     assert.equal((await plan(await person())).counts.payments,'0');
    }
   });
+  await suite.test('a verified data subject exports only their stored records without changing their session',async()=>{
+   const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
+   const token=randomBytes(32).toString('hex'),hash=load('identity').hashSessionToken(token);
+   await owner.query("insert into app.sessions(token_hash,user_id,scope,auth_version) values($1,$2,'data-subject',0)",[hash,actor.id]);
+   const read=()=>readAccountExport(db,token,actor.id);
+   const seen=async()=>(await owner.query('select last_seen_at::text value from app.sessions where token_hash=$1',[hash])).rows[0].value;
+   const before=await seen();
+   const result=await read();
+   assert.equal(result.account.id,actor.id);
+   assert.equal(result.account.email,actor.id+'@deletion.invalid');
+   assert.equal(result.profile.name,'Тестовый пользователь');
+   assert.deepEqual(result.listings.map(row=>row.id),[own.id]);
+   assert.deepEqual(result.payments.map(row=>row.id),[own.order.id]);
+   assert.equal(result.payments[0].amount,'199.00');
+   assert.deepEqual(result.deletionRequests.map(row=>row.id),[actor.request.id]);
+   const serialized=JSON.stringify(result);
+   for(const privateValue of [hash,token,other.id,foreign.id,foreign.order.id,'scrypt','request_body','merchant_shop_id'])
+    assert.equal(serialized.includes(privateValue),false);
+   await assert.rejects(readAccountExport(db,other.token,actor.id),{name:'DeletionAccessError'});
+   await owner.query('update app.users set is_blocked=true where id=$1',[actor.id]);
+   assert.equal((await read()).account.isBlocked,true);
+   assert.equal(await seen(),before);
+   await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+   await assert.rejects(read(),{name:'DeletionAccessError'});
+  });
+  await suite.test('the synthetic export works with a dedicated column-level reader',async t=>{
+   const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
+   const hashToken=load('identity').hashSessionToken;
+   for(const user of [actor,other])await owner.query(`insert into app.telegram_phone_attempts(user_id,session_hash,state_hash,client_id,nonce,verifier,return_path)
+    values($1,$2,$3,'12345678',$4,$5,'/cabinet')`,
+    [user.id,hashToken(user.token),randomBytes(32).toString('hex'),randomBytes(32).toString('hex'),randomBytes(32).toString('base64url')]);
+   await owner.query(await readFile(new URL('../database/permissions/local-account-export-reader.sql',import.meta.url),'utf8'));
+   await owner.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(password));
+   const pool=new pg.Pool({...config,user:'blizhniy_local_export_reader',max:1});
+   const reader=new(load('postgres').PostgresDatabase)(pool);
+   t.after(()=>reader.close());
+   const actual=await readAccountExport(reader,actor.token,actor.id);
+   const baseline=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
+   assert.deepEqual(actual.listings.map(row=>row.id),[own.id]);
+   assert.deepEqual(actual.phoneBindings.map(row=>row.phone),[actor.phone]);
+   assert.deepEqual(actual.phoneVerification.map(row=>row.state),['pending']);
+   assert.equal(JSON.stringify(actual).includes(foreign.id),false);
+   assert.equal(JSON.stringify(actual).includes(other.phone),false);
+   await assert.rejects(readAccountExport(reader,other.token,actor.id),{name:'DeletionAccessError'});
+   for(const table of ['telegram_phone_bindings','telegram_phone_attempts'])
+    assert.deepEqual((await pool.query('select user_id from app.'+table)).rows,[]);
+   const directory=await mkdtemp(join(tmpdir(),'blizhniy-export-reader-'));
+   t.after(()=>rm(directory,{recursive:true}));
+   assert.equal(await writeAccountExportFiles(actual,directory,join(directory,'storage')),0);
+   const saved=JSON.parse(await readFile(join(directory,'account.json'),'utf8'));
+   assert.deepEqual(saved,JSON.parse(JSON.stringify(actual)));
+   for(const sql of [
+    'select password_hash from app.users',
+    'select payload from app.mail_outbox',
+    'select request_body from app.payment_checkout_intents',
+    'select verifier from app.telegram_phone_attempts',
+    'update app.users set is_blocked=true where false',
+    'delete from app.notifications where false',
+    'set role postgres',
+   ])await assert.rejects(pool.query(sql),{code:'42501'});
+  });
+  await suite.test('only an active administrator can prepare a reviewed archive for another verified account',async()=>{
+   const actor=await person(),peer=await person(),admin=await person('admin');
+   const data=await readAccountExport(db,admin.token,actor.id,admin.id);
+   assert.equal(data.account.email,actor.id+'@deletion.invalid');
+   await assert.rejects(readAccountExport(db,peer.token,actor.id,peer.id),{name:'DeletionAccessError'});
+   await assert.rejects(readAccountExport(db,admin.token,actor.id,peer.id),{name:'DeletionAccessError'});
+   await owner.query('update app.users set email_verified_at=null where id=$1',[actor.id]);
+   await assert.rejects(readAccountExport(db,admin.token,actor.id,admin.id),{name:'DeletionAccessError'});
+  });
+  await suite.test('an export fails if the verified session is revoked during snapshot reads',async()=>{
+   for(const revoke of ['session','auth version']){
+    const actor=await person();
+    let revoked=false;
+    const concurrentDb={readTransaction:(read,options)=>db.readTransaction(tx=>read({query:async(sql,values)=>{
+     const result=await tx.query(sql,values);
+     if(!revoked&&sql.includes('from app.notifications')){
+      const invalidated=revoke==='session'?
+       await owner.query('delete from app.sessions where token_hash=$1',[load('identity').hashSessionToken(actor.token)]):
+       await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+      assert.equal(invalidated.rowCount,1);
+      revoked=true;
+     }
+     return result;
+    }}),options)};
+    await assert.rejects(readAccountExport(concurrentDb,actor.token,actor.id),{name:'DeletionAccessError'});
+    assert.equal(revoked,true);
+   }
+  });
+  await suite.test('the archive includes every notification across multiple batches from one snapshot',async()=>{
+   const actor=await person(),peer=await person(),count=1103;
+   const insert=async(id,first,last)=>owner.query(`insert into app.notifications(user_id,event_key,category,tone,title,body,created_at)
+    select $1,'export-'||n,'system','info','Notification '||n,'Synthetic message',
+      timestamp with time zone '2026-01-01 00:00:00+00'+n*interval '1 second'
+    from generate_series($2::int,$3::int) as n`,[id,first,last]);
+   await insert(actor.id,1,count);
+   await insert(peer.id,1,1);
+   let changed=false;
+   const concurrentDb={readTransaction:(read,options)=>db.readTransaction(tx=>read({query:async(sql,values)=>{
+    const result=await tx.query(sql,values);
+    if(!changed&&sql.includes('from app.notifications')){
+     await insert(actor.id,count+1,count+1);
+     changed=true;
+    }
+    return result;
+   }}),options)};
+   const before=await readAccountExport(concurrentDb,actor.token,actor.id);
+   assert.equal(changed,true);
+   assert.deepEqual(before.notifications.map(row=>row.title),Array.from({length:count},(_,index)=>'Notification '+(index+1)));
+   const after=await readAccountExport(db,actor.token,actor.id);
+   assert.equal(after.notifications.length,count+1);
+   assert.equal(after.notifications.at(-1).title,'Notification '+(count+1));
+  });
+  await suite.test('the export distinguishes the owner actions from another account’s actions',async()=>{
+   const actor=await person(),peer=await person();
+   const workStore=new(load('postgres-work-owner-actions').PostgresWorkOwnerActions)(db);
+   const applications=new(load('postgres-applications').PostgresApplicationStore)(db,{localActions:true});
+   const cancellation=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(db);
+   const form=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический черновик'});
+   const createWork=async user=>(await owner.query(`insert into app.work_publications(author_id,kind,creation_key,form)
+    values($1,'workRequest',$2,$3) returning id`,[user.id,randomUUID(),form])).rows[0].id;
+   const work=await createWork(actor),otherWork=await createWork(peer);
+   const createApplication=async(user,target)=>(await owner.query(`insert into app.applications
+    (applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot)
+    values($1,$2,$3,1,1,'{}') returning id`,[user.id,target,randomUUID()])).rows[0].id;
+   const application=await createApplication(actor,otherWork),otherApplication=await createApplication(peer,work);
+   const payment=await purchase(actor),otherPayment=await purchase(peer);
+   for(const [user,publicationId,applicationId,checkout,reason] of [
+    [actor,work,application,payment,'Мой черновик больше не нужен'],
+    [peer,otherWork,otherApplication,otherPayment,'Причина другой стороны']
+   ]){
+    await applications.withdraw(user.token,user.id,applicationId,'1');
+    await workStore.change(user.token,user.id,{operationId:randomUUID(),publicationId,kind:'workRequest',
+     expectedRevision:'1',action:'remove',reason});
+    await cancellation.cancel(user.token,user.id,{paymentId:checkout.order.id,targetType:'listing'});
+   }
+   const data=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual(data.workOwnerActions.map(row=>[row.publication_id,row.action,row.reason,row.resulting_revision,row.status]),
+    [[work,'remove','Мой черновик больше не нужен','2','archived']]);
+   assert.deepEqual(data.applicationWithdrawals.map(row=>[row.application_id,row.withdrawn_revision]),[[application,'1']]);
+   assert.ok(data.applicationWithdrawals[0].withdrawn_at);
+   assert.deepEqual(data.payments.map(row=>[row.id,row.status,Boolean(row.cancelled_at)]),[[payment.order.id,'failed',true]]);
+   const json=JSON.stringify(data);
+   for(const privateValue of [peer.id,otherApplication,otherPayment.order.id,'Причина другой стороны'])
+    assert.equal(json.includes(privateValue),false);
+  });
   await suite.test('completed publication stays in retention review without an unfinished payment',async()=>{
    const actor=await person(),p=await purchase(actor),binding=await p.store.authorizeDispatch(actor.token,actor.id,p.order.id),provider=randomUUID();
    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);await intents.authorize(binding);await intents.bindProvider(binding,provider);
@@ -61,6 +213,151 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,p.merchant,{postmoderation:true,renewals:true}).fulfill(p.order.id);
    const result=await plan(actor);assert.equal(result.counts.openPayments,'0');assert.equal(result.decision,'storage-policy-review');
    const before=(await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0];await plan(actor);assert.deepEqual((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0],before);
+  });
+  await suite.test('the account export includes the paid extension of only its own placements',async()=>{
+   const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+   async function renewPlacement(actor){
+    const {id,order,store,merchant}=await purchase(actor);
+    const fulfill=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,merchant,{postmoderation:true,renewals:true});
+    async function capture(paymentId){
+     const binding=await store.authorizeDispatch(actor.token,actor.id,paymentId),provider=randomUUID();
+     await intents.authorize(binding);await intents.bindProvider(binding,provider);
+     await owner.query("update app.payment_orders set status='succeeded' where id=$1",[paymentId]);
+     await owner.query(`insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at)
+      values($1,$2,'succeeded',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))`,[paymentId,provider]);
+     assert.equal((await fulfill.fulfill(paymentId)).state,'fulfilled');
+     return provider;
+    }
+    await capture(order.id);
+    const first=await store.readOrder(actor.token,actor.id,order.id);
+    const quote=await store.preview(actor.token,actor.id,id,'1');
+    const renewal=await store.prepare(actor.token,actor.id,{listingId:id,expectedRevision:'1',creationKey:randomUUID(),
+     expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays});
+    const provider=await capture(renewal.id),second=await store.readOrder(actor.token,actor.id,renewal.id);
+    assert.equal(second.fulfillment.publishedAt,first.fulfillment.expiresAt);
+    return {firstId:order.id,renewalId:renewal.id,period:second.fulfillment,provider};
+   }
+   const actor=await person(),own=await renewPlacement(actor),other=await renewPlacement(await person());
+   const exported=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual(exported.paymentRenewals?.map(row=>[row.intent_id,row.previous_intent_id,
+    row.additional_starts_at.toISOString(),row.additional_expires_at.toISOString()]),
+    [[own.renewalId,own.firstId,new Date(own.period.publishedAt).toISOString(),new Date(own.period.expiresAt).toISOString()]]);
+   for(const privateValue of [own.provider,other.firstId,other.renewalId,other.provider])
+    assert.equal(JSON.stringify(exported).includes(privateValue),false);
+  });
+  await suite.test('the approved archive is served only to the matching live PostgreSQL principal',async t=>{
+   const actor=await person(),peer=await person(),reviewer=await person('admin'),own=await purchase(actor);
+   const binding=await own.store.authorizeDispatch(actor.token,actor.id,own.order.id),provider=randomUUID();
+   const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+   await intents.authorize(binding);await intents.bindProvider(binding,provider);
+   await owner.query("update app.payment_orders set status='succeeded' where id=$1",[own.order.id]);
+   const capturedAt=(await owner.query("select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') as value")).rows[0].value;
+   await owner.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[own.order.id,provider,capturedAt]);
+   const result=await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,own.merchant,{postmoderation:true,renewals:true}).fulfill(own.order.id);
+   assert.equal(result.state,'fulfilled');
+   const root=await mkdtemp(join(tmpdir(),'blizhniy-export-db-'));
+   t.after(()=>rm(root,{recursive:true}));
+   const input=join(root,'input'),delivery=join(root,'delivery'),mediaRoot=join(root,'storage');
+   await mkdir(input,{mode:0o700});await mkdir(delivery,{mode:0o700});await mkdir(mediaRoot,{mode:0o700});
+   await writeFile(join(mediaRoot,'.writer.lock'),'',{flag:'wx',mode:0o600});
+   const files=await loadMediaModule('media-files').createLocalMediaFileStore(mediaRoot);
+   const worker=await fileWorkerModule().createLocalMediaFileWorker(process.cwd(),mediaRoot);
+   const repo=new(loadMediaModule('media-metadata').MediaMetadataRepository)(db,files,true);
+   const writer=new(loadMediaModule('media-write').LocalMediaWriter)(repo,worker);
+   const bytes=Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA','base64');
+   const image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+   const photos=[];
+   for(const user of [actor,peer]){
+    const photo=(await repo.reserve(user.token,randomUUID(),image)).id;
+    await writer.write(user.token,photo,{...image,bytes});
+    photos.push(photo);
+   }
+   const rental=(await owner.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description) values($1,'rent',$2,$3,'Синтетическая аренда','Аренда для проверки архива') returning id",[actor.id,category,city])).rows[0].id;
+   await owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[rental,photos[0]]);
+   const peerBookingNote='Текст второй стороны, скрытый в выгрузке';
+   const booking=await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[peer.id]);
+    return(await tx.query("insert into app.booking_requests(listing_id,guest_id,creation_key,mode,start_date,end_date,guests,total,details_snapshot) values($1,$2,$3,'stay',current_date+2,current_date+3,1,100,$4) returning id",
+     [rental,peer.id,randomUUID(),JSON.stringify({hostContact:peerBookingNote})])).rows[0].id;
+   });
+   await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[actor.id]);
+    await tx.query("update app.booking_requests set status='accepted',revision=revision+1 where id=$1",[booking]);
+   });
+   const workForm=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетический заказ для проверки архива'});
+   const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",
+    [actor.id,randomUUID(),workForm])).rows[0].id;
+   const serviceForm=load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'});
+   const service=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",
+    [actor.id,randomUUID(),serviceForm])).rows[0].id;
+   const foreign=await purchase(peer);
+   const foreignNote='Решение по чужому объявлению',blockReason='Причина блокировки собственного объявления';
+   await owner.query(`insert into app.listing_moderation(listing_id,revision,state,decided_at,decided_by,decision_note)
+    values($1,1,'rejected',clock_timestamp()+interval '1 second',$3,'Правки объявления'),
+     ($2,1,'rejected',clock_timestamp()+interval '1 second',$3,$4)`,[own.id,foreign.id,reviewer.id,foreignNote]);
+   await owner.query("insert into app.work_moderation(publication_id,revision) values($1,1)",[work]);
+   await owner.query(`insert into app.service_moderation(publication_id,revision,state,decided_at,decided_by)
+    values($1,1,'approved',clock_timestamp()+interval '1 second',$2)`,[service,reviewer.id]);
+   await owner.query('insert into app.listing_blocks(listing_id,blocked_by,blocked_revision,reason) values($1,$2,1,$3)',[own.id,reviewer.id,blockReason]);
+   await owner.query('insert into app.listing_owner_removals(listing_id,owner_id,removed_revision) values($1,$2,1)',[own.id,actor.id]);
+   const peerMessage='Текст отклика другой стороны';
+   const application=(await owner.query(`insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,message,status,is_paid,sent_at,created_at)
+    values($1,$2,$3,1,1,$4,$5,'sent',true,statement_timestamp(),statement_timestamp()) returning id`,
+    [peer.id,work,randomUUID(),JSON.stringify({email:peer.id+'@deletion.invalid',phone:peer.phone}),peerMessage])).rows[0].id;
+   await owner.query("update app.applications set status='selected' where id=$1",[application]);
+   const data=await readAccountExport(db,actor.token,actor.id);
+   const invalidInput=join(root,'invalid-input'),photoPath=join(mediaRoot,photos[0]+'.webp');
+   await mkdir(invalidInput,{mode:0o700});
+   const damaged=Buffer.from(bytes);damaged[damaged.length-1]^=1;
+   await writeFile(photoPath,damaged);
+   await assert.rejects(writeAccountExportFiles(data,invalidInput,mediaRoot));
+   await assert.rejects(readFile(join(invalidInput,'account.json')),{code:'ENOENT'});
+   await writeFile(photoPath,bytes);
+   assert.equal(await writeAccountExportFiles(data,input,mediaRoot),1);
+   const disclosure={processingConfirmed:true,purpose:'Синтетическая проверка',basis:'Стендовое дело',
+    methods:'Чтение снимка и сборка архива',operatorName:'Стендовый оператор',operatorAddress:'Адрес тестового контура',
+    sources:'Тестовые записи',recipients:'Владелец',retention:'На время репетиции',rights:'Через форму тестового обращения',
+    internationalTransfers:'В репетиции отсутствуют',processors:'В репетиции отсутствуют',
+    safeguards:'Закрытый каталог и проверка сессии',otherInformation:'Для репетиции отсутствует'};
+   const {id}=await publishLocalAccountArchive(input,delivery,actor.id,disclosure);
+   const origin='https://example.invalid',store=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db);
+   const handler=createLocalAccountExportHandler({origin,delivery,session:token=>store.session(token),allow:async()=>true});
+   const download=token=>handler(new Request(origin+'/api/account/export',{method:'POST',headers:{
+    host:'example.invalid',origin,'x-real-ip':'127.0.0.1','x-blizhniy-request':'1','content-type':'application/json',
+    cookie:'__Host-blizhniy_session='+token},body:JSON.stringify({access:'account',id})}));
+   assert.equal((await download(peer.token)).status,404);
+   const response=await download(actor.token);
+   assert.equal(response.status,200);
+   const copy=join(root,'download.tar.gz');
+   await writeFile(copy,Buffer.from(await response.arrayBuffer()),{mode:0o600});
+   const exported=JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','account.json'])).stdout);
+   assert.deepEqual(JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','processing.json'])).stdout),disclosure);
+   assert.equal(exported.account.id,actor.id);
+   assert.deepEqual(exported.payments.map(row=>row.id),[own.order.id]);
+   assert.deepEqual(exported.payments.map(row=>[row.is_test,row.status,row.verification_status,row.captured_at]),[[true,'succeeded','succeeded',capturedAt]]);
+   assert.ok(exported.payments[0].fulfilled_at);
+   assert.deepEqual(exported.listings.map(row=>row.id).sort(),[own.id,rental].sort());
+   assert.deepEqual(exported.publicationReviews.map(row=>[row.kind,row.publication_id,row.revision,row.state,row.decision_note]),[
+    ['listing',own.id,'1','rejected','Правки объявления'],['service',service,'1','approved',null],['work',work,'1','pending',null]
+   ]);
+   assert.deepEqual(exported.listingBlocks.map(row=>[row.listing_id,row.blocked_revision,row.reason]),[[own.id,'1',blockReason]]);
+   assert.deepEqual(exported.listingRemovals.map(row=>[row.listing_id,row.removed_revision]),[[own.id,'1']]);
+   assert.deepEqual(exported.bookings.map(row=>[row.id,row.side]),[[booking,'host']]);
+   assert.deepEqual(exported.bookingEvents.map(row=>[row.booking_id,row.status,row.actor_is_owner]),[[booking,'pending',false],[booking,'accepted',true]]);
+   assert.deepEqual(exported.applications.map(row=>[row.id,row.side,row.message,row.profile]),[[application,'recipient',null,null]]);
+   assert.deepEqual(exported.applicationContactViews.map(row=>[row.application_id,row.evidence]),[[application,'recipient_read']]);
+   assert.deepEqual(exported.applicationSelections.map(row=>row.application_id),[application]);
+   assert.deepEqual(exported.listingPhotos.map(row=>[row.listing_id,row.media_id]),[[rental,photos[0]]]);
+   const mediaPath='media/'+photos[0]+'.webp';
+   assert.deepEqual(exported.media.map(row=>row.file),[mediaPath]);
+   const listed=(await run('/usr/bin/tar',['-tzf',copy])).stdout.trim().split('\n');
+   assert.deepEqual(listed.sort(),['account.json','processing.json','media/',mediaPath].sort());
+   assert.deepEqual((await run('/usr/bin/tar',['-xOzf',copy,'--',mediaPath],{encoding:'buffer'})).stdout,bytes);
+   const json=JSON.stringify(exported);
+   for(const privateValue of [peer.id,peer.phone,peerMessage,peerBookingNote,photos[1],provider,reviewer.id,foreign.id,foreignNote])
+    assert.equal(json.includes(privateValue),false);
+   await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+   assert.equal((await download(actor.token)).status,401);
   });
   await suite.test('pending media and unknown mail are operational blockers and admin accounts require manual review',async()=>{
    const actor=await person();await owner.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',2,2,12,$3)",[actor.id,randomUUID(),'a'.repeat(64)]);
@@ -77,6 +374,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    for(const actor of [host,guest]){const result=await plan(actor);assert.equal(result.counts.openBookings,'1');assert.equal(result.decision,'manual-review');}
    await db.transaction(async tx=>{await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[guest.id]);await tx.query("update app.booking_requests set status='cancelled',revision=revision+1,cancelled_by=$2,cancellation_reason='Синтетическая отмена' where id=$1",[booking,guest.id]);});
    const result=await plan(guest);assert.equal(result.counts.openBookings,'0');assert.equal(result.counts.bookings,'1');assert.equal(result.decision,'storage-policy-review');
+   const guestExport=await readAccountExport(db,guest.token,guest.id),hostExport=await readAccountExport(db,host.token,host.id);
+   assert.equal(guestExport.bookings[0].side,'guest');
+   assert.equal(guestExport.bookings[0].cancellation_reason,'Синтетическая отмена');
+   assert.equal(hostExport.bookings[0].side,'host');
+   assert.equal(hostExport.bookings[0].cancellation_reason,null);
   });
   await suite.test('an incoming response purchase belongs to the requester preflight even when another user paid',async()=>{
    const recipient=await person(),payer=await person();
@@ -98,6 +400,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,p.merchant,{postmoderation:true,renewals:true}).fulfill(p.order.id);
    await owner.query('insert into app.payment_refund_reservations(id,payment_intent_id,provider_payment_id,merchant_shop_id,is_test,amount) values($1,$2,$3,$4,true,$5)',[randomUUID(),p.order.id,provider,p.merchant.shopId,p.order.amount]);
    const result=await plan(actor);assert.equal(result.counts.openPayments,'0');assert.equal(result.counts.openRefunds,'1');assert.equal(result.decision,'manual-review');
+   const exported=await readAccountExport(db,actor.token,actor.id);
+   assert.equal(exported.refunds.length,1);
+   assert.equal(exported.refunds[0].payment_intent_id,p.order.id);
+   assert.equal(exported.refunds[0].amount,p.order.amount);
+   assert.ok(!JSON.stringify(exported).includes(provider));
   });
   await suite.test('a coherent advisory snapshot does not authorize acting on a case changed concurrently',async()=>{
    const actor=await person(),moderator=await person('admin'),store=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db);let changed=false;

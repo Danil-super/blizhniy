@@ -38,3 +38,10 @@ test('an explicit validation refusal is not an unknown commit and permits a corr
  await assert.rejects(save.save(),error=>error.code==='INVALID_INPUT');
  assert.equal(save.uncertain,false);assert.equal(save.completed,null);
 });
+
+test('a rejected profile name keeps the specialist draft available for a corrected save',async()=>{
+ const dependencies={create:async()=>{throw new ServiceClientError('PROFILE_NAME_REQUIRED');}};
+ const save=createServicePublicationSave(owner,'specialist',{title:'Тест 2'},[],dependencies);
+ await assert.rejects(save.save(),error=>error.code==='PROFILE_NAME_REQUIRED'&&error.message.includes('настройках кабинета'));
+ assert.equal(save.uncertain,false);assert.equal(save.completed,null);
+});

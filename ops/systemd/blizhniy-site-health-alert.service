@@ -1,0 +1,27 @@
+[Unit]
+Description=Send Blizhniy web and readiness outage notifications
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/blizhniy/site-monitor/monitor.env
+
+[Service]
+Type=oneshot
+User=blizhniy-mail
+Group=blizhniy-mail
+WorkingDirectory=/opt/blizhniy-site-monitor
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/mail-worker/worker.env
+EnvironmentFile=/etc/blizhniy/site-monitor/monitor.env
+UnsetEnvironment=BLIZHNIY_AUTH_MODE BLIZHNIY_AUTH_ORIGIN BLIZHNIY_DB_HOST BLIZHNIY_DB_PORT BLIZHNIY_DB_NAME BLIZHNIY_DB_USER BLIZHNIY_DB_PASSWORD BLIZHNIY_DB_SSL_MODE BLIZHNIY_DB_CA_FILE BLIZHNIY_AUTH_RATE_SECRET TURNSTILE_SECRET_KEY BLIZHNIY_AUTH_MAIL_KEY_FILE BLIZHNIY_MAIL_ENTRYPOINT
+StateDirectory=blizhniy-site-monitor
+StateDirectoryMode=0700
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /opt/blizhniy-site-monitor/scripts/site-health-alert.mjs
+TimeoutStartSec=90
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

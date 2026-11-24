@@ -2,11 +2,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const test=require('node:test');
 const ts=require('typescript');
+const {PROFILE_NAME_MAX_LENGTH,profileNamePattern}=require('../src/lib/cabinet-field-validation.ts');
 function renderSettings(){
  const source=fs.readFileSync(new URL('../src/components/cabinet/CabinetClient.tsx',`file://${__filename}`),'utf8');
  const ast=ts.createSourceFile('CabinetClient.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const node=ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='SettingsPanel');
- const globals={useCookieCabinetProfile:()=>null,useState:value=>[value,()=>{}],toRussianPhoneE164:()=>null,
+ const globals={PROFILE_NAME_MAX_LENGTH,profileNamePattern,useCookieCabinetProfile:()=>null,useState:value=>[value,()=>{}],toRussianPhoneE164:()=>null,
   PhoneVerificationButton:'phone-verification',AvatarEditor:'avatar-editor',ValidatedInput:'validated-input',CitySearchSelect:'city-select',Link:'a',Check:'check-icon',LockKeyhole:'lock-icon',ChevronDown:'chevron-icon',CabinetFormValidation:'form-validation'};
  const exports={},jsx=(type,props)=>({type,props});
  new Function('exports','require',...Object.keys(globals),ts.transpileModule(node.getText(ast)+'\nexports.SettingsPanel=SettingsPanel;',{
@@ -30,4 +31,12 @@ test('login email is visibly immutable and copyable, bound to identity rather th
  assert.equal(email.props.onChange,undefined);assert.notEqual(email.props.disabled,true);
  assert.ok(text(tree).includes('Email для входа'));assert.ok(text(tree).includes('Нельзя изменить'));
  assert.ok(all.some(node=>node.type==='lock-icon'));
+});
+
+test('account settings use the shared profile name bounds and permit a one-letter name',()=>{
+ const field=nodes(renderSettings()).find(node=>node.type==='input'&&node.props.name==='name');
+ assert.equal(field.props.maxLength,PROFILE_NAME_MAX_LENGTH);
+ const pattern=new RegExp(`^(?:${field.props.pattern})$`,'v');
+ assert.equal(pattern.test('李'),true);
+ assert.equal(pattern.test('Тест 2'),false);
 });

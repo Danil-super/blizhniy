@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
-import { isValidAccountPassword, normalizeRegistrationName, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
+import { isValidAccountPassword, normalizeRegistrationName, PASSWORD_MIN_LENGTH, PROFILE_NAME_MAX_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
 import { consumeAccountCaptchaResponse } from "@/lib/local-account";
 
@@ -74,7 +74,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", captchaReady
   }, []);
 
   const fieldErrors: Record<Field, string> = {
-    name: normalizeRegistrationName(name) ? "" : "Укажите имя: от 1 до 120 символов.",
+    name: normalizeRegistrationName(name) ? "" : "Введите имя буквами. Допустимы пробелы, дефис и апостроф.",
     email: !email.trim() ? "Введите email." : emailValid ? "" : "Введите email вида name@example.ru.",
     password: isValidAccountPassword(password) ? "" : "От 8 до 128 символов, не только пробелы.",
     repeat: !repeat ? "Повторите пароль." : repeat !== password ? "Пароли не совпадают." : "",
@@ -143,7 +143,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", captchaReady
       <fieldset disabled={busy} className="min-w-0 space-y-2">
       {action === "register" && <div>
         <label htmlFor={`${id}-name`} className="block text-sm font-semibold text-brand-ink">Имя</label>
-        <input id={`${id}-name`} type="text" autoComplete="given-name" required maxLength={120} value={name} onChange={event => setName(event.target.value)} onBlur={() => touch("name")}
+        <input id={`${id}-name`} type="text" autoComplete="given-name" required maxLength={PROFILE_NAME_MAX_LENGTH} value={name} onChange={event => setName(event.target.value)} onBlur={() => touch("name")}
           aria-invalid={fieldError("name") ? true : undefined} aria-describedby={fieldError("name") ? `${id}-name-error` : undefined}
           className={`${inputStyle} ${fieldError("name") ? "border-red-500" : "border-slate-300"}`} placeholder="Как к вам обращаться" />
         {errorText("name")}
