@@ -2,11 +2,11 @@
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
-import {lstat,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,readdir,rm,writeFile} from 'node:fs/promises';
 import {join,basename} from 'node:path';
 import {promisify} from 'node:util';
 import nodemailer from 'nodemailer';
-import {localArchiveMaximumBytes,privateDirectory,readPrivateFile,validateLocalExportNotice} from './local-account-export-delivery.mjs';
+import {localArchiveMaximumBytes,privateDirectory,readBoundedExportFile,readPrivateFile,validateLocalExportNotice} from './local-account-export-delivery.mjs';
 
 const run=promisify(execFile),writeOptions={mode:0o600,flag:'wx'};
 const sections={
@@ -83,12 +83,12 @@ export async function prepareLocalAccountEmail(directory,stateDirectory,email){
    zip.child.stdin.once('error',reject);
    zip.child.stdin.end(password+'\n'+password+'\n',resolve);
   })]);
-  const info=await lstat(archive);
-  assert.ok(info.isFile()&&info.size>0&&info.size<=localArchiveMaximumBytes);
+  const content=await readBoundedExportFile(archive,localArchiveMaximumBytes,info=>info.uid===process.getuid()&&info.nlink===1);
+  assert.ok(content);
   const message=await nodemailer.createTransport({streamTransport:true,buffer:true,disableFileAccess:true,disableUrlAccess:true}).sendMail({
    from:{name:'БЛИЖНИЙ',address:'support@blizhniy.invalid'},to:{address:email},subject:'Ответ на обращение о персональных данных',
    text:'Отчёт находится в зашифрованном ZIP. Пароль предоставляется отдельно после проверки личности.',
-   attachments:[{filename:'blizhniy-account.zip',content:await readFile(archive),contentType:'application/zip'}],
+   attachments:[{filename:'blizhniy-account.zip',content,contentType:'application/zip'}],
   });
   assert.ok(Buffer.isBuffer(message.message));
   await writeFile(join(output,'delivery.eml'),message.message,writeOptions);

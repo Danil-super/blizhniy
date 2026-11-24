@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {docker,localPrimaryDatabaseConfig,stateDirectory,stateFile} from './local-primary-fixture.mjs';
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
-import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive,revokeLocalAccountArchive} from './local-account-export-delivery.mjs';
+import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive,readBoundedExportFile,revokeLocalAccountArchive} from './local-account-export-delivery.mjs';
 import {prepareLocalAccountEmail,readReviewedAccountReport,writeLocalAccountReport} from './local-account-export-report.mjs';
 
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -220,9 +220,7 @@ async function runOperatorExport([operatorFlag,operator,ownerFlag,owner,action,v
  assert.equal(operatorFlag,'--operator');assert.equal(ownerFlag,'--owner');
  const operatorId=deletionId(operator),ownerId=deletionId(owner);
  if(action==='--prepare'){
-  const info=await lstat(value);
-  assert.ok(info.isFile()&&info.size>0&&info.size<=32768);
-  const notice=JSON.parse(await readFile(value,'utf8'));
+  const notice=await readExportNotice(value);
   const data=await withLocalExportDatabase(db=>readAccountExport(db,token,ownerId,operatorId));
   assert.ok(data.account.email.endsWith('.invalid'));
   const directory=await mkdtemp(join(stateDirectory,'account-export-reviewed-'));
@@ -249,6 +247,14 @@ async function runOperatorExport([operatorFlag,operator,ownerFlag,owner,action,v
  return publishLocalAccountArchive(value,delivery,ownerId,notice,true);
 }
 
+async function readExportNotice(path){
+ const bytes=await readBoundedExportFile(path,32768);
+ assert.ok(bytes);
+ const notice=JSON.parse(bytes.toString('utf8'));
+ assert.ok(notice&&typeof notice==='object');
+ return notice;
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
   let token='';
@@ -260,11 +266,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   }else{
   assert.ok(process.argv.length===4||process.argv.length===6&&process.argv[4]==='--delivery-notice');
   assert.equal(process.argv[2],'--owner');
-  const noticePath=process.argv[5];let notice;
-  if(noticePath){
-   const info=await lstat(noticePath);assert.ok(info.isFile()&&info.size>0&&info.size<=32768);
-   notice=JSON.parse(await readFile(noticePath,'utf8'));assert.ok(notice&&typeof notice==='object');
-  }
+  const notice=process.argv[5]?await readExportNotice(process.argv[5]):undefined;
   console.log(JSON.stringify(await writeLocalExport(deletionId(process.argv[3]),token.trimEnd(),notice)));
   }
  }catch{console.error('Local account export failed');process.exitCode=1;}

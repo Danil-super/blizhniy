@@ -91,16 +91,20 @@ export async function privateDirectory(path){
  }catch(error){await directory.close();throw error;}
 }
 
-export async function readPrivateFile(path,limit,check=()=>true){
+export async function readBoundedExportFile(path,limit,check=()=>true){
  const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   const info=await file.stat();
-  if(!privateSingleFile(info,limit)||!check(info))return null;
+  if(!info.isFile()||info.size<1||info.size>limit||!check(info))return null;
   const bytes=Buffer.alloc(info.size+1);
   const {bytesRead}=await file.read({buffer:bytes,length:bytes.length,position:0});
   if(bytesRead!==info.size)return null;
   return bytes.subarray(0,bytesRead);
  }finally{await file.close();}
+}
+
+export function readPrivateFile(path,limit,check=()=>true){
+ return readBoundedExportFile(path,limit,info=>privateSingleFile(info,limit)&&check(info));
 }
 
 function privateSingleFile(info,limit){
