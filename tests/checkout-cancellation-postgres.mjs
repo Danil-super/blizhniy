@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readFile,readdir} from 'node:fs/promises';import {randomBytes,randomUUID} from 'node:crypto';import {createRequire} from 'node:module';import pg from 'pg';
 import {testUnpaidDraftRemoval} from './unpaid-draft-removal-integration.mjs';
+import {testPaymentReconciliationRecovery} from './payment-reconciliation-recovery-integration.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 const image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873',name='blizhniy-checkout-cancel-'+randomBytes(8).toString('hex'),password=randomBytes(24).toString('hex');
 const docker=async args=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password},timeout:20000,maxBuffer:1024*1024})).stdout.trim();
@@ -272,5 +273,6 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    const replacement=await purchase({shopId,targetType,targetId,tariffId:'job-response'});
    assert.notEqual(replacement.id,binding.id);
   });
+  await testPaymentReconciliationRecovery(suite,{admin,config,ownerDb,actor,purchase,intents,load});
  }finally{await db?.close();await ownerDb?.close();await admin?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels['blizhniy.checkout-cancel'],name);await docker(['rm','--force','--volumes',container]);}}
 });
