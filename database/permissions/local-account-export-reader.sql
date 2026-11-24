@@ -53,6 +53,10 @@ grant select(listing_id,media_id,position) on app.listing_photos to blizhniy_loc
 grant select(publication_id,media_id,position) on app.work_publication_photos,app.service_publication_photos to blizhniy_local_export_reader;
 do $$
 begin
+ if to_regclass('app_stats.listing_views') is not null then
+  grant usage on schema app_stats to blizhniy_local_export_reader;
+  grant select(listing_id,viewer_digest) on app_stats.listing_views to blizhniy_local_export_reader;
+ end if;
  if to_regclass('app.application_contact_views') is not null then
   grant select(application_id,recipient_id,evidence,recorded_at) on app.application_contact_views to blizhniy_local_export_reader;
  end if;

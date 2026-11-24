@@ -13,6 +13,7 @@ import {prepareLocalAccountEmail,readReviewedAccountReport,writeLocalAccountRepo
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const {DeletionAccessError,deletionId}=load('account-deletion-contract');
 const {hashSessionToken}=load('identity');
+const {readAccountListingViews}=load('listing-view-history');
 const exportBatchSize=500;
 const records={
  consents:'select document,version,recorded_at from app.registration_legal where user_id=$1 order by document',
@@ -89,7 +90,7 @@ const verifiedOperator=`from app.users u where u.id=$2 and u.email_verified_at i
   and s.token_hash=$1 and s.scope='app' and s.expires_at>clock_timestamp()
   and s.last_seen_at>clock_timestamp()-interval '30 minutes')`;
 
-export async function readAccountExport(db,token,confirmedOwnerId,operatorId){
+export async function readAccountExport(db,token,confirmedOwnerId,operatorId,{listingViewRateSecret}={}){
  assert.equal(process.env.NODE_ENV,'test');
  const ownerId=deletionId(confirmedOwnerId),hash=hashSessionToken(token);
  if(!hash)throw new DeletionAccessError();
@@ -116,7 +117,9 @@ export async function readAccountExport(db,token,confirmedOwnerId,operatorId){
     to_regclass('app.payment_renewals') is not null as renewals,
     to_regclass('app.media_retirement_requests') is not null as media_retirement,
     to_regclass('app.application_contact_views') is not null as contact_views,
-    to_regclass('app.application_selection_events') is not null as selections`)).rows[0];
+    to_regclass('app.application_selection_events') is not null as selections,
+    to_regclass('app_stats.listing_views') is not null as listing_views`)).rows[0];
+  if(optional.listing_views)result.listingViews=await readAccountListingViews(tx,ownerId,listingViewRateSecret);
   const queries={...records,payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status,
     v.status as verification_status,v.captured_at,f.fulfilled_at,${optional.checkout_cancellations?'c.cancelled_at':'null::timestamptz'} as cancelled_at
     from app.payment_checkout_intents i left join app.payment_orders o on o.id=i.id and o.owner_id=i.owner_id
@@ -200,7 +203,9 @@ async function withLocalExportDatabase(work){
 }
 
 async function writeLocalExport(ownerId,token,notice){
- const {data,state}=await withLocalExportDatabase(async(db,state)=>({data:await readAccountExport(db,token,ownerId),state}));
+ const {data,state}=await withLocalExportDatabase(async(db,state)=>({
+  data:await readAccountExport(db,token,ownerId,undefined,{listingViewRateSecret:state.rateSecret}),state,
+ }));
  const directory=await mkdtemp(join(stateDirectory,'account-export-'));
  try{
   const verifiedFiles=await writeAccountExportFiles(data,directory,join(stateDirectory,'media'),notice?localArchiveMaximumBytes:Infinity);
@@ -223,7 +228,7 @@ async function runOperatorExport([operatorFlag,operator,ownerFlag,owner,action,v
  const operatorId=deletionId(operator),ownerId=deletionId(owner);
  if(action==='--prepare'){
   const notice=await readExportNotice(value);
-  const data=await withLocalExportDatabase(db=>readAccountExport(db,token,ownerId,operatorId));
+  const data=await withLocalExportDatabase((db,state)=>readAccountExport(db,token,ownerId,operatorId,{listingViewRateSecret:state.rateSecret}));
   assert.ok(data.account.email.endsWith('.invalid'));
   const directory=await mkdtemp(join(stateDirectory,'account-export-reviewed-'));
   try{

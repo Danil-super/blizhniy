@@ -1,7 +1,8 @@
 import {deletionId,deletionRevision,DeletionInputError} from './account-deletion-contract.ts';
 import type {PostgresQueries} from './postgres';
+import {readAccountListingViews} from './listing-view-history.ts';
 
-export const deletionPreflightFields=['profiles','sessions','authRecords','publications','applications','bookings','media','mail','payments','refunds','compensations','externalAudit','caseAudit',
+export const deletionPreflightFields=['profiles','sessions','authRecords','publications','applications','bookings','listingViews','media','mail','payments','refunds','compensations','externalAudit','caseAudit',
  'openPayments','openRefunds','openCompensations','openBookings','openUploads','openMail'] as const;
 type Field=typeof deletionPreflightFields[number];
 type Counts=Record<Field,string>;
@@ -12,7 +13,7 @@ function count(value:unknown):string{
 }
 const operations={openPayments:'PAYMENT_UNSETTLED',openRefunds:'REFUND_UNSETTLED',openCompensations:'COMPENSATION_UNSETTLED',openBookings:'BOOKING_OPEN',openUploads:'UPLOAD_UNSETTLED',openMail:'MAIL_IN_FLIGHT'} as const;
 type BlockerCode=typeof operations[keyof typeof operations]|'PRIVILEGED_ACCOUNT';
-const retained={payments:'FINANCIAL_HISTORY',refunds:'REFUND_HISTORY',compensations:'COMPENSATION_HISTORY',applications:'CROSS_PARTY_APPLICATIONS',bookings:'BOOKING_HISTORY',publications:'PUBLICATION_DATA',media:'MEDIA_AND_REFERENCE_HISTORY',externalAudit:'IMMUTABLE_AUDIT'} as const;
+const retained={payments:'FINANCIAL_HISTORY',refunds:'REFUND_HISTORY',compensations:'COMPENSATION_HISTORY',applications:'CROSS_PARTY_APPLICATIONS',bookings:'BOOKING_HISTORY',listingViews:'LISTING_VIEW_HISTORY',publications:'PUBLICATION_DATA',media:'MEDIA_AND_REFERENCE_HISTORY',externalAudit:'IMMUTABLE_AUDIT'} as const;
 /** Advisory routing only. A count snapshot is never permission to erase or an assigned retention policy. */
 export function classifyDeletionPreflight(input:unknown,role:unknown){
  if(!input||typeof input!=='object'||Array.isArray(input)||Reflect.ownKeys(input).length!==deletionPreflightFields.length||
@@ -37,7 +38,7 @@ const optionalPairs=[
  ['app.application_compensation_cases','app.application_compensation_refunds'],
  ['app.media_retirement_requests','app.media_retirement_completions'],
 ] as const;
-const optionalRelations=[...optionalPairs.flat(),...optionalAudit.map(([table])=>table)];
+const optionalRelations=[...optionalPairs.flat(),...optionalAudit.map(([table])=>table),'app_stats.listing_views'];
 
 function factsSql(installed:ReadonlySet<string>){
  const [refunds,compensations,mediaRetirement]=optionalPairs.map(([first,second])=>{
@@ -98,7 +99,8 @@ select
 }
 
 /** Caller supplies a bounded, owned-local repeatable-read transaction. No writes or session touching. */
-export async function inspectAccountDeletionCase(tx:PostgresQueries,caseId:unknown,expectedRevision:unknown){
+export async function inspectAccountDeletionCase(tx:PostgresQueries,caseId:unknown,expectedRevision:unknown,
+ {listingViewRateSecret}:{listingViewRateSecret?:string}={}){
  const id=deletionId(caseId),revision=deletionRevision(expectedRevision);
  try{
   const context=(await tx.query<{readonly:string;isolation:string}>("select current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
@@ -111,7 +113,10 @@ export async function inspectAccountDeletionCase(tx:PostgresQueries,caseId:unkno
   if(typeof subject.blocked!=='boolean'||typeof subject.observedAt!=='string'||!Number.isFinite(Date.parse(subject.observedAt)))throw new DeletionPreflightUnavailableError();
   const relations=(await tx.query<{name:string}>(`select name from unnest($1::text[]) as known(name)
    where to_regclass(name) is not null`,[optionalRelations])).rows;
-  const facts=(await tx.query(factsSql(new Set(relations.map(row=>row.name))),[subjectId])).rows[0],result=classifyDeletionPreflight(facts,subject.role);
+  const installed=new Set(relations.map(row=>row.name));
+  const facts=(await tx.query<Record<string,unknown>>(factsSql(installed),[subjectId])).rows[0];
+  const listingViews=installed.has('app_stats.listing_views')?(await readAccountListingViews(tx,subjectId,listingViewRateSecret)).length:0;
+  const result=classifyDeletionPreflight({...facts,listingViews:String(listingViews)},subject.role);
   return{version:1,requestId:id,requestRevision:revision,subject:{id:subjectId,authVersion,role:subject.role,blocked:subject.blocked},observedAt:subject.observedAt,...result};
  }catch(error){if(error instanceof DeletionInputError||error instanceof DeletionPreflightCaseError)throw error;throw new DeletionPreflightUnavailableError();}
 }
