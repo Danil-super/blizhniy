@@ -550,6 +550,27 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Сменить пароль", exact: true }).click();
       await page.getByRole("heading", { name: "Восстановление доступа", exact: true }).waitFor();
     });
+    await run("settings accept registration names and explain a legacy invalid name without replacing it", async ({ page, state }) => {
+      const owner = user("owner@example.invalid");
+      state.profiles.set(owner.id, createDefaultCabinetProfile({ name: "Имя 2", email: owner.email }));
+      await login(page);
+      await page.goto(`${origin}/cabinet`);
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      const field = page.getByLabel("Имя", { exact: true });
+      assert.equal(await field.inputValue(), "Имя 2");
+      assert.equal(await field.getAttribute("aria-invalid"), "true");
+      assert.match(await page.locator("#account-settings-name-help").textContent(), /Введите имя буквами/);
+      const save = page.getByRole("button", { name: "Сохранить настройки", exact: true });
+      await save.click();
+      assert.equal(state.profileRequests.some(row => row.method === "PUT"), false);
+      await field.fill("  Анна--Мария  李  ");
+      await save.click();
+      await page.getByText("Настройки сохранены.", { exact: true }).waitFor();
+      assert.equal(state.profiles.get(state.active.id).name, "Анна--Мария  李");
+      await page.reload();
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Анна--Мария  李");
+    });
     await run("organization editor persists on the existing cabinet route using the same cookie-owned profile", async ({ page, state }) => {
       await login(page); await page.goto(`${origin}/cabinet/organization`);
       await page.getByLabel("Название организации или ИП", { exact: true }).fill("Синтетическая организация");

@@ -9,11 +9,19 @@ export function validPersonName(value:string):boolean {
  return value.length>=2&&value.length<=120&&new RegExp(`^(?:${personNamePattern})$`,'u').test(value)&&validPlainText(value);
 }
 export const PROFILE_NAME_MAX_LENGTH=120;
-export const profileNamePattern=`\\p{L}|${personNamePattern}`;
-const profileNameRegex=new RegExp(`^(?:${profileNamePattern})$`,'u');
+export const PROFILE_NAME_ISSUE=`Введите имя буквами, до ${PROFILE_NAME_MAX_LENGTH} знаков. Допустимы пробелы, точка, дефис и апостроф.`;
+const profileNameCore=`\\p{L}|${personNamePattern}`;
+export const profileNamePattern=`\\s*(?:${profileNameCore})\\s*`;
+const profileNameRegex=new RegExp(`^(?:${profileNameCore})$`,'u');
 
 export function validProfileName(value:unknown):value is string {
  return typeof value==='string'&&value.length<=PROFILE_NAME_MAX_LENGTH&&profileNameRegex.test(value)&&validPlainText(value);
+}
+
+export function normalizeProfileName(value:unknown):string|null {
+ if(typeof value!=='string'||value.length>PROFILE_NAME_MAX_LENGTH||!validPlainText(value))return null;
+ const name=value.trim();
+ return validProfileName(name)?name:null;
 }
 
 export function validPhone(value:string):boolean {

@@ -125,6 +125,19 @@ export async function testProfiles(suite, db, applyMigration) {
     const session = await identity.login(input.email, input.password);
     assert.ok(session);
     assert.equal((await store.read(session.token, user.id)).profile.name, 'Тестовое имя');
+    const current = await store.read(session.token, user.id);
+    const edit = parseProductionProfile({ ...current.profile, name: input.name, notifyPayments: false });
+    const lostAckStore = new PostgresProfileStore({ transaction: async operation => {
+      await db.transaction(operation);
+      throw new Error('Synthetic lost profile acknowledgement');
+    } });
+    await assert.rejects(lostAckStore.write(session.token, user.id, edit, current.revision), /Synthetic lost profile acknowledgement/);
+    const confirmed = await store.read(session.token, user.id);
+    assert.equal(confirmed.profile.name, saved.name);
+    assert.equal(confirmed.profile.notifyPayments, false);
+    assert.notEqual(confirmed.revision, current.revision);
+    await assert.rejects(store.write(session.token, user.id, edit, current.revision), { name: 'ProfileConflictError' });
+    assert.equal((await store.read(session.token, user.id)).revision, confirmed.revision);
     await identity.revokeSession(session.token);
     const broken = new RegistrationStore({ transaction: work => db.transaction(tx => work({ query: async (sql, values) => {
       if (sql.includes('insert into app.cabinet_profiles')) throw new Error('Synthetic profile insert failure');

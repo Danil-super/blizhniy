@@ -3,17 +3,19 @@ const fs=require('node:fs');
 const test=require('node:test');
 const ts=require('typescript');
 const {PROFILE_NAME_MAX_LENGTH,profileNamePattern}=require('../src/lib/cabinet-field-validation.ts');
-function renderSettings(){
+function renderSettings({name='Данил',onDraft=()=>{},saveProfile=async value=>value}={}){
  const source=fs.readFileSync(new URL('../src/components/cabinet/CabinetClient.tsx',`file://${__filename}`),'utf8');
  const ast=ts.createSourceFile('CabinetClient.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const node=ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='SettingsPanel');
- const globals={PROFILE_NAME_MAX_LENGTH,profileNamePattern,useCookieCabinetProfile:()=>null,useState:value=>[value,()=>{}],toRussianPhoneE164:()=>null,
+ const globals={PROFILE_NAME_MAX_LENGTH,profileNamePattern,useCookieCabinetProfile:()=>({setSettingsDraft:onDraft,clearSavedSettings(){}}),useState:value=>[value,()=>{}],toRussianPhoneE164:()=>null,
+  sortedCities:[{name:'Краснодар'}],
+  ...require('../src/lib/cabinet-field-validation.ts'),
   PhoneVerificationButton:'phone-verification',AvatarEditor:'avatar-editor',ValidatedInput:'validated-input',CitySearchSelect:'city-select',Link:'a',Check:'check-icon',LockKeyhole:'lock-icon',ChevronDown:'chevron-icon',CabinetFormValidation:'form-validation'};
  const exports={},jsx=(type,props)=>({type,props});
  new Function('exports','require',...Object.keys(globals),ts.transpileModule(node.getText(ast)+'\nexports.SettingsPanel=SettingsPanel;',{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}
  }).outputText)(exports,()=>({jsx,jsxs:jsx}),...Object.values(globals));
- return exports.SettingsPanel({identity:{ownerKey:'synthetic',email:'owner@local.invalid'},profile:{name:'Данил',phone:'',city:'Краснодар',email:'not-authority@local.invalid'},onClose(){},saveProfile:async value=>value});
+ return exports.SettingsPanel({identity:{ownerKey:'synthetic',email:'owner@local.invalid'},profile:{name,phone:'',city:'Краснодар',email:'not-authority@local.invalid'},onClose(){},saveProfile});
 }
 function nodes(root){return !root||typeof root!=='object'?[]:[root,...[root.props?.children].flat(Infinity).flatMap(nodes)];}
 function text(root){return typeof root==='string'?root:root&&typeof root==='object'?[root.props?.children].flat(Infinity).map(text).join(' '):'';}
@@ -39,4 +41,25 @@ test('account settings use the shared profile name bounds and permit a one-lette
  const pattern=new RegExp(`^(?:${field.props.pattern})$`,'v');
  assert.equal(pattern.test('李'),true);
  assert.equal(pattern.test('Тест 2'),false);
+});
+
+test('settings retain invalid name input and explain what to correct without rewriting it',()=>{
+ let draft;
+ const tree=renderSettings({name:'Имя 2',onDraft:value=>{draft=value;}});
+ const all=nodes(tree),field=all.find(node=>node.type==='input'&&node.props.name==='name');
+ field.props.onChange({target:{value:'Имя <b>'}});
+ assert.equal(draft.name,'Имя <b>');
+ assert.equal(field.props['aria-invalid'],true);
+ const help=all.find(node=>node.props.id===field.props['aria-describedby']);
+ assert.match(text(help),/Введите имя буквами/);
+});
+
+test('settings save the registration name with interior spaces and dashes intact',async()=>{
+ const name='  Анна--Мария  李  ';
+ let saved;
+ const tree=renderSettings({name,saveProfile:async value=>(saved=value)});
+ const all=nodes(tree),field=all.find(node=>node.type==='input'&&node.props.name==='name');
+ assert.equal(new RegExp(`^(?:${field.props.pattern})$`,'v').test(name),true);
+ await all.find(node=>node.type==='form').props.onSubmit({preventDefault(){},currentTarget:{reportValidity:()=>true}});
+ assert.equal(saved?.name,'Анна--Мария  李');
 });

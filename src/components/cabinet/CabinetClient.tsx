@@ -53,7 +53,7 @@ import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
-import { PROFILE_NAME_MAX_LENGTH, profileNamePattern } from '@/lib/cabinet-field-validation';
+import { normalizeProfileName, PROFILE_NAME_ISSUE, PROFILE_NAME_MAX_LENGTH, profileNamePattern } from '@/lib/cabinet-field-validation';
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -870,10 +870,6 @@ function toRussianPhoneE164(value: string) {
   }
 
   return `+${digits}`;
-}
-
-function sanitizePersonName(value: string) {
-  return value.replace(/[^\p{L}\p{M} .'’–-]/gu, "").replace(/\s{2,}/g, " ").replace(/-{2,}/g, "-").slice(0, PROFILE_NAME_MAX_LENGTH);
 }
 
 function sanitizeCityQuery(value: string) {
@@ -2715,12 +2711,13 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
   const [verifyingPhone, setVerifyingPhone] = useState(false);
   const phoneIsVerified = Boolean(form.phone && form.phoneVerified && form.verifiedPhone === form.phone);
   const phoneCanBeVerified = Boolean(toRussianPhoneE164(form.phone));
+  const name = normalizeProfileName(form.name);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const settingsForm = event.currentTarget;
 
-    if (!settingsForm.reportValidity()) {
+    if (!settingsForm.reportValidity() || name === null) {
       return;
     }
 
@@ -2729,7 +2726,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
 
     try {
       if (saveProfile) {
-        const nextProfile = { ...form, name: sanitizePersonName(form.name).trim(), phone: form.phone.trim(), city: form.city.trim(), email: identity.email };
+        const nextProfile = { ...form, name, phone: form.phone.trim(), city: form.city.trim(), email: identity.email };
         if (!sortedCities.some(city => city.name === nextProfile.city)) throw new Error("Выберите город из списка.");
         const saved = await saveProfile(nextProfile);
         if (cookie) cookie.clearSavedSettings(form);
@@ -2740,7 +2737,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
       const origin = await captureClientUserOperation(identity.ownerKey);
       const nextProfile = {
         ...form,
-        name: sanitizePersonName(form.name).trim(),
+        name,
         phone: form.phone.trim(),
         email: form.email.trim().toLowerCase(),
         city: form.city.trim(),
@@ -2923,13 +2920,16 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.name}
               name="name"
-              onChange={(event) => setForm({ ...form, name: sanitizePersonName(event.target.value) })}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
               maxLength={PROFILE_NAME_MAX_LENGTH}
               pattern={profileNamePattern}
-              title="Введите имя буквами. Допустимы пробелы, дефис и апостроф."
+              title={PROFILE_NAME_ISSUE}
+              aria-invalid={name === null || undefined}
+              aria-describedby={name === null ? "account-settings-name-help" : undefined}
               required
             />
           </label>
+          {name === null && <p id="account-settings-name-help" className="text-xs text-rose-800">{PROFILE_NAME_ISSUE}</p>}
         </AvatarEditor>
         <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
           <div className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">

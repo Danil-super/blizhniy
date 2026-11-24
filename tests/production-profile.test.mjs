@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadProfileModule } from "./production-profile-module.mjs";
+import { normalizeRegistrationName } from "../src/lib/account-validation.ts";
 const { parseProductionProfile, ProfileInputError, ProfileOwnerChangedError, ProfileConflictError, PostgresProfileStore } = loadProfileModule("postgres-profile");
 const { createProductionProfileHandler } = loadProfileModule("production-profile-http");
 const origin = "https://xn----9sbphbgks4a4a.xn--p1ai";
+
+test("an explicitly submitted profile name follows the registration policy", () => {
+  for (const name of ["李", "  Анна--Мария  李  ", "A. O’Neill", "А".repeat(120)]) {
+    assert.equal(parseProductionProfile({ name }).name, normalizeRegistrationName(name));
+  }
+  for (const name of ["", "   ", "А".repeat(121), "Тест 2", "Имя <b>", "Имя\nФамилия"]) {
+    assert.equal(normalizeRegistrationName(name), null);
+    assert.throws(() => parseProductionProfile({ name }), ProfileInputError);
+  }
+  assert.equal(parseProductionProfile({}).name, "Пользователь");
+});
 const owner = "11111111-1111-4111-8111-111111111111";
 const token = "a".repeat(64);
 
