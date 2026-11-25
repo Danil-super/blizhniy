@@ -95,5 +95,7 @@ test('robots and sitemap responses require a fresh copy', async () => {
     const header = rule?.headers.find(entry => entry.key.toLowerCase() === 'cache-control');
     assert.ok(header, path);
     assert.deepEqual(new Set(header.value.split(/,\s*/)), new Set(['no-store', 'no-cache', 'must-revalidate']));
+    assert.deepEqual([...rule.headers].filter(entry => entry.key === 'Cross-Origin-Resource-Policy').map(entry => entry.value), ['cross-origin']);
   }
+  assert.deepEqual([...rules].filter(rule => rule.headers.some(entry => entry.key === 'Cross-Origin-Resource-Policy')).map(rule => rule.source), ['/robots.txt', '/sitemap.xml']);
 });

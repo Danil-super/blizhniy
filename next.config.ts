@@ -66,7 +66,10 @@ const nextConfig: NextConfig = {
       },
       ...["/robots.txt", "/sitemap.xml"].map((source) => ({
         source,
-        headers: [{ key: "Cache-Control", value: "no-store, no-cache, must-revalidate" }],
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
       })),
       // Next config headers override route response headers: put auth-specific privacy rules last.
       ...["/api/account/:path*", "/api/admin/local/:path*", "/auth/local/:path*", "/auth", "/auth/:path*"].map((source) => ({
