@@ -52,8 +52,9 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund worker compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['publication-test-release-plan.mjs','paid-response-schema.mjs','specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
+ for(const name of ['publication-test-release-plan.mjs','paid-response-schema.mjs','specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','hosted-refund-target.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+ if(schema===87)copyFileSync(join(root,'scripts/hosted-refund-worker.mjs'),join(destination,'scripts/hosted-refund-worker.mjs'));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema>=56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[]),...(schema>=57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[]),...(schema>=58?['refund-schema-local-primary-0058.json']:[]),...(schema===60?['refund-schema-local-primary-0060.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
  if(schema>=58)mkdirSync(join(destination,'database/candidates'));

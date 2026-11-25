@@ -102,3 +102,39 @@ test('operator preserves only a proven approval-order rejection; a forged code o
  const runtime=await createLocalRefundOperatorRuntime(env,{loadModules:()=>f.modules});
  try{await assert.rejects(runtime.approve(token,actor,input),e=>e.code==='REFUND_NOT_LATEST'&&!e.message.includes('private'));typed=false;await assert.rejects(runtime.approve(token,actor,input),e=>e.code===undefined&&!e.message.includes('private'));}finally{await runtime.close();}
 });
+
+test('hosted TEST operator pins its own role and denies approvals when the store fails TEST admission',async()=>{
+ const {createHostedRefundOperatorRuntime}=await import('../scripts/local-refund-operator-runtime.mjs');
+ assert.equal(typeof createHostedRefundOperatorRuntime,'function');
+ const hosted={...env,BLIZHNIY_REFUND_OPERATOR:'hosted-test-v1',
+  BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_NAME:'blizhniy_prod'};
+ let loaded=0;
+ const noLoad={loadModules:()=>{loaded++;throw Error('Unexpected configuration load');}};
+ for(const change of [{BLIZHNIY_REFUND_OPERATOR:'hosted-specialist-schema-local-test'},{BLIZHNIY_DB_HOST:'127.0.0.1'},
+  {BLIZHNIY_DB_PORT:'5433'},{BLIZHNIY_DB_NAME:'blizhniy_test'},{BLIZHNIY_DB_USER:'blizhniy_refund_worker'},
+  {BLIZHNIY_DB_CA_FILE:'relative'},{NODE_TLS_REJECT_UNAUTHORIZED:'0'},
+  {BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://localhost'},{BLIZHNIY_PAYMENT_SECRET_KEY:'live_synthetic'}])
+  await assert.rejects(createHostedRefundOperatorRuntime({...hosted,...change},noLoad));
+ await assert.rejects(createLocalRefundOperatorRuntime(hosted,noLoad));
+ assert.equal(loaded,0);
+ const f=fixture(),checks=[];let allowed=false;
+ f.modules.verifyRefundOperatorDatabase=async(_db,config)=>checks.push(config);
+ f.modules.createRefundMerchantPreflight=()=>async()=>{if(!allowed)throw Error('not a TEST merchant');};
+ const runtime=await createHostedRefundOperatorRuntime(hosted,{loadModules:()=>f.modules});
+ try{
+  assert.equal(f.calls[0][1].application_name,'blizhniy-refund-operator');
+  assert.equal(runtime.shopId,'synthetic');
+  await assert.rejects(runtime.approve(token,actor,input));
+  assert.equal(f.calls.some(([kind])=>kind==='approve'),false);
+  allowed=true;
+  assert.deepEqual(await runtime.approve(token,actor,input),{id:input.id});
+  assert.equal(checks.length,3);
+  for(const config of checks){
+   assert.equal(config.database,'blizhniy_prod');
+   assert.equal(config.hostedRefunds,true);
+   assert.equal(config.merchant.isTest,true);
+   assert.equal(config.merchant.marqueeRefunds,true);
+   assert.equal(config.merchant.specialistRefunds,true);
+  }
+ }finally{await runtime.close();}
+});

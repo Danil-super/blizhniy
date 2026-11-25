@@ -84,3 +84,29 @@ test('refund build refuses a migration changed after journal calculation without
   assert.equal(child.status,0,child.stderr);assert.deepEqual(JSON.parse(child.stdout),{refused:true});
  }finally{rmSync(owned,{recursive:true,force:true});}
 });
+
+test('schema 0087 worker archive contains an explicit hosted TEST command with redacted configuration failures',async()=>{
+ const {buildRefundWorker}=await import('../scripts/build-refund-worker.mjs');
+ const owned=mkdtempSync(join(tmpdir(),'blizhniy-hosted-refund-build-'));
+ try{
+  const artifact=join(owned,'artifact');
+  buildRefundWorker(artifact,{schema:87});
+  const cli=join(artifact,'scripts/hosted-refund-worker.mjs');
+  const env={PATH:process.env.PATH,NODE_ENV:'production',BLIZHNIY_PAYMENT_MODE:'live',BLIZHNIY_DB_PASSWORD:'private-synthetic'};
+  const imported=spawnSync(process.execPath,['--input-type=module','-e',`await import(process.argv[1])`,cli],{cwd:artifact,env,encoding:'utf8',timeout:10000});
+  assert.equal(imported.status,0,imported.stderr);
+  assert.equal(imported.stdout,'');
+  assert.equal(imported.stderr,'');
+  for(const args of [[],['--check'],['--run'],['--run','private-synthetic']]){
+   const child=spawnSync(process.execPath,[cli,...args],{cwd:artifact,env,encoding:'utf8',timeout:10000});
+   assert.equal(child.status,1,child.stderr);
+   assert.equal(child.stderr,'');
+   assert.equal(child.stdout.includes('private-synthetic'),false);
+   const event=JSON.parse(child.stdout);
+   assert.equal(event.event,'refund_worker_service');
+   assert.equal(event.status,'unavailable');
+   assert.equal(event.failureStage,'configuration');
+   assert.deepEqual(event.outcomes,{});
+  }
+ }finally{rmSync(owned,{recursive:true,force:true});}
+});

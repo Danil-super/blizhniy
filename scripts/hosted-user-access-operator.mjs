@@ -1,7 +1,5 @@
 import { createRequire } from 'node:module';
-import { fstatSync } from 'node:fs';
-import { lstat, readFile, readlink, realpath } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readActivatedOperatorSocket } from './hosted-operator-socket.mjs';
 import { verifyUserAccessDatabase } from './user-access-role.mjs';
 import { startLocalUserAccessOperator } from './local-user-access-operator.mjs';
 import { startLocalAdminOperator } from './local-admin-operator.mjs';
@@ -9,25 +7,6 @@ import { startLocalAdminOperator } from './local-admin-operator.mjs';
 const require = createRequire(import.meta.url);
 const socketPath = '/run/blizhniy-user-access/operator.sock';
 const unavailable = () => new Error('Hosted user operator unavailable');
-
-async function activatedSocket(env) {
-  const fd = 3, directory = dirname(socketPath);
-  if (env.LISTEN_PID !== String(process.pid) || env.LISTEN_FDS !== '1' || env.LISTEN_FDNAMES !== 'operator' ||
-      !fstatSync(fd).isSocket()) throw unavailable();
-  const [root,parent,socket,descriptor,unix] = await Promise.all([
-    lstat('/run'),lstat(directory),lstat(socketPath),readlink('/proc/self/fd/3'),readFile('/proc/net/unix','utf8'),
-  ]);
-  const inode = /^socket:\[(\d+)\]$/.exec(descriptor)?.[1];
-  if (!inode || !root.isDirectory() || root.uid !== 0 || (root.mode & 0o022) !== 0 ||
-      !parent.isDirectory() || parent.uid !== 0 || (parent.mode & 0o7777) !== 0o755 ||
-      await realpath(directory) !== directory || !socket.isSocket() || socket.uid !== 0 ||
-      (socket.mode & 0o7777) !== 0o660 || socket.nlink !== 1) throw unavailable();
-  const listeners = unix.trim().split('\n').slice(1).map(line => line.trim().split(/\s+/));
-  if (listeners.filter(row => row[3] === '00010000' && row[4] === '0001' && row[6] === inode && row[7] === socketPath).length !== 1) {
-    throw unavailable();
-  }
-  return { fd,socketPath };
-}
 
 async function main(env=process.env) {
   const tariffs=env.BLIZHNIY_ADMIN_TARIFFS==='hosted-v1';
@@ -39,7 +18,7 @@ async function main(env=process.env) {
       env.BLIZHNIY_DB_NAME !== 'blizhniy_prod' || env.BLIZHNIY_DB_USER !== 'blizhniy_user_operator' ||
       env.BLIZHNIY_DB_SSL_MODE !== 'verify-full' || env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
       Object.keys(process.env).some(key => key.startsWith('PG'))) throw unavailable();
-  const activation = await activatedSocket(env);
+  const activation = await readActivatedOperatorSocket(env,socketPath);
   const { PostgresDatabase,readPostgresConfig } = require('../compiled/lib/postgres.js');
   const { PostgresAdminUserAccess } = require('../compiled/lib/postgres-admin-user-access.js');
   const { AdminUserAccessError } = require('../compiled/lib/admin-user-access-contract.js');
