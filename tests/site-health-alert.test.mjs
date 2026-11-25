@@ -189,3 +189,33 @@ test('independent probes persist their own incidents and send recovery even with
   assert.equal((await readFile(join(directory, 'site-latency.json'), 'utf8')).includes('site-slow'), true);
   assert.equal(messages.length, 5);
 });
+
+test('worker and backup failures notify independently and distinguish operators by worker name', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-worker-backup-alert-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const messages = [];
+  let backupResult = 'backup-failed', timerResult = 'worker-stopped';
+  const unit = 'blizhniy-auth-mail';
+  const healthy = async () => 'healthy';
+  const run = () => runSiteHealthAlert({
+    directory, recipient:'monitor@example.invalid', notify:async message => messages.push(message),
+    waitForConfirm: async () => {}, site:healthy, certificate:healthy, backup:async () => backupResult,
+    workerTimers:[unit], worker:async name => name === unit ? timerResult : 'worker-unavailable',
+  });
+  const recorded = await run();
+  assert.deepEqual(recorded.filter(row => row.result !== 'healthy').map(({probe,result}) => [probe,result]), [
+    ['site-backup','backup-failed'], [unit,'worker-stopped'],
+  ]);
+  assert.equal(messages.length, 2);
+  assert.ok(messages.some(message => message.text.includes(unit)));
+  timerResult = 'healthy';
+  await run();
+  assert.equal(messages.length,3);
+  assert.ok(messages[2].subject.endsWith('работа восстановлена'));
+  assert.ok(messages[2].text.includes(unit));
+  backupResult = 'healthy';
+  await run();
+  assert.equal(messages.length,4);
+  assert.ok(messages[3].subject.endsWith('работа восстановлена'));
+});

@@ -124,3 +124,52 @@ test('the TLS probe accepts the local trusted CA and refuses an untrusted peer a
   assert.equal(await checkSiteCertificate('https://localhost:'+port, untrusted), 'tls-unavailable');
   assert.equal(await checkSiteCertificate('https://wrong.example.invalid:'+port, trusted), 'tls-unavailable');
 });
+
+test('a scheduled worker must have an active repeating timer and a successful configured service', async () => {
+  const { checkWorkerTimer, parseWorkerTimers } = await import('../scripts/check-site-health.mjs');
+  const timer = 'blizhniy-auth-mail';
+  const timerState = 'LoadState=loaded\nActiveState=active\nSubState=waiting\nTriggers=blizhniy-auth-mail.service\n';
+  const serviceState = 'LoadState=loaded\nActiveState=inactive\nType=oneshot\nResult=success\nConditionResult=yes\n';
+  const check = (timerText,serviceText) => checkWorkerTimer(timer, async unit => {
+    assert.ok([timer+'.timer',timer+'.service'].includes(unit));
+    return unit.endsWith('.timer') ? timerText : serviceText;
+  });
+  assert.deepEqual(parseWorkerTimers(undefined), []);
+  assert.deepEqual(parseWorkerTimers(timer+',blizhniy-booking-expiry'), [timer,'blizhniy-booking-expiry']);
+  assert.throws(() => parseWorkerTimers(timer+','+timer));
+  assert.throws(() => parseWorkerTimers('ssh'));
+  assert.equal(await check(timerState,serviceState), 'healthy');
+  assert.equal(await check(timerState,serviceState.replace('inactive','activating')), 'healthy');
+  assert.equal(await check(timerState.replace('active','inactive'),serviceState), 'worker-stopped');
+  assert.equal(await check(timerState.replace('waiting','elapsed'),serviceState), 'worker-stopped');
+  assert.equal(await check(timerState,serviceState.replace('Result=success','Result=exit-code')), 'worker-failed');
+  assert.equal(await check(timerState,serviceState.replace('ConditionResult=yes','ConditionResult=no')), 'worker-failed');
+  assert.equal(await check(timerState+'LoadState=loaded\n',serviceState), 'worker-unavailable');
+});
+
+test('backup monitoring uses a bounded receipt and ages the snapshot rather than its verification', async t => {
+  const { mkdtemp, writeFile, symlink, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { checkBackupReceipt } = await import('../scripts/check-site-health.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-backup-receipt-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const path = join(directory,'current.json'), alternate = join(directory,'alias.json');
+  const now = 1795610000000, at = offset => new Date(now + offset).toISOString();
+  const receipt = { version:1, status:'verified', snapshotAt:at(-3600000), verifiedAt:at(-200) };
+  const write = object => writeFile(path,JSON.stringify(object),{ mode:0o640 });
+  const check = (file = path) => checkBackupReceipt(file,() => now);
+  assert.equal(await check(), 'backup-unavailable');
+  await write(receipt);
+  assert.equal(await check(), 'healthy');
+  await symlink(path,alternate);
+  assert.equal(await check(alternate), 'backup-unavailable');
+  await write({ ...receipt, snapshotAt:at(-3600001) });
+  assert.equal(await check(), 'backup-stale');
+  await write({ version:1, status:'failed', attemptedAt:at(-100) });
+  assert.equal(await check(), 'backup-failed');
+  await write({ ...receipt, verifiedAt:at(1) });
+  assert.equal(await check(), 'backup-unavailable');
+  await write({ ...receipt, extra:'a'.repeat(600) });
+  assert.equal(await check(), 'backup-unavailable');
+});

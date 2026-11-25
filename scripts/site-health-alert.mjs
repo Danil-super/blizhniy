@@ -3,7 +3,7 @@ import { open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
-import { checkSiteCertificate, checkSiteDisk, checkSiteHealth } from './check-site-health.mjs';
+import { checkBackupReceipt, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
 
 const reasons = {
   'site-unavailable': 'Сайт не прошёл внешнюю проверку доступности.',
@@ -13,6 +13,12 @@ const reasons = {
   'tls-unavailable': 'Проверка TLS-соединения с сайтом не прошла.',
   'disk-low': 'На диске приложения осталось не больше 15% доступных блоков или inode.',
   'disk-unavailable': 'Монитор не смог проверить файловую систему приложения.',
+  'worker-stopped': 'Таймер фоновой службы остановлен или не планирует запуск.',
+  'worker-failed': 'Последний запуск фоновой службы не прошёл.',
+  'worker-unavailable': 'Монитор не получил состояние фоновой службы.',
+  'backup-stale': 'Проверенная резервная копия старше одного часа.',
+  'backup-failed': 'Последняя попытка резервного копирования завершилась ошибкой.',
+  'backup-unavailable': 'Монитор не нашёл корректного подтверждения резервной копии.',
 };
 const recoveryMessages = {
   'site-unavailable': 'Сайт снова проходит проверку доступности.',
@@ -22,6 +28,12 @@ const recoveryMessages = {
   'tls-unavailable': 'TLS-соединение с сайтом снова проходит проверку.',
   'disk-low': 'На диске приложения снова больше 15% доступных блоков и inode.',
   'disk-unavailable': 'Монитор снова может проверить диск приложения.',
+  'worker-stopped': 'Таймер фоновой службы снова планирует запуск.',
+  'worker-failed': 'Фоновая служба снова проходит проверку.',
+  'worker-unavailable': 'Монитор снова видит состояние фоновой службы.',
+  'backup-stale': 'Монитор получил подтверждение свежей резервной копии.',
+  'backup-failed': 'Резервное копирование снова проходит проверку.',
+  'backup-unavailable': 'Монитор снова получает подтверждение резервной копии.',
 };
 const maxAttempts = 3;
 
@@ -108,7 +120,7 @@ export function alertStateFile(file, incidentReasons) {
 
 export async function runSiteHealthAlert({
   directory, recipient, notify, site = checkSiteHealth, certificate = checkSiteCertificate,
-  storage, waitForConfirm = () => wait(10000),
+  storage, backup, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
 }) {
   const confirm = async probe => {
     if (!probe) return null;
@@ -117,23 +129,29 @@ export async function runSiteHealthAlert({
     await waitForConfirm();
     return probe();
   };
-  const [availability, tls, disk] = await Promise.all([confirm(site), confirm(certificate), confirm(storage)]);
+  const [availability, tls, disk, backupResult, ...workerResults] = await Promise.all([
+    confirm(site), confirm(certificate), confirm(storage), confirm(backup),
+    ...workerTimers.map(unit => confirm(() => worker(unit))),
+  ]);
   const checks = [
     ['site-health', availability === 'site-slow' ? 'healthy' : availability],
     ['site-latency', ['healthy', 'site-slow'].includes(availability) ? availability : null],
     ['site-tls', tls],
     ['site-disk', disk],
+    ['site-backup', backupResult],
+    ...workerTimers.map((unit, index) => [unit, workerResults[index]]),
   ];
   return Promise.all(checks.filter(([, result]) => result !== null).map(async ([probe, result]) => {
     try {
+      const workerName = workerTimers.includes(probe) ? '\nСлужба ' + probe : '';
       const delivery = await deliverSiteAlert(result, {
         ...alertStateFile(join(directory, probe + '.json'), reasons),
         send: (id, reason) => notify({
           id, to: recipient, subject: 'БЛИЖНИЙ — эксплуатационное оповещение',
-          text: reasons[reason] + '\nПроверьте https://xn----9sbphbgks4a4a.xn--p1ai',
+          text: reasons[reason] + workerName + '\nПроверьте https://xn----9sbphbgks4a4a.xn--p1ai',
         }),
         sendResolved: (id, reason) => notify({
-          id, to: recipient, subject: 'БЛИЖНИЙ — работа восстановлена', text: recoveryMessages[reason],
+          id, to: recipient, subject: 'БЛИЖНИЙ — работа восстановлена', text: recoveryMessages[reason] + workerName,
         }),
       });
       return { probe, result, delivery };
@@ -147,17 +165,21 @@ async function main(runId) {
   const { createTimewebMailer, normalizeMailAddress } = await import('../src/lib/timeweb-mail.ts');
   const directory = process.env.STATE_DIRECTORY;
   const diskPath = process.env.BLIZHNIY_SITE_ALERT_DISK_PATH;
+  const backupPath = process.env.BLIZHNIY_SITE_ALERT_BACKUP_RECEIPT;
+  const workerTimers = parseWorkerTimers(process.env.BLIZHNIY_SITE_ALERT_WORKER_TIMERS);
   const recipient = normalizeMailAddress(process.env.BLIZHNIY_SITE_ALERT_EMAIL);
   const mailer = createTimewebMailer();
   if (process.argv.length !== 2 || process.env.NODE_ENV !== 'production' || process.getuid?.() === 0 ||
     !directory || !isAbsolute(directory) || directory.includes(':') || !recipient || !mailer ||
-    (diskPath !== undefined && !isAbsolute(diskPath))) {
+    [diskPath, backupPath].some(path => path !== undefined && !isAbsolute(path))) {
     throw new Error('Invalid alert configuration');
   }
 
   const results = await runSiteHealthAlert({
     directory, recipient, notify: mailer.send,
     storage: diskPath ? () => checkSiteDisk(diskPath) : undefined,
+    backup: backupPath ? () => checkBackupReceipt(backupPath) : undefined,
+    workerTimers,
   });
   for (const result of results) {
     console.log(JSON.stringify({ event: 'site_health_alert', runId, entryPoint: 'oneshot', ...result }));

@@ -417,6 +417,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
     await source.owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draft,photo]);
    }finally{await source.owner.query(clock);}
    const sourcePath=join(media.root,photo+'.webp');
+   const snapshotAt=new Date().toISOString();
    await durable('joint-before.webp',await readFile(sourcePath));
    const {createECDH}=await import('node:crypto');
    const syntheticKey=createECDH('prime256v1').generateKeys().toString('base64url');
@@ -454,6 +455,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await durable('joint-ledger.json',signed.document);
    await durable('joint-checkpoint.json',JSON.stringify(signed.checkpoint));
 
+   const recoverStarted=performance.now();
    const restored=await fixture(),restoredMedia=await storage(restored,t);
    await restored.owner.query('create role blizhniy_runtime nologin;create role blizhniy_business_email nologin;create role blizhniy_push_worker nologin');
    await docker(['cp',join(directory,'joint-before.dump'),restored.id+':/tmp/joint-before.dump']);
@@ -515,7 +517,12 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    assert.equal((await restored.owner.query('select 1 from app.password_recoveries')).rowCount,0);
    assert.equal((await restored.owner.query('select * from notification_delivery.claim_business_email($1)',[randomUUID()])).rowCount,0);
    assert.equal((await restored.owner.query('select * from app_push.claim_delivery($1)',[randomUUID()])).rowCount,0);
-   report.jointErasureRestore={backupSha256:sha(archive),ledgerVersion:verified.version,confirmedOperations:result.listedOperations,verifiedArchivedPhotos:1,...resultAfterQuarantine};
+   const verifiedAt=new Date().toISOString(),recoveryExerciseMs=Math.ceil(performance.now()-recoverStarted);
+   const {checkBackupReceipt}=await import('../scripts/check-site-health.mjs');
+   await durable('joint-backup-receipt.json',JSON.stringify({version:1,status:'verified',snapshotAt,verifiedAt}));
+   assert.equal(await checkBackupReceipt(join(directory,'joint-backup-receipt.json')),'healthy');
+   report.jointErasureRestore={backupSha256:sha(archive),ledgerVersion:verified.version,confirmedOperations:result.listedOperations,
+    verifiedArchivedPhotos:1,snapshotAt,verifiedAt,recoveryExerciseMs,...resultAfterQuarantine};
   });
   assert.ok(report.jointErasureRestore);
   assert.ok(report.signedPhotoReplay);
