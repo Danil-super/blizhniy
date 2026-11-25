@@ -24,6 +24,7 @@ import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
 import {getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
 import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
+import {testHostedPaidResponses} from './hosted-paid-response-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -710,6 +711,11 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        }finally{await admin.query('alter function app.guard_specialist_publication_window() set search_path=pg_catalog');}
       };
       await testHostedSpecialistRefund({admin,config,load,operator:artifacts[0],worker:artifacts[1],directory:artifactDirectory,upgrade});
+     });
+     await t.test('new hosted response checkouts deliver once and only one executor closes the customer order',async()=>{
+      assert.equal(await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,
+       {database:config.database,publicationTest:true,applicationAccountTest:true}),true);
+      await testHostedPaidResponses({admin,config,workerDb,refundDb:worker.db,compiledWorker,load});
      });
     }finally{for(const entry of entries)await entry.db?.close();}
    });

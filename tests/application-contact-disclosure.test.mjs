@@ -65,3 +65,13 @@ test('an invalid contact-view deployment flag cannot silently disable evidence',
  assert.equal(readApplicationContactViewsMode({BLIZHNIY_APPLICATION_CONTACT_VIEWS:'disabled'}),false);
  for(const value of ['', 'true', 'enabled ', 'ENABLED'])assert.throws(()=>readApplicationContactViewsMode({BLIZHNIY_APPLICATION_CONTACT_VIEWS:value}),/Invalid application contact view policy/);
 });
+
+test('hosted contact evidence requires the authorized production workflow',()=>{
+ const {readApplicationContactViewsMode}=load('production-application-runtime');
+ const hosted={NODE_ENV:'production',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',
+  BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'production-v1'};
+ assert.equal(readApplicationContactViewsMode(hosted),'production-v1');
+ for(const mismatch of [{NODE_ENV:'test'},{BLIZHNIY_AUTH_MODE:'local'},{BLIZHNIY_AUTH_ORIGIN:'https://other.invalid'},
+  {BLIZHNIY_LISTING_WORKFLOW:'pre-moderation'},{BLIZHNIY_LOCAL_PRIMARY:'enabled'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045'}])
+  assert.throws(()=>readApplicationContactViewsMode({...hosted,...mismatch}),/Invalid production application contact view policy/);
+});
