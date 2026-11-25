@@ -74,6 +74,8 @@ test('primary payment return reads only its owner order, survives loss of respon
    const cabinetReceipt = page.getByRole('status').filter({hasText:result});
    await cabinetReceipt.waitFor();
    assert.equal(await cabinetReceipt.textContent(),result);
+   const receiptHeading = await cabinetReceipt.getByRole('heading',{name:result,exact:true}).elementHandle();
+   await page.waitForFunction(heading=>heading===document.activeElement,receiptHeading);
    await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
    assert.deepEqual(await cabinetReceipt.evaluate(async node=>(await window.axe.run(node)).violations
     .filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);

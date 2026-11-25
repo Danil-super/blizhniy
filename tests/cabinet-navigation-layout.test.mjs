@@ -19,11 +19,12 @@ test('cabinet navigation starts with create, ends with logout and keeps only one
 });
 test('cabinet entry displays the same listings section without dropping the settings URL',()=>{
  const widget=()=>null;
- const out=load('src/components/cabinet/CabinetPages.tsx',{'@/components/DashboardShell':{Shell:widget,cabinetNav:[]},'@/components/auth/CabinetAuthGate':{},'@/components/listings/CabinetDraftWorkspace':{CabinetDraftWorkspace:widget},'./CabinetPublicationWorkspace':{},'@/components/bookings/BookingsPanel':{},'./CabinetEntryClients':{},'./dashboard-rows':{}});
+ const out=load('src/components/cabinet/CabinetPages.tsx',{'@/components/DashboardShell':{Shell:widget,cabinetNav:[]},'@/components/auth/CabinetAuthGate':{},'@/components/listings/CabinetDraftWorkspace':{CabinetDraftWorkspace:widget},'./CabinetPublicationWorkspace':{},'@/components/bookings/BookingsPanel':{},'@/components/payments/PlacementReturnNotice':{PlacementReturnNotice:()=>null},'./CabinetEntryClients':{},'./dashboard-rows':{}});
  assert.equal(out.CabinetPage().type,out.CabinetListingsPage);
  const list=out.CabinetListingsPage();assert.equal(list.props.activeHref,'/cabinet/obyavleniya');
- assert.ok(list.props.children.props.footer,'The account-deletion link must remain reachable after removing overview');
- const footer=renderToStaticMarkup(list.props.children.props.footer);
+ const workspace=list.props.children.find(child=>child.type===widget);
+ assert.ok(workspace.props.footer,'The account-deletion link must remain reachable after removing overview');
+ const footer=renderToStaticMarkup(workspace.props.footer);
  assert.match(footer,/<a[^>]+href="\/cabinet\/moi-dannye"[^>]*>Мои персональные данные<\/a>/);
  assert.match(footer,/<a[^>]+href="\/cabinet\/udalit-akkaunt"[^>]*>Запросить удаление аккаунта<\/a>/);
 });
