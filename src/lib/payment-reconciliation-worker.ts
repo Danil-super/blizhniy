@@ -1,6 +1,7 @@
 import {PostgresPaymentReconciliationQueue} from './postgres-payment-reconciliation.ts';
 import {PostgresPaymentVerificationStore,type VerificationStage} from './postgres-payment-verification.ts';
 import {PostgresListingPaymentFulfillmentStore} from './postgres-listing-payment-fulfillment';
+import {PostgresServicePaymentFulfillmentStore} from './postgres-service-payment-fulfillment';
 import type {PostgresDatabase} from './postgres';
 
 type Merchant=ConstructorParameters<typeof PostgresPaymentVerificationStore>[1];
@@ -8,17 +9,22 @@ type Code='provider_pending'|'capture_required'|'processing_unavailable'|'public
 type ProcessingStage=VerificationStage|'claim_ownership'|'fulfillment';
 type Result={state:'idle'|'lost'|'completed'}|{state:'deferred'|'blocked';code:Code};
 /** Explicit one-job tick. No poller/startup hook, provider POST or caller-supplied financial snapshot. */
-export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string,specialistAccountTest?:true,applicationAccountTest?:true){
+export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string,specialistAccountTest?:true,applicationAccountTest?:true,marqueeAccountTest?:true){
  const mode=process.env.BLIZHNIY_LISTING_WORKFLOW;if(mode!==undefined&&!['pre-moderation','postmoderation'].includes(mode))throw Error('Invalid worker publication mode');
  const publication=publicationTestOwner!==undefined;
- const queue=new PostgresPaymentReconciliationQueue(db,{shopId:merchant.shopId,isTest:merchant.isTest,publicationTestOwner,specialistAccountTest,applicationAccountTest}),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher);
+ const queue=new PostgresPaymentReconciliationQueue(db,{shopId:merchant.shopId,isTest:merchant.isTest,publicationTestOwner,specialistAccountTest,applicationAccountTest,marqueeAccountTest}),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher);
  const policy={postmoderation:mode==='postmoderation',...(publication?{publicationTestOwner}:{})};
  const fulfillments={listing:new PostgresListingPaymentFulfillmentStore(db,merchant,policy),...(publication?{
   ...(specialistAccountTest?{specialist:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'specialist',specialistAccountTest})}:{}),
   vacancy:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'vacancy'}),
   workRequest:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'workRequest'}),
  }:{})};
+ const marquee=marqueeAccountTest?new PostgresServicePaymentFulfillmentStore(db,merchant,true):null;
  return{async tick(onProcessingFailure?:(stage:ProcessingStage)=>void):Promise<Result>{
+  if(marquee){
+   const [candidate]=await marquee.discover(1);
+   if(candidate&&(await marquee.fulfill(candidate)).state==='fulfilled')return{state:'completed'};
+  }
   if(publication)await queue.discover();
   // An unknown claim COMMIT is NOT retried: the persisted lease must expire first.
   const claim=await queue.claim();if(!claim)return{state:'idle'};if('exhausted' in claim)return{state:'blocked',code:'attempts_exhausted'};
@@ -32,6 +38,8 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    if(verified.orderStatus==='failed'||verified.orderStatus==='refunded'){state='completed';code=null;}
    else if(verified.orderStatus!=='succeeded')code='provider_pending';
    else if(!verified.capturedAt)code='capture_required';
+   // Slot waiting is driven by persisted captures and has no provider retry budget.
+   else if(claim.targetType==='ad_marquee'&&marquee){state='completed';code=null;}
    else if(claim.targetType==='application'&&applicationAccountTest){
     stage='fulfillment';
     const outcome=await db.transaction(async tx=>(await tx.query<{result:string}>(
@@ -45,7 +53,7 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    else{
     stage='fulfillment';
     const kind=publication?claim.targetType:'listing';
-    if(!kind||kind==='application'||!Object.hasOwn(fulfillments,kind))throw Error('Invalid publication target');
+    if(!kind||kind==='application'||kind==='ad_marquee'||!Object.hasOwn(fulfillments,kind))throw Error('Invalid publication target');
     const result=await fulfillments[kind]!.fulfill(claim.intentId);
     if(result.state==='fulfilled'){state='completed';code=null;}
     else if(result.state==='blocked'){state='blocked';code='publication_blocked';}

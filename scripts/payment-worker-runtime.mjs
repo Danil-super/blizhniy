@@ -40,8 +40,9 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
   let worker=placementWorker,closing;
   return{get worker(){return worker;},preflight:async()=>{
    worker=placementWorker;
-   const responses=await verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})});
-   if(responses===true)worker=createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,specialistAccountTest||undefined,true);
+   let marqueeQueue=false;
+   const responses=await verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})},()=>{marqueeQueue=true;});
+   if(responses===true)worker=createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,specialistAccountTest||undefined,true,...(marqueeQueue?[true]:[]));
   },
    close:()=>closing??=db.close()};
  }catch {

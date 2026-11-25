@@ -19,6 +19,11 @@ export function readHostedMarqueeCheckout(env:NodeJS.ProcessEnv=process.env){
  return{checkout,merchant};
 }
 
+export function canShowMarqueeTest(owner:string):boolean{
+ if(process.env.BLIZHNIY_PAYMENT_TEST_USER_ID!==owner)return false;
+ try{return readHostedMarqueeCheckout()?.merchant.ownerId===owner;}catch{return false;}
+}
+
 export type ServiceRefundScope={marqueeRefunds?:boolean;specialistRefunds?:boolean};
 
 export function serviceRefundKindEnabled(targetType:string,scope:ServiceRefundScope):boolean{

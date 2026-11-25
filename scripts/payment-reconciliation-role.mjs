@@ -6,7 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
-import {getHostedMarqueeAdmissionMigration,getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
+import {getHostedMarqueeQueueMigration,getHostedMarqueeAdmissionMigration,getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -54,7 +54,7 @@ export function getPaymentReconciliationRolePlan(database,{cabinet=false,publica
  * Approved managed-PG exception: bootstrap postgres -> gen_user ADMIN only, never INHERIT/SET.
  * It does not authenticate a merchant or turn TEST into database row-level isolation.
  */
-export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false,specialistAccountTest=false}={}) {
+export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false,specialistAccountTest=false}={},onMarqueeQueueVerified) {
  try {
   if(!validDatabase(database)||typeof publicationTest!=='boolean'||typeof specialistAccountTest!=='boolean'||specialistAccountTest&&!publicationTest)throw new Error('Invalid reconciliation target');
   const plan=approved();
@@ -132,7 +132,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     expectedJournal.push(getPaymentReconciliationAlertMigration());
    }
    const hostedSchema=hostedRefunds?getHostedRefundSchemaVersion(journal):0;
-   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81,placementRenewals=hostedSchema>=82,marqueeAdmission=hostedSchema>=83;
+   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81,placementRenewals=hostedSchema>=82,marqueeAdmission=hostedSchema>=83,marqueeQueue=hostedSchema>=84;
    const undeliveredCompensation=hostedSchema>=76;
    if(hostedRefunds){
     if(!reconciliationAlert)throw new Error('Unsupported hosted refund deployment');
@@ -144,12 +144,13 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     if(specialistRepeat)expectedJournal.push(getHostedSpecialistRepeatMigration());
     if(placementRenewals)expectedJournal.push(getHostedPlacementRenewalMigration());
     if(marqueeAdmission)expectedJournal.push(getHostedMarqueeAdmissionMigration());
+    if(marqueeQueue)expectedJournal.push(getHostedMarqueeQueueMigration());
     expectedJournal.sort((a,b)=>a.name.localeCompare(b.name,'en'));
    }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx,{hostedRefunds});
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
@@ -171,7 +172,8 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    const functions=await tx.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE')
      and ($1::boolean=false or p.oid is distinct from to_regprocedure('app_response.deliver(uuid,uuid)'))
-     and ($2::boolean=false or p.oid is distinct from to_regprocedure('app.apply_hosted_placement_renewal(uuid,uuid)')) limit 1`,[responses===true,placementRenewals]);
+     and ($2::boolean=false or p.oid is distinct from to_regprocedure('app.apply_hosted_placement_renewal(uuid,uuid)'))
+     and ($3::boolean=false or p.oid is distinct from to_regprocedure('app.next_hosted_marquee(text)')) limit 1`,[responses===true,placementRenewals,marqueeQueue]);
    if(dangerous.rows.length||functions.rows.length)throw new Error('Invalid object privileges');
    const guardBody=plan.at(-1).sql.match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
    if(!guardBody)throw new Error('Invalid guard source');
@@ -185,6 +187,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    if(guards.length!==lockCount||new Set(guards.map(item=>item.name)).size!==lockCount||guards.some(item=>
     item.tgenabled!=='A'||item.tgtype!==19||item.tgnargs!==0||item.attributes!==''||item.unconditional!==true||
     item.prosrc!==guardBody||item.prosecdef!==false||item.lanname!=='plpgsql'||JSON.stringify(item.proconfig)!==JSON.stringify(['search_path=""'])))throw new Error('Invalid lock guards');
+   if(marqueeQueue)onMarqueeQueueVerified?.();
    return responses===true;
   },{readOnly:true});
  }catch {throw new Error('Payment reconciliation database preflight failed');}

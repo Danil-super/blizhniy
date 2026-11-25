@@ -726,7 +726,7 @@ export async function testHostedPlacementRenewals({admin,config,load,reconciler,
  }
 }
 
-export async function testHostedMarqueeAdmission({admin,config,load,reconciler,refundOperator,refundWorker}){
+export async function testHostedMarqueeAdmission({admin,config,load,reconciler,compiledWorker,refundOperator,refundWorker}){
  const payer=await hostedRefundActor(admin,load,'user'),peer=await hostedRefundActor(admin,load,'user');
  const reviewer=await hostedRefundActor(admin,load,'admin'),origin=process.env.BLIZHNIY_AUTH_ORIGIN;
  const shopId='900000001',secretKey='test_synthetic_only',merchant={shopId,isTest:true,secretKey};
@@ -785,7 +785,7 @@ export async function testHostedMarqueeAdmission({admin,config,load,reconciler,r
   const next=await prepare(payer,{...input,creationKey:randomUUID()});
   assert.equal(next.status,200);
   const order=await next.json(),id=order.id,providerId=randomUUID();
-  let capturedAt,body,posts=0;
+  let capturedAt,body,posts=0,gets=0;
   const fetcher=async(url,init)=>{
    if(init.method==='POST'){
     assert.equal(String(url),'https://api.yookassa.ru/v3/payments');assert.equal(init.headers['Idempotence-Key'],id);posts++;
@@ -793,7 +793,7 @@ export async function testHostedMarqueeAdmission({admin,config,load,reconciler,r
     assert.equal(body.metadata.targetType,'ad_marquee');assert.equal(body.metadata.targetId,target);
     assert.equal(body.confirmation.return_url,origin+'/oplata/uslugi/'+id+'?type=marquee');
     assert.equal(body.receipt.items[0].amount.value,order.amount);
-   }else{assert.equal(init.method,'GET');assert.equal(String(url),'https://api.yookassa.ru/v3/payments/'+providerId);}
+   }else{gets++;assert.equal(init.method,'GET');assert.equal(String(url),'https://api.yookassa.ru/v3/payments/'+providerId);}
    return Response.json({id:providerId,status:capturedAt?'succeeded':'pending',paid:!!capturedAt,test:true,recipient:{account_id:shopId},
     amount:body.amount,metadata:body.metadata,...(capturedAt?{captured_at:capturedAt}:{confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout'}})});
   };
@@ -801,15 +801,36 @@ export async function testHostedMarqueeAdmission({admin,config,load,reconciler,r
   const send=async()=>payment.dispatch(await store.authorizeDispatch(payer.token,payer.id,id),
    attempt=>store.authorizeDispatch(payer.token,payer.id,id,true,attempt));
   assert.equal((await send()).confirmationUrl,'https://yoomoney.ru/checkout');
+  const laterTarget=(await admin.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'marquee',$2,$3) returning id",
+   [payer.id,randomUUID(),{...form,title:'Следующая синтетическая рекламная строка'}])).rows[0].id;
+  await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_at) values($1,1,'approved',clock_timestamp())",[laterTarget]);
+  const later=(await store.prepare(payer.token,payer.id,{...input,publicationId:laterTarget,creationKey:randomUUID()}));
+  const laterProviderId=randomUUID();
+  let laterBody,laterCapturedAt,laterPosts=0,laterGets=0;
+  const laterProvider=async(url,init)=>{
+   if(init.method==='POST'){assert.equal(init.headers['Idempotence-Key'],later.id);laterPosts++;laterBody=JSON.parse(init.body);}
+   else{assert.equal(init.method,'GET');assert.equal(String(url),'https://api.yookassa.ru/v3/payments/'+laterProviderId);laterGets++;}
+   return Response.json({id:laterProviderId,status:laterCapturedAt?'succeeded':'pending',paid:!!laterCapturedAt,test:true,recipient:{account_id:shopId},
+    amount:laterBody.amount,metadata:laterBody.metadata,...(laterCapturedAt?{captured_at:laterCapturedAt}:{confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/next'}})});
+  };
+  await dispatch(web,merchant,laterProvider).dispatch(await store.authorizeDispatch(payer.token,payer.id,later.id),
+   attempt=>store.authorizeDispatch(payer.token,payer.id,later.id,true,attempt));
   await admin.query('delete from app.marquee_test_enrollment where owner_id=$1',[payer.id]);
   assert.equal((await send()).confirmationUrl,'https://yoomoney.ru/checkout');
   assert.equal(posts,1);
   await assert.rejects(cancel.cancel(payer.token,payer.id,{targetType:'ad_marquee',paymentId:id}),{code:'CHECKOUT_STARTED'});
-  const publicStore=new(load('postgres-public-service').PostgresPublicServiceStore)(web);
+  const publicStore=new(load('postgres-public-service').PostgresPublicServiceStore)(web,{testPublicationLabels:true});
   assert.equal(await publicStore.read('marquee',target),undefined);
-  capturedAt=(await admin.query(`select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') stamp`)).rows[0].stamp;
-  const verification=new(load('postgres-payment-verification').PostgresPaymentVerificationStore)(reconciler,merchant,fetcher);
-  assert.equal((await verification.reconcile(id)).orderStatus,'succeeded');
+  const stamp=async()=>(await admin.query(`select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') stamp`)).rows[0].stamp;
+  capturedAt=await stamp();
+  laterCapturedAt=await stamp();
+  assert.ok(laterCapturedAt>capturedAt);
+  const background=()=>compiledWorker(reconciler,merchant,(url,init)=>String(url).endsWith('/'+laterProviderId)?laterProvider(url,init):fetcher(url,init),peer.id,undefined,true,true);
+  const worker=background(),beforeVerification=gets;
+  for(let tick=0;tick<2;tick++)assert.equal((await worker.tick()).state,'completed');
+  assert.equal(gets,beforeVerification+1);assert.equal(laterGets,1);
+  assert.equal((await store.readOrder(payer.token,payer.id,id)).order.status,'succeeded');
+  assert.equal((await store.readOrder(payer.token,payer.id,later.id)).order.status,'succeeded');
   const {id:fair}=(await admin.query("select i.id from app.payment_checkout_intents i join app.payment_orders o on o.id=i.id and o.status='succeeded' where i.target_type='fair_application' limit 1")).rows[0];
   assert.equal((await admin.query('select app.service_payment_eligible($1) as ready',[fair])).rows[0].ready,false);
   for(const table of ['service_payment_terms','payment_dispatch_anchors']){
@@ -823,13 +844,24 @@ export async function testHostedMarqueeAdmission({admin,config,load,reconciler,r
   assert.equal((await admin.query('select app.service_payment_eligible($1) as ready',[id])).rows[0].ready,true);
   await assert.rejects(reconciler.query('insert into app.payment_fulfillments(intent_id) values($1)',[id]),{code:'PSQ01'});
   assert.equal((await store.readOrder(payer.token,payer.id,id)).fulfillment,null);
+  for(let tick=0;tick<13;tick++)assert.equal((await worker.tick()).state,'idle');
+  assert.equal(gets,beforeVerification+1);assert.equal(laterGets,1);
   await admin.query('update app.service_publications set expires_at=statement_timestamp() where id=$1',[oldSlots[0].id]);
-  assert.equal((await reconciler.query('insert into app.payment_fulfillments(intent_id) values($1) returning intent_id',[id])).rows[0].intent_id,id);
+  const fills=await Promise.all([worker.tick(),background().tick()]);
+  assert.ok(fills.some(result=>result.state==='completed'));
+  assert.equal((await admin.query('select count(*)::int as n from app.payment_fulfillments where intent_id=$1',[id])).rows[0].n,1);
+  assert.equal(gets,beforeVerification+1);assert.equal(laterGets,1);assert.equal(posts,1);
   assert.equal((await slots()).length,5);
+  assert.equal((await store.readOrder(payer.token,payer.id,later.id)).fulfillment,null);
+  assert.equal(await publicStore.read('marquee',laterTarget),undefined);
   const snapshot=await store.readOrder(payer.token,payer.id,id);
   assert.ok(snapshot.fulfillment.publishedAt>=capturedAt);
   assert.equal(Date.parse(snapshot.fulfillment.expiresAt)-Date.parse(snapshot.fulfillment.publishedAt),order.durationDays*86400000);
-  assert.equal((await publicStore.read('marquee',target))?.id,target);
+  const published=await publicStore.read('marquee',target);
+  assert.equal(published.id,target);
+  assert.equal(published.text,'ТЕСТ · '+form.title);
+  assert.equal(published.publishedAt,snapshot.fulfillment.publishedAt);
+  assert.equal(published.expiresAt,snapshot.fulfillment.expiresAt);
   const refundMerchant={...merchant,marqueeRefunds:true,specialistRefunds:true};
   const approval={id:randomUUID(),paymentIntentId:id,reason:'Контроль возврата размещения рекламы.'};
   await new(load('postgres-refund-approvals').PostgresRefundApprovalStore)(refundOperator,refundMerchant).approve(reviewer.token,reviewer.id,approval);
@@ -841,5 +873,12 @@ export async function testHostedMarqueeAdmission({admin,config,load,reconciler,r
   assert.equal((await slots()).length,4);
   const history=await store.readOrder(payer.token,payer.id,id);
   assert.equal(history.order.status,'refunded');assert.deepEqual(history.fulfillment,snapshot.fulfillment);
+  assert.equal((await worker.tick()).state,'completed');
+  assert.equal((await slots()).length,5);
+  const nextPeriod=(await store.readOrder(payer.token,payer.id,later.id)).fulfillment;
+  assert.ok(nextPeriod.publishedAt>=laterCapturedAt);
+  assert.equal(Date.parse(nextPeriod.expiresAt)-Date.parse(nextPeriod.publishedAt),later.durationDays*86400000);
+  assert.equal((await publicStore.read('marquee',laterTarget))?.expiresAt,nextPeriod.expiresAt);
+  assert.equal(laterPosts,1);assert.equal(laterGets,1);
  }finally{await web.close();}
 }

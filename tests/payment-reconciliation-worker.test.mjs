@@ -5,7 +5,8 @@ function fixture(overrides={}){
  const calls=[],queue={claim:async()=>claim,owns:async()=>true,finish:async(...args)=>{calls.push(['finish',...args]);return true;},...overrides.queue};
  const verifier={reconcile:async id=>{calls.push(['GET',id]);return{orderStatus:'succeeded',capturedAt:'2026-10-19T12:00:00.123456Z'};},...overrides.verifier};
  const fulfillment={fulfill:async id=>{calls.push(['fulfill',id]);return{state:'fulfilled'};},...overrides.fulfillment};
- const exports={},deps={'./postgres-payment-reconciliation.ts':{PostgresPaymentReconciliationQueue:class{constructor(){return queue;}}},'./postgres-payment-verification.ts':{PostgresPaymentVerificationStore:class{constructor(){return verifier;}}},'./postgres-listing-payment-fulfillment':{PostgresListingPaymentFulfillmentStore:class{constructor(){return fulfillment;}}}};
+ const exports={},deps={'./postgres-payment-reconciliation.ts':{PostgresPaymentReconciliationQueue:class{constructor(){return queue;}}},'./postgres-payment-verification.ts':{PostgresPaymentVerificationStore:class{constructor(){return verifier;}}},'./postgres-listing-payment-fulfillment':{PostgresListingPaymentFulfillmentStore:class{constructor(){return fulfillment;}}},
+  './postgres-service-payment-fulfillment':{PostgresServicePaymentFulfillmentStore:class{constructor(){throw Error('Unexpected legacy worker access to advertising');}}}};
  new Function('require','exports',ts.transpileModule(readFileSync(new URL('../src/lib/payment-reconciliation-worker.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(path=>{if(!Object.hasOwn(deps,path))throw Error('Unapproved worker dependency');return deps[path];},exports);
  return{worker:exports.createPaymentReconciliationWorker({},{}),calls};
 }

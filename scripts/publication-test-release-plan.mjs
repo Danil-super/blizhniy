@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83|84)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -103,8 +103,13 @@ export function getHostedMarqueeAdmissionMigration(){
  return readReleaseMigration('0083-hosted-marquee-admission.sql','dd0dfbde38533ae0bfab988116a77716380875ae0a5198837802133aeabf79cb');
 }
 
+export function getHostedMarqueeQueueMigration(){
+ return readReleaseMigration('0084-hosted-marquee-queue.sql','19d9458c81e96834aa364e14278c4e033c8298fd4c5d6fd2e2a7b05c8eacd112');
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0084-hosted-marquee-queue.sql':return 84;
   case '0083-hosted-marquee-admission.sql':return 83;
   case '0082-hosted-placement-renewals.sql':return 82;
   case '0081-hosted-specialist-repeat.sql':return 81;
@@ -123,7 +128,7 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80,81,82,83].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81,82,83,84].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
@@ -132,6 +137,7 @@ export function getHostedRefundReleasePlan(schema=75){
  if(schema>=81)plan.push(getHostedSpecialistRepeatMigration());
  if(schema>=82)plan.push(getHostedPlacementRenewalMigration());
  if(schema>=83)plan.push(getHostedMarqueeAdmissionMigration());
+ if(schema>=84)plan.push(getHostedMarqueeQueueMigration());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -168,6 +174,10 @@ export function getHostedMarqueeAdmissionUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(82),[getHostedMarqueeAdmissionMigration()]);
 }
 
+export function getHostedMarqueeQueueUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(83),[getHostedMarqueeQueueMigration()]);
+}
+
 function composeHostedRefundSql(previous,plan){
  const baseline=previous.sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const body=plan.map(({sql})=>{
@@ -195,12 +205,12 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82,marqueeAdmission=schema>=83;
+ const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82,marqueeAdmission=schema>=83,marqueeQueue=schema>=84;
  const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -237,6 +247,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedMarqueeQueue:[
+  '7e9c2fb158ce975bba673d949767c058915e434c238868b3d0bd5a36c46297b6',
+  '2f04539435c04571e97be26006b95c62df22f9dabcc0928f73153e59f395c047',
+ ],
  hostedMarqueeAdmission:[
   '2d2305c4c46a248c76a70b2fa19c3994229ed8cef1cfe8d7644f0da115f82c78',
   '07704262038114948a46eaab23b683237a7c3972c657ed58e7581cf80e8e7171',
@@ -435,7 +449,14 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false,marqueeAdmission=false}){
+async function assertReconcilerFunctionAccess(tx,signature){
+ const rights=(await tx.query(`select a.grantee::regrole::text as role,a.privilege_type as privilege,a.is_grantable as grantable
+  from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.oid=to_regprocedure($1) and a.grantee<>p.proowner`,[signature])).rows;
+ if(rights.length!==1||rights[0].role!=='blizhniy_payment_reconciler'||rights[0].privilege!=='EXECUTE'||rights[0].grantable!==false)throw Error('Unexpected reconciliation function access');
+}
+
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false,marqueeAdmission=false,marqueeQueue=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -491,14 +512,14 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!placementRenewals)throw Error('Unsupported marquee admission deployment');
   accepted=fingerprints.hostedMarqueeAdmission;
  }
- if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
- if(marqueeAdmission)await assertHostedMarqueeAdmissionAccess(tx);
- if(placementRenewals){
-  const rights=(await tx.query(`select a.grantee::regrole::text as role,a.privilege_type as privilege,a.is_grantable as grantable
-   from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
-   where p.oid='app.apply_hosted_placement_renewal(uuid,uuid)'::regprocedure and a.grantee<>p.proowner`)).rows;
-  if(rights.length!==1||rights[0].role!=='blizhniy_payment_reconciler'||rights[0].privilege!=='EXECUTE'||rights[0].grantable!==false)throw Error('Unexpected placement renewal function access');
+ if(marqueeQueue){
+  if(!marqueeAdmission)throw Error('Unsupported marquee queue deployment');
+  accepted=fingerprints.hostedMarqueeQueue;
  }
+ if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(marqueeQueue)await assertReconcilerFunctionAccess(tx,'app.next_hosted_marquee(text)');
+ if(marqueeAdmission)await assertHostedMarqueeAdmissionAccess(tx);
+ if(placementRenewals)await assertReconcilerFunctionAccess(tx,'app.apply_hosted_placement_renewal(uuid,uuid)');
  if(cancellations)await assertCheckoutCancellationAccess(tx);
  if(recovery)await assertReconciliationCommandAccess(tx);
  if(reconciliationAlert)await assertReconciliationCommandAccess(tx,true);

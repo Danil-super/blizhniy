@@ -12,6 +12,7 @@ pg.Pool=class{
   if(sql.includes('from pg_roles'))return{rows:[{name:'blizhniy_runtime',rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false,rolbypassrls:false,
    schema_create:false,public_create:false,database_create:false,temp_create:false,role_update:false,role_insert:false,identity_owner_permissions_missing:false,rate_schema_missing:false}]};
   if(process.env.BLIZHNIY_REFUND_ADMIN==='journal-test'&&sql.trimStart().startsWith('insert into app.auth_rate_limits'))return{rows:[{allowed:true}]};
+  if(sql==="select to_regclass('app.marquee_test_admissions') is not null as installed")return{rows:[{installed:false}]};
   if(/from app\.categories\b/.test(sql))return{rows};
   if(/from app\.tariffs\b/.test(sql))return{rows:tariffs.map(t=>({id:uuid(t.action),action:t.action,name:t.name,price:Number(t.price).toFixed(2),duration_days:t.durationDays,active:t.active}))};
   if(sql.startsWith('select w.id,w.kind,w.form,w.status,w.is_paid as paid,')&&sql.includes('join app.work_moderation review')&&sql.includes("review.state='approved'")&&sql.includes("w.status='published' and w.is_paid")&&sql.includes('w.expires_at>statement_timestamp()'))return{rows:[]};

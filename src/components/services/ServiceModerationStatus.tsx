@@ -12,7 +12,7 @@ export function ServiceModerationStatus(props:ModerationProps){
  return <RevisionModeration key={`${owner}:${snapshot.kind}:${snapshot.id}:${snapshot.revision}`} {...props}/>;
 }
 function RevisionModeration({owner,snapshot}:ModerationProps){
- const checkout=useServiceCheckout(),specialistCheckout=useSpecialistCheckout(),attempt=useRef<ListingCheckoutAttempt>({input:null,uncertain:false});
+ const checkout=useServiceCheckout(snapshot.kind),specialistCheckout=useSpecialistCheckout(),attempt=useRef<ListingCheckoutAttempt>({input:null,uncertain:false});
  const [value,setValue]=useState<ServiceModerationState|null>(null),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false);
  const pending=useRef(false),scope=useRef<AbortController|null>(null);
  const read=useCallback(async()=>{if(pending.current)return;const signal=scope.current?.signal;pending.current=true;setBusy(true);setMessage(null);

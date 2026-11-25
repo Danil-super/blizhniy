@@ -15,6 +15,9 @@ export function usePlacementRenewals(){
 }
 export function useDraftRemovals(){return useContext(DraftRemovalsContext);}
 
-export function useServiceCheckout(){return useContext(ServiceCheckoutContext);}
+export function useServiceCheckout(kind?:'marquee'|'fair'|'specialist'){
+ const local=useContext(ServiceCheckoutContext),account=usePrimaryAccountAuth();
+ return local||kind==='marquee'&&account?.marqueeTest===true;
+}
 
 export function useSpecialistCheckout(){const local=useContext(SpecialistCheckoutContext),account=usePrimaryAccountAuth();return local||account?.specialistTest===true;}

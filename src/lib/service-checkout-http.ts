@@ -10,7 +10,7 @@ import type {PostgresServiceCheckoutStore} from './postgres-service-checkout';
 type Runtime={store:Pick<PostgresServiceCheckoutStore,'preview'|'prepare'|'readIntent'|'readOrder'>;limiter:Pick<AuthRateLimiter,'allowProduction'>;dispatch(token:string,owner:string,id:string):Promise<{isTest:boolean;confirmationUrl:string|null}>};
 function exact(row:Record<string,unknown>,keys:string[]){if(Reflect.ownKeys(row).length!==keys.length||keys.some(key=>!Object.hasOwn(row,key)))throw new AuthRequestError(422,'INVALID_INPUT');}
 /** Same-origin cookie boundary. No service/provider authority is taken from request fields. */
-export function createServiceCheckoutHandler(config:{origin:string},kind:PaidServiceKind,current:Runtime){
+export function createServiceCheckoutHandler(config:{origin:string},kind:PaidServiceKind,runtime:Runtime|(()=>Promise<Runtime>)){
  return async(request:Request)=>{
   const requestId=randomUUID();
   const reply=(body:unknown,status:number)=>authJson(body,status,{'X-Request-ID':requestId});
@@ -18,20 +18,21 @@ export function createServiceCheckoutHandler(config:{origin:string},kind:PaidSer
    if(!['POST','PUT'].includes(request.method))throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
    const row=await readAuthJson(request,config,2000,request.method==='PUT'?'PUT':'POST',4096) as Record<string,unknown>;
    if(!row||typeof row!=='object'||Array.isArray(row))throw new AuthRequestError(422,'INVALID_INPUT');
-   const owner=parseListingDraftId(row.expectedOwnerId);let execute:(token:string)=>Promise<unknown>;
+   const owner=parseListingDraftId(row.expectedOwnerId);let execute:(current:Runtime,token:string)=>Promise<unknown>;
    if(request.method==='PUT'){
-    const input={...row};delete input.expectedOwnerId;const parsed=parseServiceCheckout(kind,input);execute=token=>current.store.prepare(token,owner,parsed);
+    const input={...row};delete input.expectedOwnerId;const parsed=parseServiceCheckout(kind,input);execute=(current,token)=>current.store.prepare(token,owner,parsed);
    }else if(row.action==='preview'){
-    exact(row,['expectedOwnerId','action','publicationId','expectedRevision']);const id=parseListingDraftId(row.publicationId),revision=parseListingDraftRevision(row.expectedRevision);execute=token=>current.store.preview(token,owner,id,revision);
+    exact(row,['expectedOwnerId','action','publicationId','expectedRevision']);const id=parseListingDraftId(row.publicationId),revision=parseListingDraftRevision(row.expectedRevision);execute=(current,token)=>current.store.preview(token,owner,id,revision);
    }else if(row.action==='intent'){
-    exact(row,['expectedOwnerId','action','creationKey']);const key=parseListingDraftId(row.creationKey);execute=token=>current.store.readIntent(token,owner,key);
+    exact(row,['expectedOwnerId','action','creationKey']);const key=parseListingDraftId(row.creationKey);execute=(current,token)=>current.store.readIntent(token,owner,key);
    }else if(row.action==='order'||row.action==='dispatch'){
-    exact(row,['expectedOwnerId','action','paymentId']);const id=parseListingDraftId(row.paymentId);execute=token=>row.action==='order'?current.store.readOrder(token,owner,id):current.dispatch(token,owner,id);
+    exact(row,['expectedOwnerId','action','paymentId']);const id=parseListingDraftId(row.paymentId);execute=(current,token)=>row.action==='order'?current.store.readOrder(token,owner,id):current.dispatch(token,owner,id);
    }else throw new AuthRequestError(422,'INVALID_INPUT');
    const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
    const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
+   const current=typeof runtime==='function'?await runtime():runtime;
    if(!await current.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
-   return reply(await execute(token),200);
+   return reply(await execute(current,token),200);
   }catch(error){
    if(error&&typeof error==='object'&&'code'in error&&(error.code==='PCA02'||error.code==='PSM01'))error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
