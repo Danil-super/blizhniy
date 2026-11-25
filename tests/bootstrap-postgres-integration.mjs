@@ -236,6 +236,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testInteractionGrants(suite, client, config, credentials);
     const { testNotificationInbox } = await import("./notification-inbox-integration.mjs");
     await testNotificationInbox(suite, client, config, credentials);
+    const { testBusinessEmail } = await import("./business-email-integration.mjs");
+    await testBusinessEmail(suite, client, config, credentials);
     const { testApplications } = await import("./applications-integration.mjs");
     await testApplications(suite, client, config, credentials);
     const { testBookings } = await import("./bookings-integration.mjs");
