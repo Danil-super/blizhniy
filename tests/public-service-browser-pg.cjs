@@ -4,11 +4,22 @@ const assert=require('node:assert/strict'),{readFileSync}=require('node:fs'),pg=
 pg.Pool=class extends Base{
  async query(statement){
   const sql=typeof statement==='string'?statement:statement.text,values=typeof statement==='string'?[]:statement.values;
-  if(sql.startsWith('select s.id,s.kind,s.form,s.status,s.is_paid as paid,')){
+  if(sql==="select to_regclass('app.specialist_test_enrollment') is not null as installed")return{rows:[{installed:false}]};
+  if(sql.startsWith('select id,slug,name,parent_name as parent,active from app.specialist_categories')){
+   const rows=JSON.parse(readFileSync(process.env.BLIZHNIY_PUBLIC_SERVICE_FIXTURE,'utf8'));
+   const specialist=rows.find(row=>row.kind==='specialist');
+   return{rows:[{id:specialist.professionId,slug:'santehnik',name:specialist.form.professionName,parent:'Ремонт и строительство',active:true}]};
+  }
+  if(sql.startsWith('select s.id,s.kind,')&&sql.includes('from app.service_publications s')){
    assert.ok(sql.includes("review.state='approved'"));assert.ok(sql.includes("s.status='published' and s.is_paid"));assert.ok(sql.includes('s.expires_at>statement_timestamp()'));
    const rows=JSON.parse(readFileSync(process.env.BLIZHNIY_PUBLIC_SERVICE_FIXTURE,'utf8'));assert.ok(Array.isArray(rows));
-   const selected=rows.filter(row=>row.kind===values[0]&&(!values[1]||typeof values[1]!=='string'||row.id===values[1]));
-   return{rows:selected.slice(typeof values[2]==='number'?values[2]:0,typeof values[1]==='number'?values[1]:undefined)};
+   if(sql.includes("s.kind='specialist' and s.profession_id=$1")){
+    const [professionId,limit,offset]=values;
+    return{rows:rows.filter(row=>row.kind==='specialist'&&row.professionId===professionId).slice(offset,offset+limit)};
+   }
+   const [kind,selection,offset=0]=values;
+   const selected=rows.filter(row=>row.kind===kind&&(typeof selection!=='string'||row.id===selection));
+   return{rows:typeof selection==='number'?selected.slice(offset,offset+selection):selected};
   }
   return super.query(statement);
  }
