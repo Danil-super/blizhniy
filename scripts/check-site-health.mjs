@@ -49,6 +49,25 @@ export async function checkSiteHealth(origin = productionOrigin, transport = fet
   return 'healthy';
 }
 
+export async function checkPublicPages(origin = productionOrigin, transport = fetch) {
+  const paths = ['/', '/obyavleniya', '/poisk?q=' + encodeURIComponent('ремонт')];
+  const outcomes = await Promise.all(paths.map(async path => {
+    try {
+      const response = await transport(new URL(path, origin), {
+        redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8000),
+      });
+      await response.body?.cancel().catch(() => {});
+      if (response.status >= 500 && response.status <= 599) return 'public-page-5xx';
+      return response.status === 200 && !response.redirected && /^text\/html(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')
+        ? 'healthy' : 'public-page-unavailable';
+    } catch {
+      return 'public-page-unavailable';
+    }
+  }));
+  if (outcomes.includes('public-page-5xx')) return 'public-page-5xx';
+  return outcomes.every(result => result === 'healthy') ? 'healthy' : 'public-page-unavailable';
+}
+
 export async function checkSiteCertificate(origin = productionOrigin, open = connect, now = Date.now) {
   try {
     const { protocol, hostname, port } = new URL(origin);

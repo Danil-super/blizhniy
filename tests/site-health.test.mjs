@@ -173,3 +173,24 @@ test('backup monitoring uses a bounded receipt and ages the snapshot rather than
   await write({ ...receipt, extra:'a'.repeat(600) });
   assert.equal(await check(), 'backup-unavailable');
 });
+
+test('public page probes report application 5xx separately from unexpected 4xx and transport failures', async () => {
+  const { checkPublicPages } = await import('../scripts/check-site-health.mjs');
+  const calls = [];
+  const probe = (path, status) => checkPublicPages(origin, async (url, options) => {
+    calls.push(url.pathname);
+    assert.equal(url.origin,origin);
+    assert.equal(options.redirect,'error');
+    assert.equal(options.cache,'no-store');
+    assert.ok(options.signal instanceof AbortSignal);
+    return new Response('<h1>Fixture</h1>', {
+      status: url.pathname === path ? status : 200,
+      headers: { 'content-type':'text/html; charset=utf-8' },
+    });
+  });
+  assert.equal(await probe('/poisk',503),'public-page-5xx');
+  assert.deepEqual(calls.sort(),['/','/obyavleniya','/poisk']);
+  assert.equal(await probe('/obyavleniya',404),'public-page-unavailable');
+  assert.equal(await probe('/',200),'healthy');
+  assert.equal(await checkPublicPages(origin,async()=>{throw new Error('local transport error');}),'public-page-unavailable');
+});

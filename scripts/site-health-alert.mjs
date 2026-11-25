@@ -3,12 +3,14 @@ import { open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
-import { checkBackupReceipt, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
+import { checkBackupReceipt, checkPublicPages, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
 
 const reasons = {
   'site-unavailable': 'Сайт не прошёл внешнюю проверку доступности.',
   'readiness-unavailable': 'Сайт отвечает, но проверка готовности не прошла.',
   'site-slow': 'Проверка доступности или готовности отвечает дольше двух секунд.',
+  'public-page-5xx': 'Главная, объявления или поиск возвращают ошибку сервера.',
+  'public-page-unavailable': 'Монитор не смог открыть одну из проверяемых публичных страниц.',
   'tls-expiring': 'Сертификат сайта истекает в течение 14 дней.',
   'tls-unavailable': 'Проверка TLS-соединения с сайтом не прошла.',
   'disk-low': 'На диске приложения осталось не больше 15% доступных блоков или inode.',
@@ -24,6 +26,8 @@ const recoveryMessages = {
   'site-unavailable': 'Сайт снова проходит проверку доступности.',
   'readiness-unavailable': 'Сайт снова проходит проверку готовности.',
   'site-slow': 'Время ответа проверок снова укладывается в две секунды.',
+  'public-page-5xx': 'Главная, объявления и поиск снова отвечают без ошибки сервера.',
+  'public-page-unavailable': 'Все проверяемые публичные страницы снова открываются.',
   'tls-expiring': 'Сертификат сайта обновлён. До истечения больше 14 дней.',
   'tls-unavailable': 'TLS-соединение с сайтом снова проходит проверку.',
   'disk-low': 'На диске приложения снова больше 15% доступных блоков и inode.',
@@ -120,7 +124,7 @@ export function alertStateFile(file, incidentReasons) {
 
 export async function runSiteHealthAlert({
   directory, recipient, notify, site = checkSiteHealth, certificate = checkSiteCertificate,
-  storage, backup, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
+  storage, backup, publicPages, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
 }) {
   const confirm = async probe => {
     if (!probe) return null;
@@ -129,8 +133,8 @@ export async function runSiteHealthAlert({
     await waitForConfirm();
     return probe();
   };
-  const [availability, tls, disk, backupResult, ...workerResults] = await Promise.all([
-    confirm(site), confirm(certificate), confirm(storage), confirm(backup),
+  const [availability, tls, disk, backupResult, publicResult, ...workerResults] = await Promise.all([
+    confirm(site), confirm(certificate), confirm(storage), confirm(backup), confirm(publicPages),
     ...workerTimers.map(unit => confirm(() => worker(unit))),
   ]);
   const checks = [
@@ -139,6 +143,7 @@ export async function runSiteHealthAlert({
     ['site-tls', tls],
     ['site-disk', disk],
     ['site-backup', backupResult],
+    ['site-public-pages', publicResult],
     ...workerTimers.map((unit, index) => [unit, workerResults[index]]),
   ];
   return Promise.all(checks.filter(([, result]) => result !== null).map(async ([probe, result]) => {
@@ -176,7 +181,7 @@ async function main(runId) {
   }
 
   const results = await runSiteHealthAlert({
-    directory, recipient, notify: mailer.send,
+    directory, recipient, notify: mailer.send, publicPages: checkPublicPages,
     storage: diskPath ? () => checkSiteDisk(diskPath) : undefined,
     backup: backupPath ? () => checkBackupReceipt(backupPath) : undefined,
     workerTimers,

@@ -13,7 +13,7 @@ function harness(data){
  const module={exports:{}};
  vm.runInNewContext(compile(readFileSync(new URL('../src/components/cabinet/CabinetOrganization.tsx',import.meta.url),'utf8')),{module,exports:module.exports,Error,
   require:name=>{
-   if(name==='react')return {useState(initial){const slot=index++;if(!Object.hasOwn(state,slot))state[slot]=initial;return [state[slot],value=>state[slot]=typeof value==='function'?value(state[slot]):value];},useEffect(work,deps){const slot=effectIndex++,old=effects[slot];if(!old||deps.some((value,i)=>value!==old[i])){effects[slot]=deps;scheduled.push(work);}}};
+   if(name==='react')return {useId:()=>'organization-description',useState(initial){const slot=index++;if(!Object.hasOwn(state,slot))state[slot]=initial;return [state[slot],value=>state[slot]=typeof value==='function'?value(state[slot]):value];},useEffect(work,deps){const slot=effectIndex++,old=effects[slot];if(!old||deps.some((value,i)=>value!==old[i])){effects[slot]=deps;scheduled.push(work);}}};
    if(name==='react/jsx-runtime')return {jsx,jsxs:jsx};
    if(name==='./CookieCabinetProfileProvider')return {CabinetProfileFailure:'failure',useCookieCabinetProfile:()=>data.cookie??null};
    if(name==='@/components/CabinetFormValidation')return {CabinetFormValidation:'validation'};
@@ -34,6 +34,9 @@ test('organization keeps existing identifier validation and saves all profile fi
  change(h,'organizationOgrn','123456789012345');change(h,'organizationDescription','Описание\nВторая строка');await submit(h.render());
  assert.equal(calls.length,1);assert.equal(calls[0].organizationName,'ИП Тест');assert.equal(calls[0].organizationInn,'123456789012');assert.equal(calls[0].organizationOgrn,'123456789012345');assert.equal(calls[0].organizationDescription,'Описание\nВторая строка');assert.equal(calls[0].email,profile.email);assert.equal(calls[0].phone,profile.phone);
  assert.ok(text(h.render()).includes('Профиль организации сохранен.'));
+ const fields=nodes(h.render());
+ const description=fields.find(node=>node.type==='textarea'&&node.props.name==='organizationDescription');
+ assert.equal(fields.find(node=>node.type==='label'&&node.props.htmlFor===description.props.id)?.props.children,'Краткое описание');
 });
 
 test('organization save failures retain typed fields and loaded-profile errors disable submission',async()=>{
