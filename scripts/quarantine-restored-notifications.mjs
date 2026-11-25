@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { inspectBasicErasureFixture } from "./basic-account-erasure.mjs";
+import { assertNotificationRolesOffline, inspectBasicErasureFixture } from "./basic-account-erasure.mjs";
 
 const migrations = [
   "0064-inbox-notification-preferences.sql",
@@ -10,7 +10,6 @@ const migrations = [
   "0086-push-subscriptions.sql",
   "0087-push-delivery.sql",
 ];
-const roles = ["blizhniy_runtime", "blizhniy_business_email", "blizhniy_push_worker"];
 const locked = "app.notifications,app.sessions,app.email_confirmations,app.password_recoveries,app.telegram_phone_attempts,"+
   "app.mail_outbox,notification_delivery.business_email,app_push.subscriptions,app_push.deliveries";
 
@@ -27,11 +26,7 @@ export async function quarantineRestoredNotifications(db, containerId) {
         "current_setting('transaction_read_only') as readonly,current_setting('session_replication_role') as replication,"+
         "current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port");
       assert.deepEqual(context, { database: "blizhniy_erasure_test", role: "postgres", login: "postgres", readonly: "off", replication: "origin", ...owned });
-      const { rows: [offline] } = await tx.query("select count(*)::int=$2 as ready from pg_roles r "+
-        "where r.rolname=any($1) and not(r.rolcanlogin or r.rolsuper or r.rolcreaterole or r.rolcreatedb or r.rolreplication or r.rolbypassrls) "+
-        "and not exists(select 1 from pg_auth_members m where r.oid in (m.roleid,m.member)) "+
-        "and not exists(select 1 from pg_stat_activity a where a.usename=r.rolname and a.datname=current_database())", [roles, roles.length]);
-      assert.equal(offline?.ready, true);
+      await assertNotificationRolesOffline(tx);
 
       await tx.query("lock table " + locked + " in access exclusive mode");
       const { rows: journal } = await tx.query('select name,sha256 from blizhniy_meta.migrations where name=any($1) order by name collate "C"', [migrations]);

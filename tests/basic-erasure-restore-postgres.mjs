@@ -115,11 +115,9 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await assert.rejects(reapplyBasicErasureLedger(clone.db,expanded.document,key,expanded.checkpoint,sessions,clone.id),error=>error.name==='ErasureRestoreIncompleteError'&&error.confirmedOperations===2&&error.reopenAuthorized===false);
   });
   assert.equal(checks.length,6);report={passed:true,backupSha256,restoredActualBackup:true,exactRestoredData:true,exactRestoredAcl:true,freshActorSessions:true,identitiesResurrectedBeforeReplay:2,identitiesAfterReplay:await present(),receiptCount:2,duplicateCaseEvents:false,reopenAuthorized:false,productionTouched:false,permanentStandChanged:false};
-  await suite.test('signed photo evidence gates replay against restored PostgreSQL and WebP copies',async t=>{
-   const target=await person(),value=command(target,'40000000-0000-4000-8000-000000000004');
    const {MediaMetadataRepository}=loadMediaModule('media-metadata');
    const {LocalMediaWriter}=loadMediaModule('media-write'),{LocalMediaRetirement}=loadMediaModule('media-retirement');
-   async function storage(fixture){
+   async function storage(fixture,t){
     const root=join(tmpdir(),'blizhniy-erasure-media-'+fixture.id);
     await mkdir(root,{mode:0o700});
     const proof=await lstat(root,{bigint:true});
@@ -133,7 +131,9 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
     const worker=await fileWorkerModule().createLocalMediaFileWorker(process.cwd(),root);
     return{root,repo:new MediaMetadataRepository(fixture.db,files,true),worker};
    }
-   const media=await storage(source),photoBytes=Buffer.from('524946460400000057454250','hex');
+  await suite.test('signed photo evidence gates replay against restored PostgreSQL and WebP copies',async t=>{
+   const target=await person(),value=command(target,'40000000-0000-4000-8000-000000000004');
+   const media=await storage(source,t),photoBytes=Buffer.from('524946460400000057454250','hex');
    const image={mimeType:'image/webp',width:1,height:1,size:photoBytes.length,sha256:sha(photoBytes)};
    const clock=(await source.owner.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
    const atAge=days=>"create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()+interval '"+days+" days'$$";
@@ -197,7 +197,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    }
    const restored=await restore('before-photo-erasure.dump');
    await assert.rejects(exportBasicErasureLedger(restored.db,key,sourceId,2,source.id),{name:'AssertionError'});
-   const restoredMedia=await storage(restored),restoredPath=join(restoredMedia.root,photo+'.webp');
+   const restoredMedia=await storage(restored,t),restoredPath=join(restoredMedia.root,photo+'.webp');
    await writeFile(restoredPath,await readFile(join(directory,'before-photo-erasure.webp')),{mode:0o600,flag:'wx'});
    assert.deepEqual((await restoredMedia.repo.readOwned(target.token,photo)).bytes,archivedPhoto);
    const actors=new Map([[admin.id,admin.token],[peer.id,peer.token]]);
@@ -218,7 +218,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await assert.rejects(readFile(restoredPath),{code:'ENOENT'});
    report.signedPhotoReplay={backupSha256:sha(archive),verifiedArchivedPhotos:1,confirmedOperations:4,rejectsDifferentPhotoSet:true};
 
-   const attached=await restore('attached-photo-before-erasure.dump'),attachedStorage=await storage(attached);
+   const attached=await restore('attached-photo-before-erasure.dump'),attachedStorage=await storage(attached,t);
    const attachedPath=join(attachedStorage.root,photo+'.webp');
    await writeFile(attachedPath,await readFile(join(directory,'before-photo-erasure.webp')),{mode:0o600,flag:'wx'});
    const prepare=(document=signed.document,checkpoint=signed.checkpoint)=>prepareBasicErasurePhotos(attached.db,document,key,checkpoint,actors,attached.id);
@@ -401,6 +401,123 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    assert.equal((await restored.owner.query("select count(*)::int as n from app_push.deliveries where notification_id=$1 and state='ready'",[freshEvent])).rows[0].n,1);
    report.notificationQuarantine={backupSha256:sha(archive),...result};
   });
+  await suite.test('one closed restore replays signed account and WebP erasure before quarantining restored notifications',async t=>{
+   const {quarantineRestoredNotifications}=await import('../scripts/quarantine-restored-notifications.mjs');
+   const target=await person(),survivor=await person(),input=command(target,randomUUID());
+   const media=await storage(source,t),bytes=Buffer.from('524946460400000057454250','hex');
+   const image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:sha(bytes)};
+   const clock=(await source.owner.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
+   const aged=days=>"create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()+interval '"+days+" days'$$";
+   let photo,draft;
+   try{
+    await source.owner.query(aged(-8));
+    photo=(await media.repo.reserve(target.token,randomUUID(),image)).id;
+    await new LocalMediaWriter(media.repo,media.worker).write(target.token,photo,{...image,bytes});
+    draft=(await source.owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[target.id])).rows[0].id;
+    await source.owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draft,photo]);
+   }finally{await source.owner.query(clock);}
+   const sourcePath=join(media.root,photo+'.webp');
+   await durable('joint-before.webp',await readFile(sourcePath));
+   const {createECDH}=await import('node:crypto');
+   const syntheticKey=createECDH('prime256v1').generateKeys().toString('base64url');
+   const events=[];
+   for(const user of [target,survivor]){
+    await source.owner.query("update app.cabinet_profiles set profile=jsonb_set(profile,'{pushNotifications}','true') where user_id=$1",[user.id]);
+    await source.owner.query('select app_push.set_subscription($1,$2,$3,$4,$5,null)',
+     [hash(user.token),user.id,'https://fcm.googleapis.com/fcm/send/synthetic-joint-'+user.id,syntheticKey,randomBytes(16).toString('base64url')]);
+    events.push((await source.owner.query("insert into app.notifications(user_id,event_key,category,tone,title,body) values($1,'fixture-joint','booking','info','Синтетический заголовок','Синтетический текст') returning id",[user.id])).rows[0].id);
+    await source.owner.query("insert into app.password_recoveries(token_hash,user_id,email,auth_version,expires_at) values($1,$2,$3,0,clock_timestamp()+interval '15 minutes')",[hash(randomBytes(32).toString('hex')),user.id,user.id+'@synthetic.invalid']);
+   }
+   const [erasedEvent,survivingEvent]=events;
+   const archive=await docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});
+   await durable('joint-before.dump',archive);
+   await source.owner.query('alter role blizhniy_business_email nologin;alter role blizhniy_push_worker nologin');
+   try{
+    await source.owner.query(aged(-8));
+    await source.owner.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo]);
+   }finally{await source.owner.query(clock);}
+   await new LocalMediaRetirement(source.db,media.worker).retire(photo);
+   const erase=()=>eraseAccountWithRetiredMedia(source.db,admin.token,admin.id,input,source.id,undefined,3);
+   const sending=[erasedEvent,randomUUID()];
+   await source.owner.query("update app_push.deliveries set state='sending',attempts=1,claim_id=$2,lease_until=clock_timestamp()+interval '1 minute' where notification_id=$1",sending);
+   await assert.rejects(erase(),{name:'BasicErasureReviewRequired'});
+   await source.owner.query("update app_push.deliveries set state='ready',attempts=0,claim_id=null,lease_until=null where notification_id=$1",[erasedEvent]);
+   await source.owner.query("update notification_delivery.business_email set state='unknown',last_code='UNKNOWN' where notification_id=$1",[erasedEvent]);
+   await assert.rejects(erase(),{name:'BasicErasureReviewRequired'});
+   await source.owner.query("update notification_delivery.business_email set state='ready',last_code=null where notification_id=$1",[erasedEvent]);
+   await erase();
+   await assert.rejects(readFile(sourcePath),{code:'ENOENT'});
+   const signed=await exportBasicErasureLedger(source.db,key,sourceId,3,source.id);
+   const verified=verifyBasicErasureLedger(signed.document,key,signed.checkpoint);
+   assert.equal(verified.version,3);
+   assert.deepEqual(verified.records.find(row=>row.operationId===input.operationId).mediaIds,[photo]);
+   await durable('joint-ledger.json',signed.document);
+   await durable('joint-checkpoint.json',JSON.stringify(signed.checkpoint));
+
+   const restored=await fixture(),restoredMedia=await storage(restored,t);
+   await restored.owner.query('create role blizhniy_runtime nologin;create role blizhniy_business_email nologin;create role blizhniy_push_worker nologin');
+   await docker(['cp',join(directory,'joint-before.dump'),restored.id+':/tmp/joint-before.dump']);
+   await docker(['exec',restored.id,'pg_restore','--username=postgres','--dbname='+database,'--single-transaction','--exit-on-error','--no-owner','/tmp/joint-before.dump']);
+   const restoreChecks=()=>restoreBasicErasure63Checks(restored.db,restored.id);
+   await restored.owner.query('create table app_push.fixture_drift(id text)');
+   try{await assert.rejects(restoreChecks(),/preflight failed/i);}
+   finally{await restored.owner.query('drop table app_push.fixture_drift');}
+   await restoreChecks();
+   const restoredPath=join(restoredMedia.root,photo+'.webp');
+   await writeFile(restoredPath,await readFile(join(directory,'joint-before.webp')),{mode:0o600,flag:'wx'});
+   assert.deepEqual((await restoredMedia.repo.readOwned(target.token,photo)).bytes,bytes);
+   const actors=new Map();
+   for(const actor of [admin,peer]){
+    const token=randomBytes(32).toString('hex');
+    await restored.owner.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(token),actor.id]);
+    actors.set(actor.id,token);
+   }
+   const replay=(document=signed.document,checkpoint=signed.checkpoint)=>reapplyBasicErasureLedger(restored.db,document,key,checkpoint,actors,restored.id);
+   const legacy=sealBasicErasureLedger(verified.records,key,sourceId,2);
+   await assert.rejects(replay(legacy,{sourceId,sha256:sha(legacy)}),{name:'ErasureRestoreIncompleteError',confirmedOperations:0});
+   await assert.rejects(replay(),{name:'ErasureRestoreIncompleteError'});
+   assert.deepEqual(await readFile(restoredPath),bytes);
+   const prepared=await prepareBasicErasurePhotos(restored.db,signed.document,key,signed.checkpoint,actors,restored.id);
+   assert.deepEqual(prepared.photos.find(row=>row.operationId===input.operationId),{operationId:input.operationId,detachedLinks:1});
+   assert.equal(prepared.reopenAuthorized,false);
+   try{
+    await restored.owner.query(aged(8));
+    await new LocalMediaRetirement(restored.db,restoredMedia.worker).retire(photo);
+   }finally{await restored.owner.query(clock);}
+   const result=await replay();
+   assert.equal(result.listedOperations,verified.records.length);
+   assert.equal(result.reopenAuthorized,false);
+   assert.deepEqual(await replay(),result);
+   const subject=(await restored.owner.query(`select
+    (select count(*)::int from app.users where id=$1) as users,
+    (select count(*)::int from app.sessions where user_id=$1) as sessions,
+    (select count(*)::int from app.password_recoveries where user_id=$1) as recoveries,
+    (select count(*)::int from app.notifications where user_id=$1) as inbox,
+    (select count(*)::int from notification_delivery.business_email where notification_id=$2) as email,
+    (select count(*)::int from app_push.deliveries where notification_id=$2) as push,
+    (select count(*)::int from app_push.subscriptions where session_hash=$3) as subscriptions`,
+    [target.id,erasedEvent,hash(target.token)])).rows[0];
+   assert.deepEqual(subject,{users:0,sessions:0,recoveries:0,inbox:0,email:0,push:0,subscriptions:0});
+   assert.equal((await restored.owner.query('select 1 from app.listings where id=$1',[draft])).rowCount,0);
+   await assert.rejects(readFile(restoredPath),{code:'ENOENT'});
+   const retained=async()=>(await restored.owner.query(`select
+    (select count(*)::int from app.users where id=$1) as users,
+    (select count(*)::int from app.notifications where id=$2) as inbox,
+    (select count(*)::int from app_admin.basic_account_erasures where operation_id=$3) as receipt,
+    (select state from notification_delivery.business_email where notification_id=$2) as email,
+    (select state from app_push.deliveries where notification_id=$2) as push`,
+    [survivor.id,survivingEvent,input.operationId])).rows[0];
+   assert.deepEqual(await retained(),{users:1,inbox:1,receipt:1,email:'ready',push:'ready'});
+   const resultAfterQuarantine=await quarantineRestoredNotifications(restored.db,restored.id);
+   assert.equal(resultAfterQuarantine.reopenAuthorized,false);
+   assert.deepEqual(await retained(),{users:1,inbox:1,receipt:1,email:'unknown',push:'unknown'});
+   assert.equal(await new(load('identity').IdentityStore)(restored.db).resolveSession(survivor.token),null);
+   assert.equal((await restored.owner.query('select 1 from app.password_recoveries')).rowCount,0);
+   assert.equal((await restored.owner.query('select * from notification_delivery.claim_business_email($1)',[randomUUID()])).rowCount,0);
+   assert.equal((await restored.owner.query('select * from app_push.claim_delivery($1)',[randomUUID()])).rowCount,0);
+   report.jointErasureRestore={backupSha256:sha(archive),ledgerVersion:verified.version,confirmedOperations:result.listedOperations,verifiedArchivedPhotos:1,...resultAfterQuarantine};
+  });
+  assert.ok(report.jointErasureRestore);
   assert.ok(report.signedPhotoReplay);
   assert.ok(report.notificationQuarantine);
   await durable('report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({passed:true,backupRestore:true,report:join(directory,'report.json')}));
