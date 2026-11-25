@@ -1,0 +1,84 @@
+import { createRequire } from 'node:module';
+import { fstatSync } from 'node:fs';
+import { lstat, readFile, readlink, realpath } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { verifyUserAccessDatabase } from './user-access-role.mjs';
+import { startLocalUserAccessOperator } from './local-user-access-operator.mjs';
+
+const require = createRequire(import.meta.url);
+const socketPath = '/run/blizhniy-user-access/operator.sock';
+const unavailable = () => new Error('Hosted user operator unavailable');
+
+async function activatedSocket(env) {
+  const fd = 3, directory = dirname(socketPath);
+  if (env.LISTEN_PID !== String(process.pid) || env.LISTEN_FDS !== '1' || env.LISTEN_FDNAMES !== 'operator' ||
+      !fstatSync(fd).isSocket()) throw unavailable();
+  const [root,parent,socket,descriptor,unix] = await Promise.all([
+    lstat('/run'),lstat(directory),lstat(socketPath),readlink('/proc/self/fd/3'),readFile('/proc/net/unix','utf8'),
+  ]);
+  const inode = /^socket:\[(\d+)\]$/.exec(descriptor)?.[1];
+  if (!inode || !root.isDirectory() || root.uid !== 0 || (root.mode & 0o022) !== 0 ||
+      !parent.isDirectory() || parent.uid !== 0 || (parent.mode & 0o7777) !== 0o755 ||
+      await realpath(directory) !== directory || !socket.isSocket() || socket.uid !== 0 ||
+      (socket.mode & 0o7777) !== 0o660 || socket.nlink !== 1) throw unavailable();
+  const listeners = unix.trim().split('\n').slice(1).map(line => line.trim().split(/\s+/));
+  if (listeners.filter(row => row[3] === '00010000' && row[4] === '0001' && row[6] === inode && row[7] === socketPath).length !== 1) {
+    throw unavailable();
+  }
+  return { fd,socketPath };
+}
+
+async function main(env=process.env) {
+  if (process.argv.length !== 2 || process.platform !== 'linux' || process.getuid?.() === 0 ||
+      env.NODE_ENV !== 'production' || env.BLIZHNIY_USER_ACCESS_OPERATOR !== 'hosted-v1' ||
+      env.BLIZHNIY_LOCAL_PRIMARY !== undefined || env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN !== undefined ||
+      env.BLIZHNIY_DB_HOST !== '17e86f80f26733d39ef4b84d.twc1.net' || env.BLIZHNIY_DB_PORT !== '5432' ||
+      env.BLIZHNIY_DB_NAME !== 'blizhniy_prod' || env.BLIZHNIY_DB_USER !== 'blizhniy_user_operator' ||
+      env.BLIZHNIY_DB_SSL_MODE !== 'verify-full' || env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
+      Object.keys(process.env).some(key => key.startsWith('PG'))) throw unavailable();
+  const activation = await activatedSocket(env);
+  const { PostgresDatabase,readPostgresConfig } = require('../compiled/lib/postgres.js');
+  const { PostgresAdminUserAccess } = require('../compiled/lib/postgres-admin-user-access.js');
+  const { AdminUserAccessError } = require('../compiled/lib/admin-user-access-contract.js');
+  const config = readPostgresConfig(env);
+  const db = new PostgresDatabase(new (require('pg').Pool)({ ...config,max:3,application_name:'blizhniy-user-operator' }));
+  const store = new PostgresAdminUserAccess(db);
+  const verify = deadline => verifyUserAccessDatabase(db,{ database:config.database,hosted:true,deadline });
+  let closed = false, closing, server;
+  const runtime = {
+    async execute(token,command,signal) {
+      try {
+        const deadline = performance.now()+12000;
+        if (closed || signal?.aborted) throw unavailable();
+        await verify(deadline);
+        if (closed || signal?.aborted || performance.now()+6500>deadline) throw unavailable();
+        return await store.execute(token,command);
+      } catch(error) {
+        if (error instanceof AdminUserAccessError) throw error;
+        throw unavailable();
+      }
+    },
+    close: () => closing ??= (async()=>{ closed=true; await db.close(); })(),
+  };
+  const stop = () => { void server?.close().catch(()=>{ process.exitCode=1; }); };
+  try {
+    await verify();
+    server = await startLocalUserAccessOperator(runtime,{ activation });
+    process.once('SIGTERM',stop);
+    process.once('SIGINT',stop);
+    console.log(JSON.stringify({ event:'hosted_user_operator',status:'ready' }));
+    if (await server.done !== 0) throw unavailable();
+  } finally {
+    process.removeListener('SIGTERM',stop);
+    process.removeListener('SIGINT',stop);
+    if (server) await server.close(); else await runtime.close();
+  }
+}
+
+if (import.meta.main) {
+  try { await main(); }
+  catch {
+    console.error(JSON.stringify({ event:'hosted_user_operator',status:'unavailable' }));
+    process.exitCode=1;
+  }
+}

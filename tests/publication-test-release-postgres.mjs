@@ -981,6 +981,11 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
       await testQueueHealthAlert(queue,{admin,config,load,verifyFinance:()=>copiedGuard.verifyPaymentReconciliationDatabase(
        workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true})});
      });
+     await t.test('hosted user access keeps separate authority on the complete 0087 release',async users=>{
+      const {testHostedUserAccess}=await import('./hosted-user-access-postgres.mjs');
+      await testHostedUserAccess(users,{admin,config,load,verifyFinance:()=>copiedGuard.verifyPaymentReconciliationDatabase(
+       workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true})});
+     });
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;
