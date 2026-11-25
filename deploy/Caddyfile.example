@@ -36,6 +36,7 @@ example.com {
             }
             header {
                 X-Content-Type-Options nosniff
+                Cross-Origin-Resource-Policy same-origin
                 Strict-Transport-Security max-age=31536000
                 X-Frame-Options SAMEORIGIN
                 Referrer-Policy strict-origin-when-cross-origin

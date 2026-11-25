@@ -97,5 +97,14 @@ test('robots and sitemap responses require a fresh copy', async () => {
     assert.deepEqual(new Set(header.value.split(/,\s*/)), new Set(['no-store', 'no-cache', 'must-revalidate']));
     assert.deepEqual([...rule.headers].filter(entry => entry.key === 'Cross-Origin-Resource-Policy').map(entry => entry.value), ['cross-origin']);
   }
-  assert.deepEqual([...rules].filter(rule => rule.headers.some(entry => entry.key === 'Cross-Origin-Resource-Policy')).map(rule => rule.source), ['/robots.txt', '/sitemap.xml']);
+  const publicSources = [...rules].filter(rule => rule.headers.some(entry =>
+    entry.key === 'Cross-Origin-Resource-Policy' && entry.value === 'cross-origin'));
+  assert.deepEqual(publicSources.map(rule => rule.source), ['/robots.txt', '/sitemap.xml']);
+});
+
+test('only Next build assets receive the same-origin resource policy from config', async () => {
+  const rules = await load('next.config.ts').default.headers();
+  const assetSources = [...rules].filter(rule => rule.headers.some(entry =>
+    entry.key === 'Cross-Origin-Resource-Policy' && entry.value === 'same-origin'));
+  assert.deepEqual(assetSources.map(rule => rule.source), ['/_next/static/:path*']);
 });

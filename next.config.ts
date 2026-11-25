@@ -64,6 +64,10 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/_next/static/:path*",
+        headers: [{ key: "Cross-Origin-Resource-Policy", value: "same-origin" }],
+      },
       ...["/robots.txt", "/sitemap.xml"].map((source) => ({
         source,
         headers: [

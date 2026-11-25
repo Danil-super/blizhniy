@@ -45,6 +45,8 @@ test('publishes both verified static directories before a switch and keeps the p
 test('the Caddy route selects an incoming file before its unconditional running root', () => {
   const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
   assert.match(template, /root @incoming \/var\/www\/blizhniy-static\/incoming\s+root \* \/var\/www\/blizhniy-static\/running/);
+  const fileHeaders = template.match(/route @available \{([\s\S]*?)\bfile_server\b/)?.[1];
+  assert.match(fileHeaders ?? '', /^\s+Cross-Origin-Resource-Policy same-origin$/m);
 });
 
 test('both Next build manifests remain available across a release switch', () => {
