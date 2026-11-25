@@ -40,7 +40,7 @@ const layouts=[
  {name:'hosted specialist admission and inbox preferences',specialistTerms:true,inbox:true,account:true},
 ];
 for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'specialist service startup on ':'candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment on ')+layout,{timeout:account&&inbox?180000:90000},async suite=>{
- let container,admin,db,workerDb,artifactDirectory;const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
+ let container,admin,db,workerDb,tariffDb,artifactDirectory;const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
  const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
  const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
  try{
@@ -992,13 +992,29 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
   }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");
   const city=(await admin.query('select id from app.cities')).rows[0].id,category=(await admin.query('select id from app.categories')).rows[0].id,profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
-  async function actor(){
+  async function actor(role='user'){
    const owner=randomUUID(),phone='+7999'+String(randomInt(10000000)).padStart(7,'0'),token=randomBytes(32).toString('hex');
-   await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[owner,owner+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+   await admin.query('insert into app.users(id,email,password_hash,role,email_verified_at) values($1,$2,$3,$4,clock_timestamp())',[owner,owner+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
    await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[owner,{name:'Тестовый пользователь',phone}]);await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[owner,phone,'test-'+owner]);
    await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),owner]);return{owner,phone,token};
   }
   const current=await actor(),other=await actor(),merchant={shopId:'publication-fixture',isTest:true,secretKey:'test_synthetic_only'},checkout={...merchant,siteOrigin:process.env.BLIZHNIY_AUTH_ORIGIN,receiptVatCode:1};
+  const {getAdminUserAccessMigration}=await import('../scripts/admin-user-access-release.mjs');
+  const {getAdminTariffMigration}=await import('../scripts/admin-tariff-release.mjs');
+  for(const migration of [getAdminUserAccessMigration(),getAdminTariffMigration()])await admin.query(migration.source);
+  const tariffPassword=randomBytes(32).toString('hex'),tariffSignature='app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
+  await admin.query(`create role blizhniy_user_operator login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls password ${pg.escapeLiteral(tariffPassword)};
+    grant connect on database blizhniy_test to blizhniy_user_operator;
+    grant usage on schema app_admin to blizhniy_user_operator;
+    grant execute on function ${tariffSignature} to blizhniy_user_operator`);
+  tariffDb=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_user_operator',password:tariffPassword,max:1}));
+  await assert.rejects(tariffDb.query('update app.tariffs set price=1 where false'),{code:'42501'});
+  const tariffAdmin=await actor('admin'),tariffStore=new(load('postgres-admin-tariffs').PostgresAdminTariffs)(tariffDb);
+  const tariffAuthority={resource:'tariffs',expectedAdminId:tariffAdmin.owner};
+  const listTariffs=()=>tariffStore.execute(tariffAdmin.token,{...tariffAuthority,action:'list'});
+  const reviseTariff=(tariff,price,durationDays)=>tariffStore.execute(tariffAdmin.token,{...tariffAuthority,action:'change',input:{
+   id:randomUUID(),tariffId:tariff.id,expectedRevision:tariff.revision,name:tariff.name,price,durationDays,active:tariff.active,reason:'Синтетическая проверка условий размещения',
+  }});
   async function draft(kind,actor=current){
    const target=kind==='listing'?(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone) values($1,'sell',$2,$3,'ТЕСТ: новое размещение','Синтетический прогон нового размещения.',$4) returning id,revision::text",[actor.owner,category,city,actor.phone])).rows[0]:
     (await admin.query('insert into app.work_publications(author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,$3,$4,$5,$6) returning id,revision::text',[actor.owner,kind,randomUUID(),load('work-publication-contract').parseWorkPublicationForm(kind,{kind,title:'ТЕСТ: новое размещение',description:'Синтетический прогон нового размещения.',cityName:'Краснодар',professionName:'Сантехник',professionId:profession,contactPhone:actor.phone,placementRightConfirmed:true,...(kind==='vacancy'?{employerType:'person',organization:'Иван Иванов',salary:'3500'}:{budget:'3500'})}),city,profession])).rows[0];
@@ -1034,13 +1050,27 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
    await assert.rejects(s.preview(other.token,other.owner,d.id,d.revision));
    const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,s,{...merchant,ownerId:current.owner},fetcher);
    const previousPosts=posts;
-   await admin.query('update app.tariffs set price=price+0.01 where id=$1',[quote.tariff.id]);
+   const tariff=(await listTariffs()).tariffs.find(row=>row.id===quote.tariff.id);
+   assert.equal(tariff.price,quote.tariff.amount);
+   assert.equal(tariff.durationDays,quote.tariff.durationDays);
+   const changed=await reviseTariff(tariff,'199.01',31);
    try{
+    const fresh=await draft(kind);
+    const newQuote=await s.preview(fresh.token,fresh.owner,fresh.id,fresh.revision);
+    assert.deepEqual({amount:newQuote.tariff.amount,durationDays:newQuote.tariff.durationDays},{amount:'199.01',durationDays:31});
     await assert.rejects(payment.dispatch(d.token,d.owner,order.id),{name:'ListingCheckoutConflictError'});
     assert.equal(posts,previousPosts);
     assert.equal((await admin.query('select count(*)::int n from app.payment_dispatch_anchors where intent_id=$1',[order.id])).rows[0].n,0);
     assert.equal((await s.readOrder(d.token,d.owner,order.id)).order.amount,quote.tariff.amount);
-   }finally{await admin.query('update app.tariffs set price=$2 where id=$1',[quote.tariff.id,quote.tariff.amount]);}
+    assert.equal((await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body,raw);
+    const recovered=await tariffStore.execute(tariffAdmin.token,{...tariffAuthority,action:'recover',tariffId:tariff.id,id:changed.receipt.id});
+    assert.deepEqual(recovered.receipt,changed.receipt);
+   }finally{
+    const restored=await reviseTariff(changed.tariffs[0],tariff.price,tariff.durationDays);
+    assert.equal(restored.tariffs[0].price,tariff.price);
+    assert.equal(restored.tariffs[0].durationDays,tariff.durationDays);
+    assert.deepEqual(restored.history.map(row=>row.id),[restored.receipt.id,changed.receipt.id]);
+   }
    await payment.dispatch(d.token,d.owner,order.id);
    assert.deepEqual(await worker.tick(),{state:'completed'});const read=await s.readOrder(d.token,d.owner,order.id);assert.equal(read.order.status,'succeeded');assert.ok(read.fulfillment);
    const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(workerDb,merchant,{postmoderation:true,publicationTestOwner:current.owner,...(kind==='listing'?{}:{targetType:kind})});assert.equal((await fulfillment.fulfill(order.id)).state,'fulfilled');assert.deepEqual(await s.readOrder(d.token,d.owner,order.id),read);
@@ -1166,6 +1196,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
   });
  }finally{
   for(const key of variables){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}globalThis.fetch=originalFetch;
+  await tariffDb?.close();
   await workerDb?.close();await db?.close();await admin?.end();if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force','--volumes',container]);}if(artifactDirectory)await rm(artifactDirectory,{recursive:true});
  }
 });
