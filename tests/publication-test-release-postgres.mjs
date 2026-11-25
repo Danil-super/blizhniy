@@ -910,7 +910,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,artifactOptions));
       }finally{await admin.query('revoke execute on function app.next_hosted_marquee(text) from blizhniy_runtime');}
      });
-     await t.test('packaged payment and refund services accept only the complete hosted notification schema',async()=>{
+     await t.test('packaged payment and refund services accept only the complete hosted notification schema',async notifications=>{
       const {getHostedNotificationUpgradeSql,getHostedRefundReleasePlan}=await import('../scripts/publication-test-release-plan.mjs');
       const verifyOptions={database:config.database,publicationTest:true,specialistAccountTest:true};
       const refundOptions={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
@@ -922,7 +922,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        const journal=getHostedRefundReleasePlan(87).map(({name,sha256})=>({name,sha256}));
        assert.deepEqual(api[entry.plan](config.database,{schema:87}).journal,journal);
        await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
-       refundArtifacts.push({...entry,verify:api[entry.verify]});
+       refundArtifacts.push({...entry,destination,verify:api[entry.verify]});
       }
       const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions);
       const verifyAll=async()=>{
@@ -978,6 +978,12 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        try{await verify(connection,{...refundOptions,database});}
        finally{await connection.close();}
       }
+      await notifications.test('packaged hosted refund commands check TLS and merchant before sending one complete refund',async()=>{
+       const {testHostedRefundCli}=await import('./hosted-refund-cli-cases.mjs');
+       await admin.query('alter database hosted_notifications_restored rename to blizhniy_prod');
+       try{await testHostedRefundCli({admin,config,load,docker,container,directory:artifactDirectory,artifacts:refundArtifacts});}
+       finally{await admin.query('alter database blizhniy_prod rename to hosted_notifications_restored');}
+      });
      });
      await t.test('only an enrolled advertising purchase can prepare, dispatch, cancel, fulfill and refund on the hosted schema',
       ()=>testHostedMarqueeAdmission({admin,config,load,reconciler:workerDb,compiledWorker,refundOperator:operator.db,refundWorker:worker.db}));

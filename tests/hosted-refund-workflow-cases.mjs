@@ -218,6 +218,23 @@ async function hostedRefundActor(admin,load,role){
   return{id,token};
  }
 
+export async function seedHostedRefundCommand(admin,load,merchant){
+ const payer=await hostedRefundActor(admin,load,'user'),reviewer=await hostedRefundActor(admin,load,'admin');
+ const city=(await admin.query("select id from app.cities where slug='hosted-refund-city'")).rows[0].id;
+ const profession=(await admin.query("select id from app.specialist_categories where slug='hosted-refund-work'")).rows[0].id;
+ const phone='+79995550158',targetId=randomUUID(),origin=process.env.BLIZHNIY_AUTH_ORIGIN;
+ await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer.id,{name:'Стендовый работодатель',phone}]);
+ await admin.query("insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,'hosted-refund-cli')",[payer.id,phone]);
+ const form=load('work-publication-contract').parseWorkPublicationForm('vacancy',{
+  title:'Синтетическая проверка запуска возврата',description:'Вакансия для проверки установленной TEST-службы.',
+  cityName:'Стендовый город',professionName:'Стендовая профессия',professionId:profession,employerType:'person',
+  organization:'Стендовый работодатель',salary:'3500',contactPhone:phone,placementRightConfirmed:true});
+ await admin.query("insert into app.work_publications(id,author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,'vacancy',$3,$4,$5,$6)",
+  [targetId,payer.id,randomUUID(),form,city,profession]);
+ const item=await captureHostedPlacement({admin,load,merchant,origin,payer,targetId,targetType:'vacancy',tariffId:'vacancy-publication'});
+ return {item,reviewer};
+}
+
 async function hostedSpecialistCard(admin,load,payer,profession,phone,subject){
   const name='Стендовый специалист';
   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer.id,{name,phone}]);
