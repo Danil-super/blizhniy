@@ -107,6 +107,44 @@ async function captureHostedPlacement({admin,load,merchant,origin,payer,targetId
  }
 }
 
+async function verifyHostedSpecialistExpiry({admin,load,payer,peer,targetId,paymentId}){
+ const client=await admin.connect();
+ try{
+  await client.query('begin');
+  // Age the captured period only in this disposable fixture; roll back the dates and DDL together.
+  await client.query(`alter table app.payment_fulfillments disable trigger payment_fulfillment_guard;
+   alter table app.service_publications disable trigger specialist_publication_window_guard`);
+  const aged=(await client.query(`update app.payment_fulfillments
+   set published_at=statement_timestamp()-(expires_at-published_at),expires_at=statement_timestamp()
+   where intent_id=$1 returning published_at::text,expires_at::text`,[paymentId])).rows[0];
+  await client.query('update app.service_publications set published_at=$2,expires_at=$3 where id=$1',
+   [targetId,aged.published_at,aged.expires_at]);
+  await client.query(`alter table app.payment_fulfillments enable trigger payment_fulfillment_guard;
+   alter table app.service_publications enable trigger specialist_publication_window_guard`);
+  const query=(sql,params)=>client.query(sql,params);
+  const db={query,transaction:work=>work({query})};
+  const cabinet=new(load('postgres-service-publications').PostgresServicePublicationStore)(db,{specialistProfileIdentity:true});
+  const catalog=new(load('postgres-public-service').PostgresPublicServiceStore)(db,{specialistProfileIdentity:true,testPublicationLabels:true});
+  const history=new(load('postgres-payment-history').PostgresPaymentHistoryStore)(db);
+  const read=await cabinet.read(payer.token,payer.id,'specialist',targetId);
+  assert.equal(read.status,'expired');
+  assert.equal(read.paid,true);
+  assert.equal(await catalog.read('specialist',targetId),undefined);
+  assert.equal((await catalog.list('specialist')).some(card=>card.id===targetId),false);
+  const original=await history.readSpecialistOrder(payer.token,payer.id,paymentId);
+  assert.equal(original.order.status,'succeeded');
+  assert.equal(original.testPublication,true);
+  assert.deepEqual(original.fulfillment,{publishedAt:read.publishedAt,expiresAt:read.expiresAt});
+  assert.equal(await history.readSpecialistOrder(peer.token,peer.id,paymentId),null);
+  await assert.rejects(client.query(`insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision)
+   values($1,$2,$3,'specialist',$4,$5::bigint)`,[randomUUID(),payer.id,randomUUID(),targetId,read.revision]),
+  {code:'23505',constraint:'payment_order_active_target_idx'});
+ }finally{
+  await client.query('rollback');
+  client.release();
+ }
+}
+
 async function assertHostedPlacementReceipt(admin,purchase,upgrade){
  const {id,requestBody}=purchase,body=JSON.parse(requestBody);
  const fiscalMode=async patch=>(await admin.query(`select app.placement_refund_fiscal_mode(jsonb_populate_record(i,$2::jsonb)) as mode
@@ -287,6 +325,8 @@ async function verifyPlacementRefund({admin,config,load,operator,worker,ca,city,
   if(catalogue){
    assert.equal((await catalogue.read('specialist',targetId))?.id,targetId);
    assert.equal((await admin.query('select count(*)::int n from app.specialist_test_enrollment where owner_id=$1',[payer.id])).rows[0].n,0);
+   await verifyHostedSpecialistExpiry({admin,load,payer,peer,targetId,paymentId:id});
+   assert.deepEqual(await period(),originalPeriod);
   }
   const journal=async(status,kind=targetType,paymentId=id)=>(await load('postgres-admin-payment-journal').readAdminPaymentJournal(webDb,merchant.shopId,reviewer.token,
    {expectedAdminId:reviewer.id,kind,status,after:null},true)).items.find(item=>item.id===paymentId);
