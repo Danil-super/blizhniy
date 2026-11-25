@@ -41,6 +41,8 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
    await page.getByRole('heading',{name:rows[1].form.title,exact:true}).waitFor();const image=page.locator(`img[src="/api/service-publications/${rows[1].id}/photos/${photo}"]`).first();await image.waitFor();await image.evaluate(node=>node.decode());assert.ok(await image.evaluate(node=>node.naturalWidth>0));
    const api=await fetch(origin+'/api/fair-applications'),payload=await api.json();assert.equal(api.status,200);assert.equal(payload.applications[0].participantName,rows[1].form.title);for(const value of secrets)assert.equal(JSON.stringify(payload).includes(value),false);
    assert.equal((await page.goto(origin+'/')).status(),200);await page.getByRole('region',{name:'Рекламная строка',exact:true}).getByText(rows[2].form.title,{exact:true}).waitFor();
+   const dates=page.getByRole('region',{name:'Рекламная строка',exact:true}).locator('time');
+   assert.deepEqual(await dates.evaluateAll(elements=>elements.map(element=>element.dateTime)),[rows[2].publishedAt,rows[2].expiresAt]);
   });
   await suite.test('expired service cards, detail and marquee disappear without an old-data fallback',async()=>{
    await writeFile(fixture,JSON.stringify(rows.map(row=>({...row,expiresAt:'2000-01-01T00:00:00.000001Z'}))),{mode:0o600});

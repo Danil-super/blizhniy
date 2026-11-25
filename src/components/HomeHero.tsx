@@ -4,7 +4,7 @@ import { AdMarquee } from './AdMarquee';
 
 export async function HomeHero() {
   const messages = await getActiveAdMarqueeMessages(({text,publishedAt,expiresAt})=>
-    `${text} · Показ с ${formatPublicationDateTime(publishedAt)} по ${formatPublicationDateTime(expiresAt)}`);
+    <><span>{text}</span><span className="font-normal text-slate-600"> · Показ с <time dateTime={publishedAt}>{formatPublicationDateTime(publishedAt)}</time> по <time dateTime={expiresAt}>{formatPublicationDateTime(expiresAt)}</time></span></>);
 
   return <AdMarquee messages={messages}/>;
 }

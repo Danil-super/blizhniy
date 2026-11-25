@@ -47,5 +47,7 @@ test('the text strip itself is the control with no separate icon button',async()
 
 test('public paid advertising shows the scheduled start and end in Moscow time',async()=>{
  const html=await markup([{text:'ТЕСТ · Щит',publishedAt:'2026-11-23T01:23:45.000001Z',expiresAt:'2026-11-30T01:23:45.000001Z'}]);
- assert.match(html,/ТЕСТ · Щит · Показ с 23 ноября 2026 г. в 04:23 по 30 ноября 2026 г. в 04:23/);
+ assert.match(html,/ТЕСТ · Щит<\/span>/);
+ assert.match(html,/<time dateTime="2026-11-23T01:23:45.000001Z">23 ноября 2026 г. в 04:23<\/time>/i);
+ assert.match(html,/<time dateTime="2026-11-30T01:23:45.000001Z">30 ноября 2026 г. в 04:23<\/time>/i);
 });

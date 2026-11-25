@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { PublicMarquee } from './public-service-publications';
 import { defaultAdMarqueeMessages, maxActiveAdMarqueePlacements } from "@/lib/ad-marquee";
 import { createStoredNotification } from "@/lib/notification-store";
@@ -193,11 +194,11 @@ export async function listActiveAdMarqueePlacements(options: { refresh?: boolean
   return rows.map(mapPlacement);
 }
 
-export async function getActiveAdMarqueeMessages(format: (placement:PublicMarquee)=>string = placement=>placement.text) {
+export async function getActiveAdMarqueeMessages(format?: (placement:PublicMarquee)=>ReactNode) {
   if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
     const {getProductionPublicServiceStore}=await import('./production-public-service-runtime');
     const placements=await (await getProductionPublicServiceStore()).list('marquee',5,0);
-    return placements.length?placements.map(format):defaultAdMarqueeMessages;
+    return placements.length?placements.map(placement=>format?format(placement):placement.text):defaultAdMarqueeMessages;
   }
   const placements = await listActiveAdMarqueePlacements({ refresh: false, timeoutMs: 300 }).catch((error) => {
     if (error && typeof error === "object" && "digest" in error && error.digest === "DYNAMIC_SERVER_USAGE") {
