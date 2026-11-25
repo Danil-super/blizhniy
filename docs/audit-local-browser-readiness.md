@@ -14,7 +14,7 @@
 
 Для повторного прогона допускается задать `BLIZHNIY_LOCAL_PRIMARY_FIXTURE_DIR` при `NODE_ENV=test`. Каталог должен принадлежать текущему пользователю, иметь права 0700 и быть указан каноническим абсолютным путём. Подготовить контейнер штатным `local-primary.mjs --prepare`, запустить сборку с `--background` и заполнить данные `seed-local-primary-demo.mjs`. [Публичный прогон](../scripts/check-local-public-accessibility.mjs) · [Прогон с аккаунтами](../scripts/check-local-private-accessibility.mjs)
 
-Открыта ручная проверка со скринридером и физическим телефоном. Замеры Chromium относятся к указанной конфигурации эмуляции. [Playwright Emulation](https://playwright.dev/docs/emulation) · [Playwright Accessibility Testing](https://playwright.dev/docs/accessibility-testing)
+На сборке `6a2a5809` Orca 50.3 в отдельном виртуальном дисплее озвучила Email, Пароль, Адрес и Краткое описание. К полям пароля и описания переходили клавишей Tab. Для проверки фокуса отключили автоматическое чтение при загрузке в тестовом экземпляре Orca. Журнал озвучивания и результат сохранены вне Git в `audit-s63-orca.NCDFQA4K/`. Для остальных ключевых действий и физического телефона проверка открыта. Замеры Chromium относятся к указанной конфигурации эмуляции. [Playwright Emulation](https://playwright.dev/docs/emulation) · [Playwright Accessibility Testing](https://playwright.dev/docs/accessibility-testing)
 
 ## Нагрузка
 
