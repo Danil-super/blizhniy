@@ -42,7 +42,14 @@ try{
  const user=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8')).find(row=>row.role===role);
  await page.goto(state.origin+'/auth');await page.getByLabel('Email',{exact:true}).fill(user.email);await page.getByLabel('Пароль',{exact:true}).fill(user.password);await page.getByRole('button',{name:'Войти',exact:true}).click();await page.waitForURL(state.origin+'/');
  phase='listing';await page.goto(state.origin+'/razmestit/obyavlenie');
- await page.getByLabel('Фотографии объявления',{exact:true}).setInputFiles({name:'keyboard-portrait.png',mimeType:'image/png',buffer:png});
+ const photoInput=page.getByLabel('Фотографии объявления',{exact:true}),photoPicker=photoInput.locator('xpath=..');
+ const uploadError=photoPicker.locator(':scope > [role=alert]');
+ const invalidPhoto={name:'keyboard-damaged.png',mimeType:'image/png',buffer:Buffer.from('invalid image')};
+ assert.equal(await uploadError.count(),1,'the photo error announcement is present before selection');
+ assert.equal(await uploadError.textContent(),'');
+ await photoInput.setInputFiles(invalidPhoto);
+ await uploadError.filter({hasText:/keyboard-damaged\.png: Не удалось обработать фото/}).waitFor();
+ await photoInput.setInputFiles({name:'keyboard-portrait.png',mimeType:'image/png',buffer:png});
  for(const [width,height]of[[320,568],[768,700],[1440,900]]){
   phase='listing-'+width;await page.setViewportSize({width,height});
   const opener=page.getByRole('button',{name:'Открыть файл 1',exact:true});await opener.focus();await page.keyboard.press('Enter');
@@ -55,12 +62,22 @@ try{
   await tabCycle(library);await page.keyboard.press('Escape');await library.waitFor({state:'detached'});assert.equal(await opener.evaluate(node=>node===document.activeElement),true,'library returns focus to its opener');
   results.push({flow:'nested-listing',width});
  }
- phase='crop-output';await page.getByRole('button',{name:'Открыть файл 1',exact:true}).click();await page.getByRole('dialog',{name:'Медиатека',exact:true}).getByRole('button',{name:'Кадр',exact:true}).click();
+ phase='crop-output';await page.getByRole('button',{name:'Открыть файл 1',exact:true}).click();
+ const editorLibrary=page.getByRole('dialog',{name:'Медиатека',exact:true});
+ const libraryError=editorLibrary.getByRole('alert');
+ const cropStatus=editorLibrary.getByRole('status');
+ assert.equal(await libraryError.count(),1,'the media library has its own error announcement');
+ assert.equal(await cropStatus.textContent(),'','the crop announcement is mounted before editing');
+ await photoInput.setInputFiles(invalidPhoto);
+ await libraryError.filter({hasText:/keyboard-damaged\.png: Не удалось обработать фото/}).waitFor();
+ const libraryCrop=editorLibrary.getByRole('button',{name:'Кадр',exact:true});await libraryCrop.click();
  const crop=page.getByRole('dialog',{name:'Кадр для карточки',exact:true});await moveAndReset(crop);
  await page.evaluate(()=>{const OriginalImage=window.Image;window.__cropApply={pending:false,release:null};window.Image=function(...args){window.Image=OriginalImage;const image=new OriginalImage(...args);Object.defineProperty(image,'onload',{set(listener){image.addEventListener('load',event=>{window.__cropApply.pending=true;window.__cropApply.release=()=>listener.call(image,event);},{once:true});}});return image;};});
  phase='crop-output-apply';await crop.getByRole('button',{name:'Применить',exact:true}).click();phase='crop-output-pending';await page.waitForFunction(()=>window.__cropApply?.pending);
  await page.keyboard.press('Escape');assert.equal(await crop.isVisible(),true);assert.equal(await crop.getByRole('button',{name:'Закрыть редактор фото',exact:true}).isDisabled(),true);
  await tabCycle(crop);phase='crop-output-release';await page.evaluate(()=>window.__cropApply.release());await crop.waitFor({state:'detached'});
+ await cropStatus.filter({hasText:/^Кадр применён\.$/}).waitFor();
+ assert.equal(await libraryCrop.evaluate(node=>node===document.activeElement),true,'apply returns focus into the library');
  const output=await page.getByLabel('Фотографии объявления',{exact:true}).evaluate(async node=>{const image=await createImageBitmap(node.files[0]);const size={width:image.width,height:image.height};image.close();return size;});assert.deepEqual(output,{width:1600,height:1200});
  await page.getByRole('dialog',{name:'Медиатека',exact:true}).getByRole('button',{name:'Готово',exact:true}).click();await page.getByRole('button',{name:'Удалить файл 1',exact:true}).click();
  phase='order';await page.goto(state.origin+'/rabota/zakazy/sozdat');await page.locator('input[type=file]').setInputFiles({name:'order-keyboard.png',mimeType:'image/png',buffer:png});

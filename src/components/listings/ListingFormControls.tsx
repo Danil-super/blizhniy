@@ -719,6 +719,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   const [selectedId, setSelectedId] = useState("");
   const [cropEditorId, setCropEditorId] = useState("");
   const [mediaMessage, setMediaMessage] = useState("");
+  const [cropApplied, setCropApplied] = useState(false);
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxFiles = 20;
@@ -738,6 +739,8 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
 
   async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     if(preparingRef.current)return;
+    setMediaMessage("");
+    setCropApplied(false);
     const input=event.currentTarget;input.dataset.photoPreparing='true';
     const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
     preparingRef.current=true;setPreparing(true);
@@ -837,6 +840,12 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
     });
   }
 
+  function openCropEditor(id: string) {
+    setMediaMessage("");
+    setCropApplied(false);
+    setCropEditorId(id);
+  }
+
   async function applySquareCrop(item: PreviewMedia, dataUrl: string) {
     const croppedFile = croppedPhotoFile(dataUrl, item.name);
     const croppedUrl = URL.createObjectURL(croppedFile);
@@ -864,7 +873,15 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       return updated;
     });
     setCropEditorId("");
+    setCropApplied(true);
   }
+
+  const mediaFeedback = (
+    <>
+      <p role="alert" className={mediaMessage ? "mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700" : "sr-only"}>{mediaMessage}</p>
+      <p role="status" className={cropApplied ? "mt-3 text-sm font-semibold text-slate-700" : "sr-only"}>{cropApplied ? "Кадр применён." : ""}</p>
+    </>
+  );
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -904,7 +921,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
         <span className="hidden rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 sm:inline-flex">Открыть</span>
       </button>
 
-      {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
+      {!libraryOpen && mediaFeedback}
       {preparing&&<p role="status" className="mt-2 text-sm text-blue-800">Подготавливаем фотографии…</p>}
 
       {media.length ? (
@@ -939,7 +956,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
               )}
               <button
                 type="button"
-                onClick={() => setCropEditorId(item.id)}
+                onClick={() => openCropEditor(item.id)}
                 className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
               >
                 Кадр
@@ -979,6 +996,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
               </div>
             </div>
 
+            <div className="px-4">{mediaFeedback}</div>
             {selectedMedia ? (
               <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                 <div className="mx-auto max-w-xl">
@@ -993,7 +1011,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">Фото</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0664b3] transition hover:border-[#0875d1] hover:bg-white">
+                      <button type="button" onClick={() => openCropEditor(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0664b3] transition hover:border-[#0875d1] hover:bg-white">
                         Кадр
                       </button>
                       <button type="button" onClick={() => makeCover(selectedMedia)} disabled={heroMedia?.id === selectedMedia.id} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] disabled:opacity-50">
