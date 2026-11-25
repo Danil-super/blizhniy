@@ -4,11 +4,13 @@ export const bookingButton='inline-flex min-h-11 items-center justify-center rou
 export const bookingLabels={pending:'Ожидает ответа',accepted:'Подтверждено',declined:'Отклонено',cancelled:'Отменено',expired:'Срок ожидания истёк'};
 const date=(value:string)=>new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z'));
 export const bookingPeriod=(value:Pick<BookingSummary,'startDate'|'endDate'>)=>value.endDate?`${date(value.startDate)} — ${date(value.endDate)}`:date(value.startDate);
-export function BookingDetail({value,busy,unknown,onDecision,onCancel,onRefresh,onClose}:{value:BookingSnapshot;busy:boolean;unknown:boolean;onDecision:(state:'accepted'|'declined')=>void;onCancel?:(reason:string)=>void;onRefresh:()=>void;onClose:()=>void}){
+export function BookingDetail({value,completionMessageId,busy,unknown,onDecision,onCancel,onRefresh,onClose}:{value:BookingSnapshot;completionMessageId?:string;busy:boolean;unknown:boolean;onDecision:(state:'accepted'|'declined')=>void;onCancel?:(reason:string)=>void;onRefresh:()=>void;onClose:()=>void}){
  const [confirm,setConfirm]=useState<'accepted'|'declined'|'cancelled'|null>(null),[reason,setReason]=useState(''),heading=useRef<HTMLHeadingElement>(null);
- useEffect(()=>{heading.current?.focus();},[value.id]);useEffect(()=>setConfirm(null),[value.id,value.revision,unknown]);const actionable=value.view==='host'&&value.status==='pending';
+ useEffect(()=>{heading.current?.focus();},[value.id]);
+ useEffect(()=>{if(completionMessageId&&document.activeElement===document.body)heading.current?.focus();},[completionMessageId]);
+ useEffect(()=>setConfirm(null),[value.id,value.revision,unknown]);const actionable=value.view==='host'&&value.status==='pending';
  return <section className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="booking-details-title">
-  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="booking-details-title" ref={heading} tabIndex={-1} className="text-xl font-bold text-slate-950">Детали бронирования</h2>
+  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="booking-details-title" ref={heading} tabIndex={-1} aria-describedby={completionMessageId} className="text-xl font-bold text-slate-950">Детали бронирования</h2>
    <button type="button" className={bookingButton} disabled={busy} onClick={onClose}>Закрыть детали</button></div>
   <p className="mt-4 text-sm font-semibold text-slate-700">{bookingLabels[value.status]}</p>
   {value.lifecycle&&value.status==='pending'&&<p className="mt-2 text-sm text-slate-600">Ответ владельца ожидается до {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(value.lifecycle.expiresAt))} мск. Затем даты освободятся автоматически.</p>}
