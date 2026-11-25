@@ -15,7 +15,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
   const name='blizhniy-erasure-'+randomBytes(6).toString('hex'),id=(await docker(['run','--detach','--pull','never','--name',name,'--label','blizhniy.erasure-test='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,localPrimaryImage,'postgres','-c','blizhniy.erasure_fixture='+name])).trim();containers.push({id,name});
   const meta=JSON.parse(await docker(['inspect',id]))[0];assert.equal(meta.Id,id);assert.equal(meta.Config.Labels['blizhniy.erasure-test'],name);assert.equal(meta.Config.Image,localPrimaryImage);const bind=meta.NetworkSettings.Ports['5432/tcp'][0];assert.equal(bind.HostIp,'127.0.0.1');
   for(const end=Date.now()+20000;;){try{await docker(['exec',id,'pg_isready','-h','127.0.0.1','-U','postgres']);break;}catch{assert.ok(Date.now()<end);}await new Promise(resolve=>setTimeout(resolve,100));}
-  const config={host:'127.0.0.1',port:Number(bind.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:2000},owner=new pg.Client(config);await owner.connect();clients.push(owner);const db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,max:3}));databases.push(db);return{id,owner,db};
+  const config={host:'127.0.0.1',port:Number(bind.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:2000},owner=new pg.Client(config);await owner.connect();clients.push(owner);const db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,max:3}));databases.push(db);return{id,owner,db,config};
  }
  async function durable(name,bytes){const f=await open(join(directory,name),'wx',0o600);try{await f.writeFile(bytes);await f.sync();}finally{await f.close();}const parent=await open(directory,'r');try{await parent.sync();}finally{await parent.close();}}
  const acls=async db=>(await db.query(`with objects as (
@@ -274,7 +274,135 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await assert.rejects(readFile(attachedPath),{code:'ENOENT'});
    report.signedPhotoReplay.attachedSnapshot={backupSha256:sha(attachedArchive),detachedLinks:3,rejectsPaymentHistory:true,retentionElapsedOnSyntheticClock:true};
   });
+  await suite.test('restored notifications are quarantined before a worker can resend a pre-backup task',async()=>{
+   const apply=async path=>{const bytes=await readFile(new URL('../database/'+path,import.meta.url));await source.owner.query(bytes.toString());return sha(bytes);};
+   const names=['0064-inbox-notification-preferences.sql','0085-business-email.sql','0086-push-subscriptions.sql','0087-push-delivery.sql'];
+   for(const name of names){
+    const checksum=await apply('candidates/'+name);
+    await source.owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,checksum]);
+   }
+   for(const role of ['blizhniy_business_email','blizhniy_push_worker']){
+    await source.owner.query('create role '+role+' login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls');
+   }
+   for(const file of ['business-email','push-subscriptions','push-delivery-worker'])await apply('permissions/'+file+'.sql');
+
+   const target=await person(),survivor=await person();
+   const {createECDH}=await import('node:crypto');
+   const syntheticKey=createECDH('prime256v1').generateKeys().toString('base64url'),pushAuth=randomBytes(16).toString('base64url');
+   const endpoint=user=>'https://fcm.googleapis.com/fcm/send/synthetic-restore-'+user.id;
+   const addSubscription=async(db,user)=>db.query('select app_push.set_subscription($1,$2,$3,$4,$5,null)',[hash(user.token),user.id,endpoint(user),syntheticKey,pushAuth]);
+   const addEvent=async(db,user,key)=>(await db.query("insert into app.notifications(user_id,event_key,category,tone,title,body) values($1,$2,'booking','info','Синтетическое уведомление','Синтетический текст') returning id",[user.id,key])).rows[0].id;
+   for(const user of [target,survivor]){
+    await source.owner.query("update app.cabinet_profiles set profile=jsonb_set(profile,'{pushNotifications}','true') where user_id=$1",[user.id]);
+    await addSubscription(source.owner,user);
+   }
+   const delivered=await addEvent(source.owner,survivor,'fixture-terminal');
+   const unresolved=await addEvent(source.owner,target,'fixture-pre-backup');
+   const unfinished=await addEvent(source.owner,survivor,'fixture-sending');
+   const claim=randomUUID(),otherClaim=randomUUID();
+   const finishMail=(db,id,lease)=>db.query("select notification_delivery.finish_business_email($1,$2,'accepted')",[id,lease]);
+   const finishPush=(db,id,lease)=>db.query("select app_push.finish_delivery($1,$2,'accepted',0)",[id,lease]);
+   const {rows:[oldMail]}=await source.owner.query('select id from notification_delivery.claim_business_email($1)',[claim]);
+   const {rows:[oldPush]}=await source.owner.query('select id from app_push.claim_delivery($1)',[claim]);
+   assert.equal(oldMail.id,delivered);
+   assert.equal((await source.owner.query('select notification_id from app_push.deliveries where id=$1',[oldPush.id])).rows[0].notification_id,delivered);
+   await finishMail(source.owner,oldMail.id,claim);
+   await finishPush(source.owner,oldPush.id,claim);
+   for(const [table,column] of [['notification_delivery.business_email','notification_id'],['app_push.deliveries','notification_id']]){
+    await source.owner.query("update "+table+" set state='sending',attempts=1,claim_id=$2,lease_until=clock_timestamp()+interval '1 minute' where "+column+"=$1",[unfinished,otherClaim]);
+   }
+   const recovery=randomBytes(32).toString('hex'),confirm=randomBytes(32).toString('hex');
+   for(const [table,token] of [['password_recoveries',recovery],['email_confirmations',confirm]]){
+    await source.owner.query("insert into app."+table+"(token_hash,user_id,email,auth_version,expires_at) values($1,$2,$3,0,clock_timestamp()+interval '15 minutes')",[hash(token),target.id,target.id+'@synthetic.invalid']);
+   }
+   await source.owner.query("insert into app.telegram_phone_attempts(user_id,session_hash,state_hash,client_id,nonce,verifier,return_path) values($1,$2,$3,'12345',$4,$5,'/cabinet')",
+    [target.id,hash(target.token),randomBytes(32).toString('hex'),randomBytes(32).toString('hex'),randomBytes(32).toString('base64url')]);
+   const authJob=randomUUID();
+   await source.owner.query("insert into app.mail_outbox(id,user_id,purpose,key_id,payload,created_at,expires_at,state,claim_id,lease_until) values($1,$2,'recover',$3,$4,date_trunc('milliseconds',clock_timestamp()),date_trunc('milliseconds',clock_timestamp())+interval '15 minutes','reserved',$5,clock_timestamp()+interval '1 minute')",[authJob,target.id,'f'.repeat(32),Buffer.concat([Buffer.from([1]),randomBytes(40)]),claim]);
+   const archive=await docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});
+   await durable('before-notification-quarantine.dump',archive);
+   const {rows:[liveEmail]}=await source.owner.query('select id from notification_delivery.claim_business_email($1)',[claim]);
+   const {rows:[livePush]}=await source.owner.query('select id from app_push.claim_delivery($1)',[claim]);
+   assert.equal(liveEmail.id,unresolved);
+   await finishMail(source.owner,liveEmail.id,claim);
+   await finishPush(source.owner,livePush.id,claim);
+   const restored=await fixture();
+   await restored.owner.query('create role blizhniy_runtime nologin;create role blizhniy_business_email nologin;create role blizhniy_push_worker nologin');
+   await docker(['cp',join(directory,'before-notification-quarantine.dump'),restored.id+':/tmp/owned-notifications.dump']);
+   await docker(['exec',restored.id,'pg_restore','--username=postgres','--dbname='+database,'--single-transaction','--exit-on-error','--no-owner','/tmp/owned-notifications.dump']);
+   const counts=async sql=>(await restored.owner.query(sql)).rows[0].n;
+   assert.equal(await counts("select count(*)::int n from notification_delivery.business_email where state='ready'"),1);
+   assert.equal(await counts("select count(*)::int n from app_push.deliveries where state='ready'"),1);
+   assert.equal(await counts('select count(*)::int n from app.telegram_phone_attempts'),1);
+   const mayDisplay=async()=>(await restored.owner.query('select app_push.may_display($1,$2) as allowed',[hash(survivor.token),oldPush.id])).rows[0].allowed;
+   assert.equal(await mayDisplay(),true);
+   const sessionsBefore=await counts('select count(*)::int n from app.sessions');
+   assert.ok(sessionsBefore>=2);
+   const {quarantineRestoredNotifications}=await import('../scripts/quarantine-restored-notifications.mjs');
+   const quarantine=()=>quarantineRestoredNotifications(restored.db,restored.id);
+   await assert.rejects(quarantineRestoredNotifications(restored.db,source.id),/preflight failed/i);
+   await restored.owner.query('alter role blizhniy_push_worker login');
+   try{await assert.rejects(quarantine(),/preflight failed/i);}
+   finally{await restored.owner.query('alter role blizhniy_push_worker nologin');}
+   const workerSecret=randomBytes(24).toString('hex');
+   await restored.owner.query('alter role blizhniy_push_worker login password '+pg.escapeLiteral(workerSecret));
+   const connected=new pg.Client({...restored.config,user:'blizhniy_push_worker',password:workerSecret});
+   try{
+    await connected.connect();
+    await restored.owner.query('alter role blizhniy_push_worker nologin');
+    await assert.rejects(quarantine(),/preflight failed/i);
+   }finally{await connected.end();await restored.owner.query('alter role blizhniy_push_worker nologin password null');}
+   const originalHash=(await restored.owner.query('select sha256 from blizhniy_meta.migrations where name=$1',[names[2]])).rows[0].sha256;
+   await restored.owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[names[2],'0'.repeat(64)]);
+   try{await assert.rejects(quarantine(),/preflight failed/i);}
+   finally{await restored.owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[names[2],originalHash]);}
+   await restored.owner.query('create table app_push.fixture_dependency(push_id uuid references app_push.subscriptions(id) on delete cascade)');
+   try{await assert.rejects(quarantine(),/preflight failed/i);}
+   finally{await restored.owner.query('drop table app_push.fixture_dependency');}
+   assert.equal(await counts('select count(*)::int n from app.sessions'),sessionsBefore);
+   const interrupted={transaction:work=>restored.db.transaction(tx=>work({query:async(sql,values)=>{
+    const result=await tx.query(sql,values);
+    if(sql.startsWith('update app_push.deliveries'))throw Error('Synthetic rollback test');
+    return result;
+   }}))};
+   await assert.rejects(quarantineRestoredNotifications(interrupted,restored.id),/preflight failed/i);
+   assert.equal(await counts('select count(*)::int n from app.sessions'),sessionsBefore);
+   assert.equal(await counts("select count(*)::int n from notification_delivery.business_email where state='ready'"),1);
+
+   const result=await quarantine();
+   assert.deepEqual(result,{authMail:1,businessMail:2,push:2,confirmations:1,recoveries:1,sessions:sessionsBefore,reopenAuthorized:false});
+   assert.deepEqual(await quarantine(),{authMail:0,businessMail:0,push:0,confirmations:0,recoveries:0,sessions:0,reopenAuthorized:false});
+   assert.equal(await counts("select count(*)::int n from app.mail_outbox where state='unknown' and last_code='UNKNOWN'"),1);
+   assert.equal(await counts("select count(*)::int n from notification_delivery.business_email where state='unknown'"),2);
+   assert.equal(await counts("select count(*)::int n from app_push.deliveries where state='unknown'"),2);
+   assert.equal(await counts("select count(*)::int n from notification_delivery.business_email where state='accepted'"),1);
+   assert.equal(await counts("select count(*)::int n from app_push.deliveries where state='accepted'"),1);
+   assert.equal(await counts('select count(*)::int n from app_push.subscriptions'),0);
+   assert.equal(await counts('select count(*)::int n from app.telegram_phone_attempts'),0);
+   assert.equal(await mayDisplay(),false);
+   assert.equal(await counts('select count(*)::int n from app.email_confirmations'),0);
+   assert.equal(await counts('select count(*)::int n from app.password_recoveries'),0);
+   assert.equal(await counts('select count(*)::int n from app.notifications'),3);
+   assert.equal(await new(load('identity').IdentityStore)(restored.db).resolveSession(target.token),null);
+   await restored.db.transaction(async tx=>{
+    await tx.query('set local role blizhniy_business_email');
+    assert.equal((await tx.query('select * from notification_delivery.claim_business_email($1)',[randomUUID()])).rowCount,0);
+    assert.equal((await tx.query("select notification_delivery.finish_business_email($1,$2,'accepted') as result",[unfinished,otherClaim])).rows[0].result,null);
+   });
+   await restored.db.transaction(async tx=>{
+    await tx.query('set local role blizhniy_push_worker');
+    assert.equal((await tx.query('select * from app_push.claim_delivery($1)',[randomUUID()])).rowCount,0);
+   });
+   const fresh={id:survivor.id,token:randomBytes(32).toString('hex')};
+   await restored.owner.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(fresh.token),fresh.id]);
+   await addSubscription(restored.owner,fresh);
+   const freshEvent=await addEvent(restored.owner,fresh,'fixture-after-quarantine');
+   assert.equal((await restored.owner.query('select id from notification_delivery.claim_business_email($1)',[randomUUID()])).rows[0].id,freshEvent);
+   assert.equal((await restored.owner.query("select count(*)::int as n from app_push.deliveries where notification_id=$1 and state='ready'",[freshEvent])).rows[0].n,1);
+   report.notificationQuarantine={backupSha256:sha(archive),...result};
+  });
   assert.ok(report.signedPhotoReplay);
+  assert.ok(report.notificationQuarantine);
   await durable('report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({passed:true,backupRestore:true,report:join(directory,'report.json')}));
  }finally{
   await Promise.all(databases.map(db=>db.close()));await Promise.all(clients.map(client=>client.end()));for(const row of containers){const meta=JSON.parse(await docker(['inspect',row.id]))[0];assert.equal(meta.Config.Labels['blizhniy.erasure-test'],row.name);assert.equal(meta.Config.Image,localPrimaryImage);await docker(['rm','--force',row.id]);}
