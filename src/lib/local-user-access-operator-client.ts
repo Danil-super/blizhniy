@@ -59,3 +59,9 @@ export async function callHostedUserAccessOperator(token:string,value:unknown,si
   return parseAdminUserAccessResult(command,await callAdminOperator(hostedUserAccessSocket,token,command,signal,true));
  }catch(error){if(error instanceof AdminUserAccessError)throw error;throw new AdminUserAccessError('ACCESS_UNAVAILABLE');}
 }
+
+export async function callHostedTariffOperator(token:string,value:unknown,signal?:AbortSignal){
+ try{const command=parseAdminTariffCommand(value);
+  return parseAdminTariffResult(command,await callAdminOperator(hostedUserAccessSocket,token,command,signal,true));
+ }catch(error){if(error instanceof AdminTariffError)throw error;throw new AdminTariffError('TARIFF_UNAVAILABLE');}
+}

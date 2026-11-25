@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
-import {getAdminTariffMigration} from './admin-tariff-release.mjs';
+import {createHash} from 'node:crypto';
+import {getAdminTariffMigration,getHostedTariffPolicyMigration} from './admin-tariff-release.mjs';
 import {getAdminUserAccessMigration} from './admin-user-access-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertHostedRefundRelease,getHostedRefundReleasePlan} from './publication-test-release-plan.mjs';
@@ -7,15 +8,19 @@ import {readRefundSchema,assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertFinancialSystemPrivileges} from './financial-catalog-privileges.mjs';
 const role='blizhniy_user_operator',signature='app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
 const tariffSignature='app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
+const hostedTariffSignature='app_admin.hosted_tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
 export function getUserAccessRolePlan(database,{tariffs=false,hosted=false}={}){
- if(typeof tariffs!=='boolean'||typeof hosted!=='boolean'||hosted&&tariffs||!validDatabase(database))throw Error('Invalid user operator database');
- const {name,sha256}=getAdminUserAccessMigration(),tariff=tariffs?getAdminTariffMigration():null;
+ if(typeof tariffs!=='boolean'||![false,true,'tariffs'].includes(hosted)||hosted&&tariffs||!validDatabase(database))throw Error('Invalid user operator database');
+ const hostedTariffs=hosted==='tariffs',migrations=[getAdminUserAccessMigration()];
+ if(tariffs||hostedTariffs)migrations.push(getAdminTariffMigration());
+ if(hostedTariffs)migrations.push(getHostedTariffPolicyMigration());
+ const signatures=[signature,...(hostedTariffs?[hostedTariffSignature]:tariffs?[tariffSignature]:[])];
  return {role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
   appJournal:hosted?getHostedRefundReleasePlan(87).map(({name,sha256})=>({name,sha256})):
-   getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:[{name,sha256},...(tariff?[{name:tariff.name,sha256:tariff.sha256}]:[])],
+   getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:migrations.map(({name,sha256})=>({name,sha256})),signatures,
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,app_admin,blizhniy_meta to ${role}`,
-   `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,`grant execute on function ${signature} to ${role}`,...(tariffs?[`grant execute on function ${tariffSignature} to ${role}`]:[])]};
+   `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,...signatures.map(value=>`grant execute on function ${value} to ${role}`)]};
 }
 /** Read-only admission: exact reviewed admin capability set, metadata reads and independent schema. */
 export async function verifyUserAccessDatabase(db,{database,deadline,tariffs=false,hosted=false}={}){
@@ -38,11 +43,16 @@ export async function verifyUserAccessDatabase(db,{database,deadline,tariffs=fal
    if(tariffs&&!tariffProfile)throw Error();
    if(!hosted)plan=getUserAccessRolePlan(database,{tariffs:tariffProfile});
    if(JSON.stringify(main)!==JSON.stringify(plan.appJournal)||JSON.stringify(admin)!==JSON.stringify(plan.journal))throw Error();
-   const signatures=tariffProfile?[signature,tariffSignature]:[signature];
+   const {signatures}=plan;
    if(hosted)await assertHostedRefundRelease(tx,main);
    else await assertRefundSchema(tx,60,{localPrimary:true});
-   const expected=JSON.parse(readFileSync(new URL(tariffProfile?'../database/admin-user-access-schema-v2.json':'../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
-   if(JSON.stringify(await readRefundSchema(tx,{namespace:'app_admin'}))!==JSON.stringify(expected))throw Error();
+   const shape=JSON.stringify(await readRefundSchema(tx,{namespace:'app_admin'}));
+   if(hosted==='tariffs'){
+    if(createHash('sha256').update(shape).digest('hex')!=='84e0c174062ed18de6d102f74e06eddaf0de90172608df1365bdaabd79f45704')throw Error();
+   }else{
+    const expected=JSON.parse(readFileSync(new URL(tariffProfile?'../database/admin-user-access-schema-v2.json':'../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
+    if(shape!==JSON.stringify(expected))throw Error();
+   }
    const schemas=(await tx.query("select nspname as name,has_schema_privilege(oid,'USAGE') as usage,has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace")).rows;
    if(!['app','app_admin','blizhniy_meta'].every(name=>schemas.some(row=>row.name===name&&row.usage===true))||
     schemas.some(row=>row.extra!==false||row.usage&&!['app','app_admin','blizhniy_meta','public','pg_catalog','information_schema'].includes(row.name)))throw Error();

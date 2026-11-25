@@ -31,6 +31,18 @@ test('the read-only list shows a saved tariff without edit controls',async()=>{
  assert.equal(nodes(tree).some(node=>node.type==='button'),false);
  h.stop();
 });
+test('hosted tariff editing shows only supported actions and keeps the tariff name fixed',async()=>{
+ const h=harness(),props={actor,visible:true,editable:true,hosted:true};
+ const fair={...row,id:'fair-participation',action:'fair_participation',name:'Ярмарка',durationDays:null};
+ h.list(props);
+ h.requests[0].resolve({tariffs:[row,fair],receipt:null,history:[]});
+ await flush();
+ const buttons=nodes(h.list(props)).filter(node=>node.props?.id?.startsWith('tariff-'));
+ assert.deepEqual(buttons.map(node=>node.props.id),['tariff-listing-publication']);
+ const editor=harness();
+ assert.equal(find(editor.render({hosted:true}),'name').props.readOnly,true);
+ h.stop();editor.stop();
+});
 function decision(h){let tree=h.render();find(tree,'price').props.onChange({target:{value:'249,51'}});find(tree,'reason').props.onChange({target:{value:'  Изменение стоимости  '}});tree=h.render();find(tree,'confirmed').props.onChange({target:{checked:true}});return h.render();}
 function applied(request){const input=request.command.input,next={...row,name:input.name,price:input.price,durationDays:input.durationDays,active:input.active,revision:'b'.repeat(64)},receipt={id:input.id,actorId:actor,tariffId:row.id,expectedRevision:row.revision,previous:row,next,reason:input.reason,changed:true,createdAt:'2026-11-17T12:00:00.123456Z'};return{tariffs:[next],receipt,history:[receipt]};}
 test('tariff editor validates values/reason/confirmation and fences duplicate submits',async()=>{
@@ -43,6 +55,17 @@ test('changed tariff requires explicit confirmation and a valid reason before di
 });
 test('invalid zero duration is rejected before dispatch, never coerced to a one-day term',()=>{
  const h=harness();let tree=decision(h);find(tree,'days').props.onChange({target:{value:'0'}});tree=h.render();submit(tree);assert.equal(h.requests.length,0);assert.ok(text(h.render()).includes('Проверьте название'));h.stop();
+});
+test('a definite hosted tariff refusal lets an administrator correct terms and confirm again',async()=>{
+ const h=harness();submit(decision(h));
+ h.requests[0].reject(new contract.AdminTariffError('TARIFF_TERMS_INVALID'));
+ await flush();
+ const tree=h.render({hosted:true});
+ assert.equal(find(tree,'confirmed').props.checked,false);
+ assert.equal(nodes(tree).find(node=>node.type==='fieldset').props.disabled,false);
+ assert.ok(text(tree).includes('Проверьте цену активного тарифа'));
+ assert.ok(!text(tree).includes('Проверить сохранение'));
+ h.stop();
 });
 test('unknown tariff outcome is recovered or explicitly replayed with exactly the original ID and payload',async()=>{
  const h=harness();submit(decision(h));const request=h.requests[0];assert.equal(nodes(h.render()).find(node=>node.type==='button'&&text(node)==='Закрыть').props.disabled,true);request.reject(new contract.AdminTariffError('TARIFF_UNAVAILABLE'));await flush();let tree=h.render();assert.equal(h.requests.length,1);

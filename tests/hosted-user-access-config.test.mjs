@@ -27,6 +27,23 @@ test('hosted user operator pins the reviewed 0087 release plus 0061 and excludes
  assert.throws(()=>getUserAccessRolePlan('blizhniy_test',{hosted:true,tariffs:true}));
 });
 
+test('hosted tariff edits require hosted checkout cancellation and a separate exact operator profile',()=>{
+ const {readTariffOperatorConfig}=load('hosted-user-access-config');
+ const options={...hosted,BLIZHNIY_ADMIN_TARIFFS:'hosted-v1',BLIZHNIY_CHECKOUT_CANCELLATION:'hosted-test-v1'};
+ assert.equal(readTariffOperatorConfig(hosted),null);
+ assert.equal(readTariffOperatorConfig(options)?.mode,'hosted');
+ for(const patch of [
+  {BLIZHNIY_USER_ACCESS_OPERATOR:undefined},{BLIZHNIY_CHECKOUT_CANCELLATION:undefined},
+  {BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1'},{BLIZHNIY_AUTH_MODE:'local'},
+ ])assert.throws(()=>readTariffOperatorConfig({...options,...patch}));
+ const target=getUserAccessRolePlan('blizhniy_test',{hosted:'tariffs'});
+ assert.equal(target.appJournal.at(-1).name,'0087-push-delivery.sql');
+ assert.ok(target.appJournal.some(row=>row.name==='0071-checkout-cancellation-test-policy.sql'));
+ assert.deepEqual(target.journal.map(item=>item.name),['0061-admin-user-access.sql','0062-admin-tariffs.sql','0088-hosted-tariff-policy.sql']);
+ assert.match(target.grants.at(-1),/^grant execute on function app_admin\.hosted_tariff_access/);
+ assert.ok(!target.grants.some(value=>value.includes('app_admin.tariff_access')));
+});
+
 test('the hosted operator unit receives a root-owned web-group socket and runs under a separate UID',async t=>{
  const {execFileSync}=await import('node:child_process');
  const {mkdtemp,readFile,writeFile,rm}=await import('node:fs/promises');

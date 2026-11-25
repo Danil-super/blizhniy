@@ -1,14 +1,14 @@
-import {readLocalTariffOperatorConfig} from '@/lib/local-user-access-config';
+import {readTariffOperatorConfig} from '@/lib/hosted-user-access-config';
 import {PrimaryAdminTariffsClient} from './PrimaryAdminTariffsClient';
 import { AdminTariffsClient } from "@/components/admin/AdminTariffsClient";
 import { AdminShell,AdminWorkspaceShell } from "@/components/admin/AdminShell";
 import { readProductionAuthConfig } from '@/lib/production-auth-config';
 
 export function AdminTariffsPage() {
-  const editable=readLocalTariffOperatorConfig()!==null;
+  const operator=readTariffOperatorConfig(),editable=operator!==null;
   if(editable || readProductionAuthConfig())return (
     <AdminWorkspaceShell activeHref="/admin/tariffs" description="Цены, сроки и доступность размещений." title="Тарифы">
-      <PrimaryAdminTariffsClient editable={editable}/>
+      <PrimaryAdminTariffsClient editable={editable} hosted={operator?.mode==='hosted'}/>
     </AdminWorkspaceShell>
   );
   return (

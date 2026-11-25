@@ -8,7 +8,7 @@ import {paymentMigrationDirectory} from './publication-test-release-plan.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 /** Offline source package only; no credentials, role installation or connection. */
 export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}={}){
- if(typeof tariffs!=='boolean'||typeof hosted!=='boolean'||hosted&&tariffs||typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid user operator destination');
+ if(typeof tariffs!=='boolean'||![false,true,'tariffs'].includes(hosted)||hosted&&tariffs||typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid user operator destination');
  const program=ts.createProgram(['postgres-admin-user-access.ts','admin-user-access-contract.ts','postgres-admin-tariffs.ts','admin-operator-contract.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,moduleResolution:ts.ModuleResolutionKind.Node10,
   strict:true,esModuleInterop:true,skipLibCheck:true,noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),paths:{'@/*':[join(root,'src/*')]},
@@ -18,7 +18,7 @@ export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}
  const plan=getUserAccessRolePlan('blizhniy_prod',{tariffs,hosted});
  const available=hosted?plan:getUserAccessRolePlan('blizhniy_prod',{tariffs:true});
  const migrations=[...plan.appJournal,...available.journal].map(row=>{
-  const folder=/^(0058|0061|0062)-/.test(row.name)?'candidates':paymentMigrationDirectory(row.name);
+  const folder=/^(0058|0061|0062|0088)-/.test(row.name)?'candidates':paymentMigrationDirectory(row.name);
   const bytes=readFileSync(join(root,'database',folder,row.name));
   if(createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw Error('User operator migration drift');return {...row,folder,bytes};
  });

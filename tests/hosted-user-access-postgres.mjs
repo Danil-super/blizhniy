@@ -96,4 +96,67 @@ export async function testHostedUserAccess(t,{admin,config,load,verifyFinance}){
  assert.ok(fresh);
  assert.equal((await webIdentity.resolveSession(fresh.token))?.id,target.id);
  assert.equal((await admin.query('select 1 from app_admin.user_changes where target_id=$1',[target.id])).rowCount,2);
+
+ const combined=join(directory,'tariff-operator');
+ const combinedManifest=buildUserAccessOperator(combined,{hosted:'tariffs'});
+ assert.deepEqual(combinedManifest.appJournal,manifest.appJournal);
+ await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(combined,'node_modules'),'dir');
+ const combinedScript=name=>import(pathToFileURL(join(combined,'scripts',name)).href);
+ const combinedRole=await combinedScript('user-access-role.mjs');
+ const upgraded=combinedRole.getUserAccessRolePlan(config.database,{hosted:'tariffs'});
+ for(const item of upgraded.journal.slice(1)){
+  await admin.query(await readFile(join(combined,'database/candidates',item.name),'utf8'));
+  await admin.query('insert into app_admin.migrations values($1,$2)',[item.name,item.sha256]);
+ }
+ for(const statement of upgraded.grants)await admin.query(statement);
+ await verifyFinance();
+ const verifyCombined=()=>combinedRole.verifyUserAccessDatabase(db,{database:config.database,hosted:'tariffs'});
+ await verifyCombined();
+ await assert.rejects(verify(),/preflight failed/);
+ const unrestricted='app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
+ await admin.query('grant execute on function '+unrestricted+' to '+upgraded.role);
+ try{await assert.rejects(verifyCombined(),/preflight failed/);}
+ finally{await admin.query('revoke execute on function '+unrestricted+' from '+upgraded.role);}
+ await verifyCombined();
+ assert.equal((await admin.query("select has_function_privilege('blizhniy_runtime',$1,'EXECUTE') as capable",[upgraded.signatures.at(-1)])).rows[0].capable,false);
+ await admin.query("insert into app.tariffs(id,action,name,price,duration_days) values('audit-listing','listing_publication','Синтетический тариф',199,30) on conflict(action) do nothing");
+ const {startLocalAdminOperator}=await combinedScript('local-admin-operator.mjs');
+ const combinedRequire=createRequire(join(combined,'package.json'));
+ const {PostgresAdminTariffs}=combinedRequire('./compiled/lib/postgres-admin-tariffs.js');
+ const tariffStore=new PostgresAdminTariffs(db,true);
+ const userStore=new (combinedRequire('./compiled/lib/postgres-admin-user-access.js').PostgresAdminUserAccess)(db);
+ const tariffDaemon=await startLocalAdminOperator({async execute(token,command){
+  await verifyCombined();
+  return ('resource' in command?tariffStore:userStore).execute(token,command);
+ },close:async()=>{}});
+ t.after(()=>tariffDaemon.close());
+ assert.equal((await send(tariffDaemon.socketPath,actor.token,inspect)).user.authVersion,'2');
+ const sendTariff=load('local-user-access-operator-client').callLocalTariffOperator;
+ const tariffHandler=load('admin-tariff-http').createAdminTariffHandler({origin},()=>({
+  limiter:{allowProduction:async()=>true},execute:(token,command,signal)=>sendTariff(tariffDaemon.socketPath,token,command,signal),
+ }),()=>{});
+ const tariffRequest=(token,command)=>tariffHandler(new Request(origin+'/api/admin/tariff-management',{
+  method:'POST',headers:{host:new URL(origin).host,origin,'x-real-ip':'192.0.2.210','x-blizhniy-request':'1','content-type':'application/json',
+   cookie:'__Host-blizhniy_session='+token},body:JSON.stringify({resource:'tariffs',expectedAdminId:actor.id,...command}),
+ }));
+ assert.equal((await tariffRequest(fresh.token,{action:'list'})).status,403);
+ const catalogue=await tariffRequest(actor.token,{action:'list'});
+ assert.equal(catalogue.status,200);
+ const tariff=(await catalogue.json()).tariffs.find(row=>row.action==='listing_publication');
+ const terms={id:randomUUID(),tariffId:tariff.id,expectedRevision:tariff.revision,name:tariff.name,
+  price:'0.00',durationDays:31,active:true,reason:'Синтетическая проверка условий'};
+ const refused=await tariffRequest(actor.token,{action:'change',input:terms});
+ assert.equal(refused.status,422);
+ assert.deepEqual(await refused.json(),{error:{code:'TARIFF_TERMS_INVALID'}});
+ const saved=await tariffRequest(actor.token,{action:'change',input:{...terms,id:randomUUID(),price:'249.51'}});
+ assert.equal(saved.status,200);
+ const price=(await saved.json()).receipt;
+ assert.deepEqual([price.next.price,price.next.durationDays],['249.51',31]);
+ const readback=await tariffRequest(actor.token,{action:'recover',id:price.id,tariffId:tariff.id});
+ assert.equal(readback.status,200);
+ assert.deepEqual((await readback.json()).receipt,price);
+ const restored=await tariffRequest(actor.token,{action:'change',input:{...terms,id:randomUUID(),expectedRevision:price.next.revision,
+  price:tariff.price,durationDays:tariff.durationDays,active:tariff.active}});
+ assert.equal(restored.status,200);
+ assert.deepEqual((await restored.json()).history.map(row=>row.id).slice(1),[price.id]);
 }

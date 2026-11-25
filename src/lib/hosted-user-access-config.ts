@@ -1,4 +1,5 @@
-import { readLocalUserAccessOperatorConfig } from './local-user-access-config.ts';
+import { readLocalTariffOperatorConfig, readLocalUserAccessOperatorConfig } from './local-user-access-config.ts';
+import { readCheckoutCancellationEnabled } from './checkout-cancellation-contract.ts';
 import { productionAuthOrigin } from './production-auth-config.ts';
 
 export const hostedUserAccessSocket = '/run/blizhniy-user-access/operator.sock';
@@ -15,4 +16,16 @@ export function readUserAccessOperatorConfig(env: NodeJS.ProcessEnv = process.en
     throw new Error('Invalid hosted user access configuration');
   }
   return { mode:'hosted' as const, socketPath:hostedUserAccessSocket };
+}
+
+export function readTariffOperatorConfig(env: NodeJS.ProcessEnv = process.env) {
+  if (env.BLIZHNIY_ADMIN_TARIFFS !== 'hosted-v1') {
+    const local = readLocalTariffOperatorConfig(env);
+    return local ? { mode:'local' as const, ...local } : null;
+  }
+  const operator = readUserAccessOperatorConfig(env);
+  if (operator?.mode !== 'hosted' || env.BLIZHNIY_CHECKOUT_CANCELLATION !== 'hosted-test-v1' || !readCheckoutCancellationEnabled(env)) {
+    throw new Error('Invalid hosted tariff configuration');
+  }
+  return operator;
 }
