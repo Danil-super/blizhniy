@@ -9,7 +9,7 @@ const productionOrigin = 'https://xn----9sbphbgks4a4a.xn--p1ai';
 const slowResponseMs = 2000;
 const managedTimers = new Set([
   'blizhniy-auth-mail', 'blizhniy-booking-expiry', 'blizhniy-business-email',
-  'blizhniy-expiry', 'blizhniy-payment-reconciliation-alert', 'blizhniy-push',
+  'blizhniy-expiry', 'blizhniy-payment-reconciliation-alert', 'blizhniy-push', 'blizhniy-queue-health-alert',
 ]);
 const execute = promisify(execFile);
 

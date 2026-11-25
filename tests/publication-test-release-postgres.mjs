@@ -976,6 +976,11 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      });
      await t.test('only an enrolled advertising purchase can prepare, dispatch, cancel, fulfill and refund on the hosted schema',
       ()=>testHostedMarqueeAdmission({admin,config,load,reconciler:workerDb,compiledWorker,refundOperator:operator.db,refundWorker:worker.db}));
+     await t.test('operations queue monitor detects backlogs under a separate PostgreSQL login',async queue=>{
+      const {testQueueHealthAlert}=await import('./queue-health-alert-postgres.mjs');
+      await testQueueHealthAlert(queue,{admin,config,load,verifyFinance:()=>copiedGuard.verifyPaymentReconciliationDatabase(
+       workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true})});
+     });
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;
