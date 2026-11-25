@@ -53,12 +53,16 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
   await admin.query('revoke update(id) on app.cities,app.specialist_categories from specialist_web');
   const DB=load('postgres').PostgresDatabase;web=new DB(new pg.Pool({...config,user:'specialist_web',max:4}));worker=new DB(new pg.Pool({...config,user:'specialist_worker',max:4}));ownerDb=new DB(new pg.Pool({...config,max:4}));
   const profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
+  async function account(role='user'){
+   const owner=randomUUID(),token=randomBytes(32).toString('hex');
+   await admin.query('insert into app.users(id,email,password_hash,email_verified_at,role) values($1,$2,$3,clock_timestamp(),$4)',[owner,owner+'@specialist.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
+   await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),owner]);
+   return{owner,token};
+  }
   async function draft(){
-   const owner=randomUUID(),token=randomBytes(32).toString('hex'),phone='+7999'+String(randomInt(10000000)).padStart(7,'0');
-   await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[owner,owner+'@specialist.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+   const {owner,token}=await account(),phone='+7999'+String(randomInt(10000000)).padStart(7,'0');
    await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[owner,{name:'Тестовый специалист',phone}]);
    await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[owner,phone,'test-'+owner]);
-   await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),owner]);
    const forms=new(load('postgres-service-publications').PostgresServicePublicationStore)(web,{specialistProfileIdentity:true});
    const row=await forms.create(token,owner,'specialist',randomUUID(),{title:'Имя из профиля',description:'Выполняю монтаж и ремонт сантехники.',cityName:'Краснодар',professionName:'Сантехник',professionId:profession,price:'1500',contactPhone:phone,placementRightConfirmed:true});
    await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_by,decided_at) values($1,$2,'approved',$3,clock_timestamp())",[row.id,row.revision,owner]);
@@ -306,8 +310,11 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
    const frozen=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(web);
    await assert.rejects(frozen.authorize(preparedBeforeClosure.binding),{code:'PSP01'});
    assert.equal((await admin.query('select intent_id from app.payment_dispatch_anchors where intent_id=$1',[preparedBeforeClosure.binding.id])).rowCount,0);
-   await admission.test('account checkout route prepares, reopens and dispatches only the approved specialist order',async()=>{
-    await checkSpecialistAccountCheckout({load,db:web,admin,owner:await draft(),peer,enroll,remove});
+   await admin.query('grant insert(intent_id,provider_payment_id,status,captured_at),update(status,captured_at) on app.payment_verifications to specialist_worker;grant update(status) on app.payment_orders to specialist_worker');
+   await admin.query('grant insert(publication_id,revision),update(state,decided_by,decided_at,decision_note) on app.service_moderation to specialist_web');
+   const reviewer=await account('admin');
+   for(const outcome of ['succeeded','canceled'])await admission.test('original specialist checkout reaches '+outcome+' through server verification',async()=>{
+    await checkSpecialistAccountCheckout({load,db:web,worker,admin,owner:await draft(),peer,reviewer,enroll,remove,outcome});
    });
    await enroll(owner);
    const purchase=make(owner),binding=purchase.binding;
@@ -415,7 +422,6 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
     }
    });
    const verification=new(load('postgres-payment-verification').PostgresPaymentVerificationStore)(worker,merchant,fetcher);
-   await admin.query('grant insert(intent_id,provider_payment_id,status,captured_at),update(status,captured_at) on app.payment_verifications to specialist_worker;grant update(status) on app.payment_orders to specialist_worker');
    assert.equal((await verification.reconcile(binding.id)).orderStatus,'pending');
    await assert.rejects(worker.query('insert into app.payment_fulfillments(intent_id) values($1)',[binding.id]),{code:'PSP03'});
    paid=true;capturedAt=new Date().toISOString();

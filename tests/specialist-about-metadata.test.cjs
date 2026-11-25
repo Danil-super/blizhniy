@@ -12,3 +12,10 @@ test('single-about specialist metadata uses profession when the obsolete skills 
  assert.equal((await metadata({name:'Анна',profession:'Сантехник',skills:'',city:'Краснодар'})).description,'Сантехник. Краснодар.');
  assert.equal((await metadata({name:'Анна',profession:'Сантехник',skills:'Монтаж',city:'Краснодар'})).description,'Монтаж. Краснодар.');
 });
+test('a public TEST specialist card is noindex and retains its canonical URL',async()=>{
+ const profile={name:'Тестовый специалист',profession:'Сантехник',skills:'',city:'Краснодар'};
+ const testCard=await metadata({...profile,testPublication:true});
+ assert.deepEqual(testCard.robots,{index:false,follow:true});
+ assert.equal(testCard.alternates.canonical,'/specialist/test');
+ assert.equal((await metadata(profile)).robots,undefined);
+});
