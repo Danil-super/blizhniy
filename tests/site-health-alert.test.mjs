@@ -108,3 +108,84 @@ test('the reconciliation timer uses a separate protected oneshot and valid syste
   await writeFile(timerFile, timer);
   execFileSync('systemd-analyze', ['verify', '--man=no', serviceFile, timerFile], { timeout: 5000, maxBuffer: 16384 });
 });
+
+test('a recovered site sends one recovery message and retains a retry after a known rejection', async () => {
+  const f = fixture();
+  const resolved = [];
+  f.dependencies.sendResolved = async (id, reason) => {
+    resolved.push({ id, reason });
+    if (resolved.length === 1) throw Object.assign(new Error('synthetic SMTP rejection'), { code: 'TEMPORARY' });
+  };
+  assert.equal(await deliverSiteAlert('site-unavailable', f.dependencies), 'accepted');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'retry');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'healthy');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'healthy');
+  assert.equal(f.sends.length, 1);
+  assert.equal(resolved.length, 2);
+  assert.deepEqual(resolved[0], resolved[1]);
+  assert.notEqual(resolved[0].id, f.sends[0].id);
+  assert.equal(resolved[0].reason, 'site-unavailable');
+});
+
+test('a lost recovery acknowledgement cannot resend and cannot suppress the next outage', async () => {
+  const f = fixture();
+  let resolutions = 0;
+  f.dependencies.sendResolved = async () => {
+    resolutions++;
+    throw Object.assign(new Error('lost acknowledgement'), { code: 'UNKNOWN' });
+  };
+  assert.equal(await deliverSiteAlert('readiness-unavailable', f.dependencies), 'accepted');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'unknown');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'unknown');
+  assert.equal(resolutions, 1);
+  assert.equal(await deliverSiteAlert('readiness-unavailable', f.dependencies), 'accepted');
+  assert.equal(f.sends.length, 2);
+  assert.notEqual(f.sends[0].id, f.sends[1].id);
+});
+
+test('restart with a saved recovery attempt does not send or clear the ambiguous delivery', async t => {
+  const { alertStateFile } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-site-recovery-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const statePath = join(directory, 'site-health.json');
+  const stateFile = alertStateFile(statePath, { 'site-slow': 'slow' });
+  const outage = { id: '2a642a21-f4bf-457e-9a88-fb276181accd', result: 'site-slow', attempts: 1, delivery: 'accepted' };
+  const state = { ...outage, resolution: { id: '2b70a455-bdd2-411a-8cfd-e5da0f283e44', attempts: 1, delivery: 'sending' } };
+  await stateFile.save(state);
+  const dependencies = { ...stateFile, sendResolved: async () => assert.fail('already reserved') };
+  assert.equal(await deliverSiteAlert('healthy', dependencies), 'unknown');
+  assert.deepEqual(await stateFile.load(), state);
+  await stateFile.save({ ...state, resolution: { ...state.resolution, id: outage.id } });
+  await assert.rejects(stateFile.load(), /Invalid alert state/);
+});
+
+test('independent probes persist their own incidents and send recovery even with another alarm active', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-independent-probes-'));
+  t.after(() => rm(directory, { recursive: true }));
+  let site = 'site-slow', tls = 'tls-expiring', disk = 'disk-low';
+  let confirms = 0;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => { messages.push(message); },
+    waitForConfirm: async () => { confirms++; },
+    site: async () => site, certificate: async () => tls, storage: async () => disk,
+  });
+  const first = await run();
+  assert.equal(confirms, 3);
+  assert.deepEqual(first.map(row => [row.probe,row.delivery]), [
+    ['site-health','healthy'], ['site-latency','accepted'], ['site-tls','accepted'], ['site-disk','accepted'],
+  ]);
+  assert.equal(messages.length, 3);
+  assert.equal(new Set(messages.map(message => message.id)).size, 3);
+  assert.equal((await run()).every(row => ['healthy','accepted'].includes(row.delivery)), true);
+  assert.equal(messages.length, 3);
+  site = 'readiness-unavailable'; tls = 'healthy';
+  assert.deepEqual((await run()).map(row => [row.probe,row.result]), [
+    ['site-health','readiness-unavailable'], ['site-tls','healthy'], ['site-disk','disk-low'],
+  ]);
+  assert.equal(messages.filter(message => message.subject.endsWith('работа восстановлена')).length, 1);
+  assert.equal((await readFile(join(directory, 'site-latency.json'), 'utf8')).includes('site-slow'), true);
+  assert.equal(messages.length, 5);
+});
