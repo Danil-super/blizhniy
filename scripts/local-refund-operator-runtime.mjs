@@ -29,7 +29,8 @@ async function createRuntime(environment,options,database,certificate){
  try{
   const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
-  const marqueeRefunds=env.BLIZHNIY_REFUND_OPERATOR==='hosted-marquee-schema-local-test';
+  const specialistRefunds=env.BLIZHNIY_REFUND_OPERATOR==='hosted-specialist-schema-local-test';
+  const marqueeRefunds=specialistRefunds||env.BLIZHNIY_REFUND_OPERATOR==='hosted-marquee-schema-local-test';
   const hostedRefunds=(env.BLIZHNIY_REFUND_OPERATOR==='hosted-schema-local-test'||marqueeRefunds)&&database==='blizhniy_test'&&certificate===undefined;
   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||(env.BLIZHNIY_REFUND_OPERATOR!=='local-test'&&!hostedRefunds)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
    env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
@@ -40,7 +41,7 @@ async function createRuntime(environment,options,database,certificate){
    !env.BLIZHNIY_PAYMENT_SECRET_KEY.startsWith('test_')||env.BLIZHNIY_PAYMENT_SECRET_KEY.length>2048||/[\s\u0000-\u001f\u007f]/.test(env.BLIZHNIY_PAYMENT_SECRET_KEY)||
    typeof fetcher!=='function')throw unavailable();
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true,
-   ...(hostedRefunds?{marqueeRefunds}:{})}),modules=loadModules();
+   ...(hostedRefunds?{marqueeRefunds,specialistRefunds}:{})}),modules=loadModules();
   let closed=false,active,closing;
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
   const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);

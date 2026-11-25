@@ -19,9 +19,10 @@ const lastMigration=new Map([
  [76,'0076-undelivered-response-compensation.sql'],
  [78,'0078-hosted-marquee-refund-recovery.sql'],
  [79,'0079-hosted-placement-refund-proof.sql'],
+ [80,'0080-hosted-specialist-refunds.sql'],
 ]);
 export function buildRefundWorker(destination,{schema=54,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||([75,76,78,79].includes(schema)&&localPrimary)||!lastMigration.has(schema))throw Error('Invalid refund worker schema');
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||([75,76,78,79,80].includes(schema)&&localPrimary)||!lastMigration.has(schema))throw Error('Invalid refund worker schema');
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund worker destination');
  const program=ts.createProgram(['placement-refund-worker.ts','application-compensation-worker.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
@@ -38,7 +39,7 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
   return{name,directory,bytes};
  });
- const expectedCount=({60:59,75:67,76:68,78:69,79:70})[schema]??schema;
+ const expectedCount=({60:59,75:67,76:68,78:69,79:70,80:71})[schema]??schema;
  if(migrations.length!==expectedCount||migrations.at(-1)?.name!==lastMigration.get(schema))throw Error('Unexpected refund migration boundary');
  // A new private directory is the ownership boundary. Existing destinations are never reused.
  mkdirSync(destination,{mode:0o700});

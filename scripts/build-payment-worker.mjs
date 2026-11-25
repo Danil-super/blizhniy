@@ -20,7 +20,7 @@ export function buildPaymentWorker(destination,{schema=54,publicationTest=false}
  if(ts.getPreEmitDiagnostics(program).length)throw Error('Worker compilation failed');
  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
  if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected worker source');
- const journal=publicationTest?getHostedRefundReleasePlan(79):getRefundWorkerRolePlan('artifact',{schema}).journal;
+ const journal=publicationTest?getHostedRefundReleasePlan(80):getRefundWorkerRolePlan('artifact',{schema}).journal;
  const migrations=journal.map(({name,sha256})=>{
   const directory=paymentMigrationDirectory(name);
   const bytes=readFileSync(join(root,'database',directory,name));

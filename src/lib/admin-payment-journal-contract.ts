@@ -75,7 +75,7 @@ function item(value: unknown) {
  const orderStatus = choice(row.orderStatus, paymentHistoryStatuses);
  const action = hasAction ? refundAction(row.refundAction) : null;
  if (action) {
-  const placement = ['listing','vacancy','workRequest','ad_marquee'].includes(targetType);
+  const placement = ['listing','vacancy','workRequest','ad_marquee','specialist'].includes(targetType);
   if (orderStatus !== 'succeeded' || providerStatus !== 'succeeded' || capturedAt === null ||
       (action.kind === 'approve' && (!placement || refund !== 'none')) ||
       (action.kind === 'recover' && ((!placement && targetType !== 'application') ||

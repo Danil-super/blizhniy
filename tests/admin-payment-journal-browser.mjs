@@ -73,7 +73,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
   const first=[delivered,...Array.from({length:49},(_,index)=>({...row,id:id(51-index)}))];
   const paid={orderStatus:'succeeded',providerStatus:'succeeded',capturedAt:effectAt};
   Object.assign(first[1],paid,{refund:'none',refundAction:{kind:'approve'}});
-  Object.assign(first[2],paid,{refund:'unknown',refundAction:{kind:'recover',operationId:id(101),providerRefundId:null}});
+  Object.assign(first[2],paid,{targetType:'specialist',refund:'unknown',refundAction:{kind:'recover',operationId:id(101),providerRefundId:null}});
   let savedApproval,dropApproval=refunds;
   execute=command=>{
    assert.equal(command.expectedAdminId,adminId);
@@ -170,7 +170,8 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    assert.deepEqual(commands.map(command=>command.action),['approve','read']);
    assert.equal(commands[1].input,approvalId);
    assert.equal(await approve.count(),0);
-   await region.getByRole('button',{name:'Сверить по номеру ЮKassa'}).click();
+   const specialist=cards.filter({hasText:'Анкета'});
+   await specialist.getByRole('button',{name:'Сверить по номеру ЮKassa'}).click();
    const recover=region.getByRole('form',{name:'Сверка возврата'});
    await recover.getByLabel('Номер возврата в ЮKassa').fill(id(102));
    await recover.getByLabel('Причина').fill('Проверка исходной операции.');

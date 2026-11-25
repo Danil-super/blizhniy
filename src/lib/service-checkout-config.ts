@@ -6,9 +6,10 @@ export function readServiceCheckoutEnabled(env:NodeJS.ProcessEnv=process.env):bo
  if(env.BLIZHNIY_SERVICE_CHECKOUT!=='local-v1'||env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled(env))throw Error('Invalid service checkout rollout');
  return true;
 }
-export type ServiceRefundScope={marqueeRefunds?:boolean};
+export type ServiceRefundScope={marqueeRefunds?:boolean;specialistRefunds?:boolean};
 
 export function serviceRefundKindEnabled(targetType:string,scope:ServiceRefundScope):boolean{
+ if(targetType==='specialist')return scope.specialistRefunds===true;
  if(scope.marqueeRefunds!==undefined)return scope.marqueeRefunds===true&&targetType==='ad_marquee';
  return (targetType==='fair_application'||targetType==='ad_marquee')&&readServiceCheckoutEnabled();
 }

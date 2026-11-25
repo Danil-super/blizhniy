@@ -30,7 +30,7 @@ export class PostgresRefundJournalStore {
   constructor(db: Pick<PostgresDatabase, 'transaction'>, merchant: Merchant, fetcher: typeof fetch = globalThis.fetch) {
     if (!merchant || merchant.isTest !== true) fail();
     this.db = db; this.shopId = merchant.shopId;
-    this.serviceScope = {marqueeRefunds:merchant.marqueeRefunds};
+    this.serviceScope = {marqueeRefunds:merchant.marqueeRefunds,specialistRefunds:merchant.specialistRefunds};
     this.reader = createPrimaryYooKassaRefundReader(merchant, fetcher);
     this.intents = new PostgresPaymentIntentStore(db);
   }

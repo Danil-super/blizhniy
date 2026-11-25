@@ -21,7 +21,8 @@ import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getHostedMarqueeRefundUpgradeSql,getHostedMarqueeRefundRecoveryMigration,getHostedPlacementRefundProofUpgradeSql,getHostedPlacementRefundProofMigration,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
-import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow} from './hosted-refund-workflow-cases.mjs';
+import {getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
+import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -658,6 +659,57 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        }finally{await admin.query("alter function app.placement_refund_fiscal_mode(app.payment_checkout_intents) set search_path=''");}
       };
       await testHostedPlacementRefundWithReceipt({admin,config,load,operator:artifacts[0],worker:artifacts[1],directory:artifactDirectory,upgrade});
+     });
+     await t.test('refunds the exact hosted specialist period after the original enrollment closes',async()=>{
+      const schema=80,migration=getHostedSpecialistRefundMigration(),sql=getHostedSpecialistRefundUpgradeSql();
+      const options={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
+      const artifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'specialist-refund-'+entry.kind);
+       assert.equal(entry.build(destination,{schema}).schema,schema);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       const plan=api[entry.plan](config.database,{schema});
+       assert.equal(plan.journal.length,71);
+       assert.deepEqual(plan.journal.at(-1),{name:migration.name,sha256:migration.sha256});
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       artifacts.push({...entry,destination,verify:api[entry.verify]});
+      }
+      const upgrade=async()=>{
+       const apply=async()=>{
+        const client=await admin.connect();
+        try{await client.query(sql);}
+        catch(error){await client.query('rollback');throw error;}
+        finally{client.release();}
+       };
+       assert.equal(await check(),true);
+       await apply();
+       await assert.rejects(apply(),{code:'55000'});
+       const database='specialist_refund_restored';
+       await admin.query('create database specialist_refund_restored template template0');
+       await admin.query(`revoke all on database specialist_refund_restored from public;
+        grant connect on database specialist_refund_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+        blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+       await docker(['exec',container,'bash','-euo','pipefail','-c',
+        'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+        'restore-fixture',config.database,database]);
+       const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+       try{assert.equal(await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true}),true);}
+       finally{await restored.close();}
+       assert.equal(await check(),true);
+       for(const entry of artifacts){
+        await entry.verify(entry.db,options);
+        await assert.rejects(entry.verify(entry.db,{...options,merchant:{...options.merchant,specialistRefunds:false}}));
+        const restoredRefund=new PostgresDatabase(new pg.Pool({...config,database,user:entry.role,password:entry.password,max:2}));
+        try{await entry.verify(restoredRefund,{...options,database});}
+        finally{await restoredRefund.close();}
+       }
+       await admin.query('alter function app.guard_specialist_publication_window() set search_path=public');
+       try{
+        await assert.rejects(check());
+        for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,options));
+       }finally{await admin.query('alter function app.guard_specialist_publication_window() set search_path=pg_catalog');}
+      };
+      await testHostedSpecialistRefund({admin,config,load,operator:artifacts[0],worker:artifacts[1],directory:artifactDirectory,upgrade});
      });
     }finally{for(const entry of entries)await entry.db?.close();}
    });

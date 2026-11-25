@@ -9,9 +9,11 @@ declare kind text:=item->>'targetType';stage text:=item->>'refund';
  payment_id uuid:=(item->>'id')::uuid;operation_id uuid;provider_id uuid;
 begin
  if item->>'orderStatus'<>'succeeded' or item->>'providerStatus'<>'succeeded'
-  or item->>'capturedAt' is null or kind not in ('listing','vacancy','workRequest','ad_marquee','application') then return null;end if;
+  or item->>'capturedAt' is null or kind not in ('listing','vacancy','workRequest','ad_marquee','specialist','application') then return null;end if;
  if kind='ad_marquee' and not exists(select 1 from blizhniy_meta.migrations
   where name='0078-hosted-marquee-refund-recovery.sql') then return null;end if;
+ if kind='specialist' and not exists(select 1 from blizhniy_meta.migrations
+  where name='0080-hosted-specialist-refunds.sql') then return null;end if;
  if stage='none' and kind<>'application' and app.refund_target_admitted(payment_id,payment_id) then
   begin
    perform app.placement_refund_fiscal_mode(p) from app.payment_checkout_intents p where p.id=payment_id;
