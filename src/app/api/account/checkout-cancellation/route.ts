@@ -7,7 +7,7 @@ async function handle(request:Request){
   const policy=readCheckoutCancellationPolicy();if(!policy)return authJson({error:{code:'NOT_FOUND'}},404);
   const config=readProductionAuthConfig();if(!config)return authJson({error:{code:'NOT_FOUND'}},404);
   return await createCheckoutCancellationHandler(config,async()=>{const {db,limiter}=await getProductionAccountDatabase(config);return{store:new PostgresCheckoutCancellation(db,policy),limiter};},{
-   services:!!(policy.fair_application||policy.ad_marquee),specialist:!!policy.specialist,
+   services:!!policy.fair_application,marquee:!!policy.ad_marquee,specialist:!!policy.specialist,
   })(request);
  }catch{return authJson({error:{code:'CANCELLATION_UNAVAILABLE'}},503);}
 }

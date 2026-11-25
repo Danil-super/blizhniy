@@ -72,7 +72,12 @@ export class PostgresServicePublicationStore{
    select $1,item.id,(item.position-1)::integer from unnest($2::uuid[]) with ordinality as item(id,position)`,[id,ids]);
  }
  private async write<T>(work:()=>Promise<T>):Promise<T>{try{return await work();}catch(error){
-  if(error&&typeof error==='object'&&'code'in error&&['23503','23514'].includes(String(error.code)))throw new ServicePublicationInputError();throw error;}}
+  if(error&&typeof error==='object'&&'code'in error){
+   if(error.code==='PSF01')throw new ServicePublicationCheckoutActiveError();
+   if(error.code==='23503'||error.code==='23514')throw new ServicePublicationInputError();
+  }
+  throw error;
+ }}
  /** Trusted composition only; the caller authorizes the same transaction's owner or current administrator. */
  async inspectInTransaction(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,publicationId:unknown,expectedRevision:unknown,includeRepeat=false){
   kindOf(kind);const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision);

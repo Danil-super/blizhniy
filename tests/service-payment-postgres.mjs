@@ -69,6 +69,24 @@ test('service event terms and advertising slots are authoritative and once only'
    await assert.rejects(admin.query('insert into app.service_publication_photos(publication_id,media_id,position) values($1,$2,0)',[p.target,media]),e=>e.code==='PSF01');
    const free=await fixture();assert.equal((await admin.query("update app.service_publications set form=jsonb_set(form,'{title}','\"Свободная реклама\"'),revision=revision+1 where id=$1",[free.target])).rowCount,1);
   });
+  await suite.test('the owner edit route reports an unresolved service payment as a recoverable conflict',async()=>{
+   const p=await buy(await fixture(),{captured:false}),origin='https://fixture.example.invalid';
+   const store=new(load('postgres-service-publications').PostgresServicePublicationStore)(db);
+   const invoke=load('production-service-publication-http').createProductionServicePublicationHandler({origin},
+    ()=>({store,limiter:{allowProduction:async()=>true}}),()=>{});
+   const edit=()=>invoke(new Request(origin+'/api/account/service-publications',{method:'PUT',
+    headers:{host:new URL(origin).host,origin,'x-real-ip':'192.0.2.22','x-blizhniy-request':'1','content-type':'application/json',
+     cookie:'__Host-blizhniy_session='+p.token},
+    body:JSON.stringify({action:'update',kind:'marquee',expectedOwnerId:p.owner,publicationId:p.target,expectedRevision:'1',
+     form:{...p.form,title:'Новый сохранённый текст рекламы'}}),
+   }));
+   const blocked=await edit();
+   assert.equal(blocked.status,409);assert.deepEqual(await blocked.json(),{error:{code:'CHECKOUT_ACTIVE'}});
+   assert.equal((await store.read(p.token,p.owner,'marquee',p.target)).revision,'1');
+   await admin.query("update app.payment_orders set status='failed' where id=$1",[p.id]);
+   const saved=await edit();
+   assert.equal(saved.status,200);assert.equal((await saved.json()).revision,'2');
+  });
   await suite.test('five slots hold the sixth and FIFO prevents a later capture taking a newly freed slot',async()=>{
    const all=[];for(let i=0;i<7;i++)all.push(await buy(await fixture()));
    for(const p of all.slice(0,5))await fulfill(p);

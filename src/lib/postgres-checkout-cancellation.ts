@@ -9,7 +9,7 @@ export class PostgresCheckoutCancellation {
  constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:CheckoutCancellationPolicy=readLocalCheckoutCancellationPolicy()){}
  private async perform(token:string,expectedOwner:unknown,value:unknown,write:boolean):Promise<CheckoutCancellationResult|null>{
   const owner=parseListingDraftId(expectedOwner),input=parseCheckoutCancellation(value,{
-   services:!!(this.policy.fair_application||this.policy.ad_marquee),specialist:!!this.policy.specialist,
+   services:!!this.policy.fair_application,marquee:!!this.policy.ad_marquee,specialist:!!this.policy.specialist,
   });
   const admission=this.policy[input.targetType];
   try{return await withAppSessionTransaction(this.db,token,async(tx,user)=>{

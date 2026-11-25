@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {hashSessionToken} from './identity';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {PostgresServicePublicationStore,ServicePublicationAccessError} from './postgres-service-publications';
 import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
@@ -26,13 +27,19 @@ export class PostgresServiceCheckoutStore{
  private readonly forms:PostgresServicePublicationStore;
  private readonly intents:PostgresPaymentIntentStore;
  private readonly config:ListingCheckoutConfig;
+ private readonly source:string;
  private readonly targetType:'fair_application'|'ad_marquee';
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly kind:PaidServiceKind){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly kind:PaidServiceKind,private readonly hostedOwner?:string){
   if(typeof window!=='undefined'||!config||config.isTest!==true||!['fair','marquee'].includes(kind))throw new ServiceCheckoutUnavailableError();
+  if(hostedOwner!==undefined&&(kind!=='marquee'||parseListingDraftId(hostedOwner)!==hostedOwner||
+   !/^[1-9][0-9]{0,63}$/.test(config.shopId)||config.siteOrigin!=='https://xn----9sbphbgks4a4a.xn--p1ai'||config.receiptVatCode===null))throw new ServiceCheckoutUnavailableError();
+  this.source=source+(hostedOwner?' join app.marquee_test_admissions admission on admission.intent_id=i.id':'');
   this.config={...config};this.targetType=kind==='fair'?'fair_application':'ad_marquee';this.forms=new PostgresServicePublicationStore(db);this.intents=new PostgresPaymentIntentStore(db);
  }
  private owner<T>(token:string,expectedOwner:string,work:(tx:PostgresQueries,owner:string)=>Promise<T>){
-  const owner=parseListingDraftId(expectedOwner);return withAppSessionTransaction(this.db,token,(tx,user)=>{if(user.id!==owner)throw new AppSessionAccessError();return work(tx,user.id);});
+  const owner=parseListingDraftId(expectedOwner);
+  if(this.hostedOwner!==undefined&&owner!==this.hostedOwner)throw new ServiceCheckoutUnavailableError();
+  return withAppSessionTransaction(this.db,token,(tx,user)=>{if(user.id!==owner)throw new AppSessionAccessError();return work(tx,user.id);});
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<{tariff:Offer;fairEvent:Event|null}>{
   const {snapshot,issues}=await this.forms.inspectInTransaction(tx,owner,this.kind,id,revision);
@@ -45,10 +52,10 @@ export class PostgresServiceCheckoutStore{
   const fairEvent=this.kind==='fair'?(await tx.query<Event>(`select event_date::text date,to_char(ends_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "endsAt" from app.fair_event_at(clock_timestamp())`)).rows[0]:null;
   if(this.kind==='fair'&&!fairEvent)throw new ServiceCheckoutUnavailableError();return{tariff,fairEvent};
  }
- private async keyed(tx:PostgresQueries,owner:string,key:string){return(await tx.query<Row>(`select ${columns} ${source} where o.owner_id=$1 and o.creation_key=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[owner,key,this.targetType,this.config.shopId])).rows[0];}
+ private async keyed(tx:PostgresQueries,owner:string,key:string){return(await tx.query<Row>(`select ${columns} ${this.source} where o.owner_id=$1 and o.creation_key=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[owner,key,this.targetType,this.config.shopId])).rows[0];}
  async preview(token:string,owner:string,publicationId:unknown,expectedRevision:unknown){
   const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision);return this.owner(token,owner,async(tx,actor)=>{
-   const offer=await this.inspected(tx,actor,id,revision),active=(await tx.query<Row>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type=$2 and o.target_id=$3 and o.status in ('created','pending','succeeded') and i.merchant_shop_id=$4 and i.is_test`,[actor,this.targetType,id,this.config.shopId])).rows[0];
+   const offer=await this.inspected(tx,actor,id,revision),active=(await tx.query<Row>(`select ${columns} ${this.source} where o.owner_id=$1 and o.target_type=$2 and o.target_id=$3 and o.status in ('created','pending','succeeded') and i.merchant_shop_id=$4 and i.is_test`,[actor,this.targetType,id,this.config.shopId])).rows[0];
    return{publicationId:id,revision,...offer,activePayment:active?display(active):null};
   });
  }
@@ -57,7 +64,7 @@ export class PostgresServiceCheckoutStore{
   const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
    const row=(await tx.query<Row&{publishedAt:string|null;expiresAt:string|null;eventEnded:boolean}>(`select ${columns},(i.target_type='fair_application' and terms.fair_ends_at<=clock_timestamp()) as "eventEnded",
     to_char(f.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
-    ${source} left join app.payment_fulfillments f on f.intent_id=o.id where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[id,actor,this.targetType,this.config.shopId])).rows[0];
+    ${this.source} left join app.payment_fulfillments f on f.intent_id=o.id where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[id,actor,this.targetType,this.config.shopId])).rows[0];
    if(!row)throw new ServicePublicationAccessError();const {publishedAt,expiresAt,eventEnded,...order}=row;
    return{order:display(order),eventEnded,fulfillment:publishedAt&&expiresAt?{publishedAt,expiresAt}:null};
   });
@@ -69,7 +76,7 @@ export class PostgresServiceCheckoutStore{
    const permitted=await attempt?.(tx);
    const row=(await tx.query<PaymentIntent&{status:string;fairDate:string|null}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",i.target_revision::text as "targetRevision",
     i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status,terms.fair_date::text as "fairDate"
-    ${source} where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[id,actor,this.targetType,this.config.shopId])).rows[0];
+    ${this.source} where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[id,actor,this.targetType,this.config.shopId])).rows[0];
    if(!row)throw new ServicePublicationAccessError();const {status,fairDate,...value}=row,intent=parsePaymentIntent(value);
    if((requireCurrent||attempt)&&(await tx.query('select intent_id from app.payment_provider_links where intent_id=$1',[id])).rowCount!==1){
     if(status!=='created'||!JSON.parse(intent.requestBody).receipt)throw new ServiceCheckoutUnavailableError();
@@ -100,6 +107,10 @@ export class PostgresServiceCheckoutStore{
    const id=randomUUID();const inserted=await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,$6::bigint) on conflict do nothing returning id',[id,actor,input.creationKey,this.targetType,input.publicationId,input.expectedRevision]);
    if(inserted.rowCount!==1){const saved=await this.keyed(tx,actor,input.creationKey);if(!saved||!matches(saved,input))throw new ServiceCheckoutConflictError();return display(saved);}
    await this.intents.persistInTransaction(tx,await this.intent(tx,actor,id,input,tariff));
+   if(this.hostedOwner){
+    await tx.query("select set_config('blizhniy.marquee_checkout_session',$1,true)",[hashSessionToken(token)]);
+    await tx.query('insert into app.marquee_test_admissions(intent_id) values($1)',[id]);
+   }
    await tx.query('insert into app.service_payment_terms(intent_id) values($1)',[id]);
    const saved=await this.keyed(tx,actor,input.creationKey);if(!saved||!matches(saved,input))throw new ServiceCheckoutConflictError();return display(saved);
   });

@@ -11,7 +11,7 @@ export type ServiceReviewQueue={items:ServiceReviewItem[];nextCursor:ListingDraf
 export type ServiceReviewDetail={request:ServiceModerationState;snapshot:ServicePublicationSnapshot;issues:string[]};
 export class ServiceClientError extends Error{
  readonly code:string;
- constructor(code:string){super(code==='CHECKOUT_ACTIVE'?'Для анкеты уже начата оплата. Вернитесь к ней в личном кабинете; после её завершения повторите сохранение.':code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='ADMIN_REQUIRED'?'Недостаточно прав для модерации.':
+ constructor(code:string){super(code==='CHECKOUT_ACTIVE'?'Для этой публикации уже есть заказ на оплату. Проверьте его статус в кабинете. Если заказ ещё не отправлен провайдеру, его можно отменить.':code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='ADMIN_REQUIRED'?'Недостаточно прав для модерации.':
   code==='PUBLICATION_CHANGED'?'Материал изменён. Сверьте сохранённую версию.':code==='PUBLICATION_NOT_FOUND'?'Материал недоступен.':
   code==='PROFILE_NAME_REQUIRED'?'Укажите имя в настройках кабинета. Допустимы буквы, пробелы, дефис и апостроф.':
   code==='INVALID_INPUT'?'Проверьте поля формы и фотографии.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':

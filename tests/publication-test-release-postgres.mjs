@@ -21,8 +21,8 @@ import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getHostedMarqueeRefundUpgradeSql,getHostedMarqueeRefundRecoveryMigration,getHostedPlacementRefundProofUpgradeSql,getHostedPlacementRefundProofMigration,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
-import {getHostedPlacementRenewalMigration,getHostedPlacementRenewalUpgradeSql,getHostedSpecialistRepeatMigration,getHostedSpecialistRepeatUpgradeSql,getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
-import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund,testHostedSpecialistRepeat,testHostedPlacementRenewals} from './hosted-refund-workflow-cases.mjs';
+import {getHostedMarqueeAdmissionMigration,getHostedMarqueeAdmissionUpgradeSql,getHostedPlacementRenewalMigration,getHostedPlacementRenewalUpgradeSql,getHostedSpecialistRepeatMigration,getHostedSpecialistRepeatUpgradeSql,getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
+import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund,testHostedSpecialistRepeat,testHostedPlacementRenewals,testHostedMarqueeAdmission} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import {testHostedPaidResponses} from './hosted-paid-response-cases.mjs';
 import pg from 'pg';
@@ -817,6 +817,53 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      });
      await t.test('the compiled worker settles a hosted TEST renewal for all three supported kinds',
       ()=>testHostedPlacementRenewals({admin,config,load,reconciler:workerDb,compiledWorker,refundOperator:operator.db,refundWorker:worker.db}));
+     await t.test('the hosted marquee admission package pins its proof and restricted roles after restore',async()=>{
+      const migration=getHostedMarqueeAdmissionMigration();
+      const verifyOptions={database:config.database,publicationTest:true,specialistAccountTest:true};
+      const artifactOptions={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
+      const artifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'marquee-admission-'+entry.kind);
+       assert.equal(entry.build(destination,{schema:83}).schema,83);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       assert.deepEqual(api[entry.plan](config.database,{schema:83}).journal.at(-1),{name:migration.name,sha256:migration.sha256});
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       artifacts.push({...entry,verify:api[entry.verify]});
+      }
+      const apply=async()=>{
+       const client=await admin.connect();
+       try{await client.query(getHostedMarqueeAdmissionUpgradeSql());}catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      await apply();
+      await assert.rejects(apply(),{code:'55000'});
+      const database='marquee_admission_restored';
+      await admin.query('create database marquee_admission_restored template template0');
+      await admin.query(`revoke all on database marquee_admission_restored from public;
+       grant connect on database marquee_admission_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+       blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+      await docker(['exec',container,'bash','-euo','pipefail','-c',
+       'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+       'restore-fixture',config.database,database]);
+      const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+      try{
+       const verified=await Promise.allSettled([copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions),
+        copiedGuard.verifyPaymentReconciliationDatabase(restored,{...verifyOptions,database})]);
+       assert.deepEqual(verified,[{status:'fulfilled',value:true},{status:'fulfilled',value:true}]);
+      }finally{await restored.close();}
+      for(const entry of artifacts)await entry.verify(entry.db,artifactOptions);
+      await admin.query('grant select(shop_id) on app.marquee_test_enrollment to blizhniy_runtime');
+      try{
+       await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));
+       for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,artifactOptions));
+      }finally{await admin.query('revoke select(shop_id) on app.marquee_test_enrollment from blizhniy_runtime');}
+      await admin.query('alter table app.payment_dispatch_anchors disable trigger hosted_marquee_dispatch_guard');
+      try{await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));}
+      finally{await admin.query('alter table app.payment_dispatch_anchors enable always trigger hosted_marquee_dispatch_guard');}
+      await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions);
+     });
+     await t.test('only an enrolled advertising purchase can prepare, dispatch, cancel, fulfill and refund on the hosted schema',
+      ()=>testHostedMarqueeAdmission({admin,config,load,reconciler:workerDb,refundOperator:operator.db,refundWorker:worker.db}));
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;

@@ -9,7 +9,7 @@ import {parseServiceCheckout,ServiceCheckoutInputError,ServiceCheckoutConflictEr
 import type {PostgresServiceCheckoutStore} from './postgres-service-checkout';
 type Runtime={store:Pick<PostgresServiceCheckoutStore,'preview'|'prepare'|'readIntent'|'readOrder'>;limiter:Pick<AuthRateLimiter,'allowProduction'>;dispatch(token:string,owner:string,id:string):Promise<{isTest:boolean;confirmationUrl:string|null}>};
 function exact(row:Record<string,unknown>,keys:string[]){if(Reflect.ownKeys(row).length!==keys.length||keys.some(key=>!Object.hasOwn(row,key)))throw new AuthRequestError(422,'INVALID_INPUT');}
-/** Same-origin local cookie boundary. No service/provider authority is taken from request fields. */
+/** Same-origin cookie boundary. No service/provider authority is taken from request fields. */
 export function createServiceCheckoutHandler(config:{origin:string},kind:PaidServiceKind,current:Runtime){
  return async(request:Request)=>{
   const requestId=randomUUID();
@@ -33,7 +33,7 @@ export function createServiceCheckoutHandler(config:{origin:string},kind:PaidSer
    if(!await current.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    return reply(await execute(token),200);
   }catch(error){
-   if(error&&typeof error==='object'&&'code'in error&&error.code==='PCA02')error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
+   if(error&&typeof error==='object'&&'code'in error&&(error.code==='PCA02'||error.code==='PSM01'))error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'PUBLICATION_NOT_FOUND');
    if(error instanceof ServicePublicationConflictError||error instanceof ServiceCheckoutConflictError)error=new AuthRequestError(409,'CHECKOUT_CHANGED');

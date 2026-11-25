@@ -6,7 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
-import {getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
+import {getHostedMarqueeAdmissionMigration,getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -132,7 +132,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     expectedJournal.push(getPaymentReconciliationAlertMigration());
    }
    const hostedSchema=hostedRefunds?getHostedRefundSchemaVersion(journal):0;
-   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81,placementRenewals=hostedSchema>=82;
+   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81,placementRenewals=hostedSchema>=82,marqueeAdmission=hostedSchema>=83;
    const undeliveredCompensation=hostedSchema>=76;
    if(hostedRefunds){
     if(!reconciliationAlert)throw new Error('Unsupported hosted refund deployment');
@@ -143,12 +143,13 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     if(specialistRefunds)expectedJournal.push(getHostedSpecialistRefundMigration());
     if(specialistRepeat)expectedJournal.push(getHostedSpecialistRepeatMigration());
     if(placementRenewals)expectedJournal.push(getHostedPlacementRenewalMigration());
+    if(marqueeAdmission)expectedJournal.push(getHostedMarqueeAdmissionMigration());
     expectedJournal.sort((a,b)=>a.name.localeCompare(b.name,'en'));
    }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx,{hostedRefunds});
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
@@ -160,6 +161,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    // While rolling out or disabling specialist purchases, only this single additional read is permitted.
    const termsRead='app.specialist_checkout_terms.intent_id:SELECT';
    if(enrollment&&(specialistAccountTest||actual.some(item=>item.key===termsRead)))expected.add(termsRead);
+   if(marqueeAdmission)expected.add('app.marquee_test_admissions.intent_id:SELECT');
    if(responses)for(const column of ['intent_id','applicant_id','shop_id'])expected.add('app_response.admissions.'+column+':SELECT');
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace

@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -99,8 +99,13 @@ export function getHostedPlacementRenewalMigration(){
  return readReleaseMigration('0082-hosted-placement-renewals.sql','49f893891d52a3dcd9acb98ebd701332b06133a0563c1475df2d320480821f0c');
 }
 
+export function getHostedMarqueeAdmissionMigration(){
+ return readReleaseMigration('0083-hosted-marquee-admission.sql','dd0dfbde38533ae0bfab988116a77716380875ae0a5198837802133aeabf79cb');
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0083-hosted-marquee-admission.sql':return 83;
   case '0082-hosted-placement-renewals.sql':return 82;
   case '0081-hosted-specialist-repeat.sql':return 81;
   case '0080-hosted-specialist-refunds.sql':return 80;
@@ -118,7 +123,7 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80,81,82].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81,82,83].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
@@ -126,6 +131,7 @@ export function getHostedRefundReleasePlan(schema=75){
  if(schema>=80)plan.push(getHostedSpecialistRefundMigration());
  if(schema>=81)plan.push(getHostedSpecialistRepeatMigration());
  if(schema>=82)plan.push(getHostedPlacementRenewalMigration());
+ if(schema>=83)plan.push(getHostedMarqueeAdmissionMigration());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -158,6 +164,10 @@ export function getHostedPlacementRenewalUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(81),[getHostedPlacementRenewalMigration()]);
 }
 
+export function getHostedMarqueeAdmissionUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(82),[getHostedMarqueeAdmissionMigration()]);
+}
+
 function composeHostedRefundSql(previous,plan){
  const baseline=previous.sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const body=plan.map(({sql})=>{
@@ -185,12 +195,12 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82;
+ const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82,marqueeAdmission=schema>=83;
  const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -227,6 +237,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedMarqueeAdmission:[
+  '2d2305c4c46a248c76a70b2fa19c3994229ed8cef1cfe8d7644f0da115f82c78',
+  '07704262038114948a46eaab23b683237a7c3972c657ed58e7581cf80e8e7171',
+ ],
  hostedPlacementRenewals:[
   'e39b396a801544c7588a3191e82c30218d9e05c52e900ff6e44f00c67aa923ee',
   '4f90458b71f6658b06cbb0d82e50d7fb9304e353d502b2bbc812ffdb94063603',
@@ -338,6 +352,24 @@ export async function assertListingViewsAccess(tx){
  if(access?.same_owner!==true||access.clean_defaults!==true||access.clean_grants!==true||
     JSON.stringify(access.runtime)!==JSON.stringify(['function:EXECUTE','namespace:USAGE']))throw Error('Unexpected listing views permissions');
 }
+async function assertHostedMarqueeAdmissionAccess(tx){
+ const actual=(await tx.query(`with relations as (
+  select oid,relowner,relname,relacl from pg_class where oid in ('app.marquee_test_enrollment'::regclass,
+   'app.marquee_test_admissions'::regclass,'app.service_payment_terms'::regclass)
+ )
+ select r.relname||'.*:'||a.grantee::regrole::text||':'||a.privilege_type as key,a.is_grantable as grantable
+  from relations r cross join lateral aclexplode(coalesce(r.relacl,acldefault('r',r.relowner))) a where a.grantee<>r.relowner
+ union all select r.relname||'.'||c.attname||':'||a.grantee::regrole::text||':'||a.privilege_type,a.is_grantable
+  from relations r join pg_attribute c on c.attrelid=r.oid cross join lateral aclexplode(c.attacl) a where a.grantee<>r.relowner
+ union all select p.proname||':'||a.grantee::regrole::text||':'||a.privilege_type,a.is_grantable
+  from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.pronamespace='app'::regnamespace and p.proname in ('guard_marquee_test_admission','require_hosted_marquee_terms',
+   'service_payment_eligible','service_payment_eligible_before_marquee_admission') and a.grantee<>p.proowner`)).rows;
+ const expected=new Set(['marquee_test_admissions.intent_id:blizhniy_runtime:SELECT','marquee_test_admissions.intent_id:blizhniy_runtime:INSERT',
+  'marquee_test_admissions.intent_id:blizhniy_payment_reconciler:SELECT','service_payment_terms.intent_id:blizhniy_runtime:INSERT',
+  ...['intent_id','fair_date','fair_ends_at'].map(column=>'service_payment_terms.'+column+':blizhniy_runtime:SELECT')]);
+ if(actual.length!==expected.size||actual.some(row=>row.grantable!==false||!expected.delete(row.key))||expected.size)throw Error('Unexpected marquee admission access');
+}
 async function assertCheckoutCancellationAccess(tx){
  const result=(await tx.query(`with relations as (
   select oid,relowner,relacl,relname='payment_checkout_cancellations' as journal from pg_class
@@ -403,7 +435,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false,marqueeAdmission=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -455,7 +487,12 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!specialistRepeat)throw Error('Unsupported placement renewal deployment');
   accepted=fingerprints.hostedPlacementRenewals;
  }
+ if(marqueeAdmission){
+  if(!placementRenewals)throw Error('Unsupported marquee admission deployment');
+  accepted=fingerprints.hostedMarqueeAdmission;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(marqueeAdmission)await assertHostedMarqueeAdmissionAccess(tx);
  if(placementRenewals){
   const rights=(await tx.query(`select a.grantee::regrole::text as role,a.privilege_type as privilege,a.is_grantable as grantable
    from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
