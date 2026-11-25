@@ -16,6 +16,7 @@ function mount(application){const instances=new Map(),effects=[],cache=new Map()
   if(dep==='@/lib/client-application-payment')return{applicationPayment:{read},ApplicationPaymentClientError:ClientError};
   if(dep==='@/lib/client-checkout-cancellation')return{CheckoutCancellationClientError:ClientError,checkoutCancellation:{cancel:async()=>{calls.push('cancel.write');return pendingWrite;},read:async()=>{calls.push('cancel.read');return{paymentId:payment,targetType:application?'application':'listing',state:'cancelled'};}}};
   if(dep==='./CheckoutCancellation')return load('CheckoutCancellation');if(dep==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};
+  if(dep==='./PlacementReturnNotice')return{usePlacementReturnNotice:()=>({rememberReceipt:()=>assert.fail('Cancellation must not create a success receipt')})};
   if(dep==='./TestPaymentLaunch')return{TestPaymentLaunch:({disabled})=>jsx('button',{disabled,children:'Запустить оплату'})};if(dep==='@/components/phone/PhonePaymentNotice')return{PhonePaymentNotice:()=>null};
   throw Error('Unapproved cancellation UI dependency: '+dep);
  },out);return out;}

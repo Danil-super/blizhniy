@@ -13,6 +13,7 @@ import {vacancyPaymentStatus,workRequestPaymentStatus} from '@/lib/client-vacanc
 import {CheckoutCancellation} from './CheckoutCancellation';
 import {specialistPaymentStatus} from '@/lib/client-specialist-payment';
 import {PhonePaymentNotice} from '@/components/phone/PhonePaymentNotice';
+import {usePlacementReturnNotice} from './PlacementReturnNotice';
 
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60';
 // Keep early confirmation fast and cover the worker's 30s and 60s retry intervals.
@@ -20,6 +21,7 @@ const statusCheckDelaysMs = [2000, 2000, 2000, 4000, 8000, 16000, 30000, 30000, 
 
 function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,specialist,cancellationEnabled}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean;vacancy:boolean;workRequest:boolean;specialist:boolean;cancellationEnabled:boolean}){
  const router=useRouter(),cabinet=specialist?'/cabinet/specialist':workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya';
+ const {rememberReceipt}=usePlacementReturnNotice();
  const [automaticChecks,setAutomaticChecks]=useState(0);
  const [cancellationPending,setCancellationPending]=useState(false);
  const [snapshot,setSnapshot]=useState<ListingPaymentSnapshot|null>(null),[loaded,setLoaded]=useState(false),[error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
@@ -40,15 +42,19 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
   :account?.workPublicationTest||(!vacancy&&!workRequest&&account?.listingVerificationTest));
  const verificationOnly=!!snapshot&&(snapshot.testOnly||testCheckout)&&!snapshot.testPublication&&!localSimulation;
  const confirmed=!!snapshot&&snapshot.order.status==='succeeded'&&(verificationOnly||!!snapshot.fulfillment);
+ const result=confirmed?(snapshot.fulfillment?'fulfilled':'verified-test'):null;
  const terminal=confirmed||snapshot?.order.status==='failed'||snapshot?.order.status==='refunded';
  useEffect(()=>{
   if(!visible||busy||error||cancellationPending||!snapshot)return;
-  if(confirmed){const timer=setTimeout(()=>router.replace(cabinet),2000);return()=>clearTimeout(timer);}
+  if(result){
+   const timer=setTimeout(()=>{rememberReceipt({owner,cabinet,result});router.replace(cabinet);},2000);
+   return()=>clearTimeout(timer);
+  }
   if(!terminal&&automaticChecks<statusCheckDelaysMs.length){
    const timer=setTimeout(()=>{setAutomaticChecks(value=>value+1);setRetry(value=>value+1);},statusCheckDelaysMs[automaticChecks]);
    return()=>clearTimeout(timer);
   }
- },[visible,busy,error,cancellationPending,snapshot,confirmed,terminal,router,cabinet,automaticChecks]);
+ },[visible,busy,error,cancellationPending,snapshot,result,terminal,router,cabinet,automaticChecks,owner,rememberReceipt]);
  return <div hidden={!visible} inert={!visible} aria-busy={busy} className="min-w-0">
   {busy&&<p role="status" className="mb-4 text-sm text-slate-700">Получаем статус заказа…</p>}
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
@@ -58,7 +64,9 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
   {snapshot?.order.status==='succeeded'&&!verificationOnly&&!snapshot.fulfillment&&<PhonePaymentNotice owner={owner} onVerified={()=>setRetry(value=>value+1)}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm leading-6 text-slate-700">Платёж недоступен. Проверьте ссылку и убедитесь, что вошли в аккаунт, из которого оформляли заказ.</p>}
   {confirmed&&!error&&<p role="status" className="mt-4 text-sm text-slate-600">Возвращаем в личный кабинет…</p>}
-  <div className="mt-5 flex flex-wrap gap-3">{(!confirmed||error)&&<button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>{setAutomaticChecks(0);setRetry(value=>value+1);}}>Проверить статус</button>}<Link href={cabinet} className={button}>{confirmed?'Вернуться на сайт':specialist?'Моя анкета':workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
+  <div className="mt-5 flex flex-wrap gap-3">{(!confirmed||error)&&<button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>{setAutomaticChecks(0);setRetry(value=>value+1);}}>Проверить статус</button>}<Link href={cabinet} className={button} onNavigate={()=>{
+   if(result&&visible&&!busy&&!error&&!cancellationPending)rememberReceipt({owner,cabinet,result});
+  }}>{confirmed?'Вернуться на сайт':specialist?'Моя анкета':workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
  </div>;
 }
 export function PrimaryPaymentReturnClient({paymentId,testCheckout=false,vacancy=false,workRequest=false,specialist=false,cancellationEnabled=false}:{paymentId:string;testCheckout?:boolean;vacancy?:boolean;workRequest?:boolean;specialist?:boolean;cancellationEnabled?:boolean}){

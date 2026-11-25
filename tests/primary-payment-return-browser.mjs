@@ -70,7 +70,21 @@ test('primary payment return reads only its owner order, survives loss of respon
    assert.equal(await page.getByRole('button',{name:'Проверить статус',exact:true}).count(),0);
    assert.equal(await page.getByRole('link',{name:'Вернуться на сайт',exact:true}).getAttribute('href'),'/cabinet/obyavleniya');
    await page.waitForURL(origin+'/cabinet/obyavleniya');
+   const result = fulfilled ? 'Размещение выполнено' : 'Оплата подтверждена. TEST-платёж без списания денег.';
+   const cabinetReceipt = page.getByRole('status').filter({hasText:result});
+   await cabinetReceipt.waitFor();
+   assert.equal(await cabinetReceipt.textContent(),result);
+   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+   assert.deepEqual(await cabinetReceipt.evaluate(async node=>(await window.axe.run(node)).violations
+    .filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
   }
+  const cabinetReceipt = page.getByRole('status').filter({hasText:'Размещение выполнено'});
+  active=null;await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
+  await cabinetReceipt.waitFor({state:'hidden'});
+  active=owner;
+  await page.goto(origin+'/cabinet/obyavleniya?paid=1',{waitUntil:'domcontentloaded'});
+  await page.waitForLoadState('networkidle');
+  assert.equal(await cabinetReceipt.count(),0);
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });

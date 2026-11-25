@@ -22,6 +22,7 @@ import {readWorkOwnerActionsEnabled} from '@/lib/work-owner-actions-contract';
 import {readPlacementRenewalsEnabled} from '@/lib/placement-renewal-config';
 import {readServiceCheckoutEnabled} from '@/lib/service-checkout-config';
 import {readSpecialistCheckoutEnabled} from '@/lib/specialist-checkout-config';
+import {PlacementReturnNoticeProvider} from '@/components/payments/PlacementReturnNotice';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -69,7 +70,9 @@ export default async function RootLayout({
         <BookingLegacyStorageCleanup />
         <CookieNotice initiallyAcknowledged={hasCookieNoticeAcknowledgement(incoming.get("cookie") ?? "")} />
         {/* Isolate lazy Flight children from host replay in Next 15's bundled renderer. */}
-        <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
+        <PlacementReturnNoticeProvider>
+          <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
+        </PlacementReturnNoticeProvider>
         <MobileBottomNav />
         <SiteFooter />
         </PhonePlacementProvider>
