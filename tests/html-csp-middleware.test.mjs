@@ -90,6 +90,17 @@ test('explicit enforce uses the same nonce and policy for renderer and browser',
   });
 });
 
+test('HTML and Flight responses restrict resource consumption to the same origin', { concurrency: false }, async () => {
+  await withEnvironment({ BLIZHNIY_CSP_MODE: 'enforce' }, () => {
+    for (const headers of [{}, { rsc: '1' }]) {
+      const response = middleware(request('/kabinet', headers));
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
+      assert.equal(response.headers.get('cross-origin-embedder-policy'), null);
+      assert.equal(response.headers.get('cross-origin-opener-policy'), null);
+    }
+  });
+});
+
 test('SSR, Flight and prefetch requests replace every caller-selected policy and nonce', { concurrency: false }, async () => {
   await withEnvironment({}, () => {
     const nonces = new Set();
@@ -174,6 +185,7 @@ test('unknown mode and unsafe selected legacy configuration fail closed without 
       assert.equal(response.headers.get('x-middleware-next'), null);
       assert.equal(response.headers.get('x-middleware-override-headers'), null);
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
       assert.equal(await response.text(), 'Page security configuration unavailable');
     });
   }

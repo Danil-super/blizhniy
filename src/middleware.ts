@@ -27,12 +27,14 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.next({ request: { headers } });
     response.headers.set(mode === "enforce" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", policy);
     response.headers.set("Reporting-Endpoints", 'csp="/api/csp-report"');
+    response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
     response.headers.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
     return response;
   } catch {
     return new NextResponse("Page security configuration unavailable", { status: 503, headers: {
       "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
       "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
     } });
   }
 }
