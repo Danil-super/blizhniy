@@ -35,7 +35,5 @@ export function PlacementReturnNotice(){
  const message=result==='fulfilled'?'Размещение выполнено':result==='verified-test'?'Оплата подтверждена. TEST-платёж без списания денег.':null;
  useEffect(()=>{if(message)heading.current?.focus();},[message]);
  if(!message)return null;
- return <div role="status" aria-atomic="true" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
-  <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold">{message}</h2>
- </div>;
+ return <h2 ref={heading} tabIndex={-1} className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{message}</h2>;
 }

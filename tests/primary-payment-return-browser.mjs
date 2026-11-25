@@ -71,16 +71,16 @@ test('primary payment return reads only its owner order, survives loss of respon
    assert.equal(await page.getByRole('link',{name:'Вернуться на сайт',exact:true}).getAttribute('href'),'/cabinet/obyavleniya');
    await page.waitForURL(origin+'/cabinet/obyavleniya');
    const result = fulfilled ? 'Размещение выполнено' : 'Оплата подтверждена. TEST-платёж без списания денег.';
-   const cabinetReceipt = page.getByRole('status').filter({hasText:result});
+   const cabinetReceipt = page.getByRole('heading',{name:result,exact:true});
    await cabinetReceipt.waitFor();
    assert.equal(await cabinetReceipt.textContent(),result);
-   const receiptHeading = await cabinetReceipt.getByRole('heading',{name:result,exact:true}).elementHandle();
+   const receiptHeading = await cabinetReceipt.elementHandle();
    await page.waitForFunction(heading=>heading===document.activeElement,receiptHeading);
    await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
    assert.deepEqual(await cabinetReceipt.evaluate(async node=>(await window.axe.run(node)).violations
     .filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
   }
-  const cabinetReceipt = page.getByRole('status').filter({hasText:'Размещение выполнено'});
+  const cabinetReceipt = page.getByRole('heading',{name:'Размещение выполнено',exact:true});
   active=null;await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
   await cabinetReceipt.waitFor({state:'hidden'});
   active=owner;

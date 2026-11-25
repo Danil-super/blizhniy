@@ -83,6 +83,9 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
    assert.equal(await page.getByRole('button',{name:'Проверить статус',exact:true}).count(),0);
    assert.equal(await page.getByRole('link',{name:'Вернуться на сайт',exact:true}).getAttribute('href'),'/cabinet/'+cabinet);
    await page.waitForURL(origin+'/cabinet/'+cabinet);
+   const receipt = page.getByRole('heading',{name:'Размещение выполнено',exact:true});
+   const receiptHeading = await receipt.elementHandle();
+   await page.waitForFunction(heading=>heading===document.activeElement,receiptHeading);
   }
   endpoint='/api/account/listing-checkout';snapshot={order:{...order,status:'succeeded'},fulfillment:null,testOnly:true};
   await page.goto(origin+`/oplata/${id}`,{waitUntil:'domcontentloaded'});
