@@ -12,10 +12,20 @@ export function validateLocalPrimaryState(state,project){
   new Set([state.runtimePassword,state.ownerPassword,state.rateSecret]).size!==3)throw Error('Invalid owned local primary state');
  return state;
 }
+function requireLocalPrimaryDirectory(directory){
+ const parent=lstatSync(directory);
+ if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700||realpathSync(directory)!==directory)throw Error('Unsafe local primary directory');
+}
+export function resolveLocalPrimaryDirectory(defaultDirectory,env=process.env){
+ const directory=env.BLIZHNIY_LOCAL_PRIMARY_FIXTURE_DIR;
+ if(directory===undefined)return defaultDirectory;
+ if(env.NODE_ENV!=='test'||!isAbsolute(directory)||directory==='/')throw Error('Invalid local fixture directory');
+ requireLocalPrimaryDirectory(directory);
+ return directory;
+}
 export function readLocalPrimaryState(file,project){
  if(!isAbsolute(file))throw Error('Local primary state must be absolute');
- const parent=lstatSync(dirname(file));
- if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700||realpathSync(dirname(file))!==dirname(file))throw Error('Unsafe local primary directory');
+ requireLocalPrimaryDirectory(dirname(file));
  const descriptor=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   const info=fstatSync(descriptor);

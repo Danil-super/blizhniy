@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useId,useState,type FormEvent} from "react";
 import type {CabinetProfile,OrganizationField} from "@/lib/cabinet-profile";
 import {CabinetFormValidation} from "@/components/CabinetFormValidation";
 import {CabinetProfileFailure,useCookieCabinetProfile} from "./CookieCabinetProfileProvider";
@@ -31,6 +31,7 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
   const [legacyForm, setLegacyForm] = useState<CabinetProfile | null>(profile);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const descriptionId = useId();
 
   useEffect(() => {
     if (!primary) setLegacyForm(profile);
@@ -250,9 +251,10 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
             maxLength={160}
           />
         </label>
-        <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-          Краткое описание
+        <div className="grid gap-1.5 text-sm text-slate-700">
+          <label htmlFor={descriptionId} className="font-bold">Краткое описание</label>
           <textarea
+            id={descriptionId}
             className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]"
             value={form.organizationDescription}
             name="organizationDescription"
@@ -261,7 +263,7 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
             placeholder="Чем занимается компания, кого обычно нанимаете, важные условия для соискателей."
             maxLength={500}
           />
-        </label>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving || Boolean(profileError) || conflicts.length > 0} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
             {saving ? "Сохраняем..." : "Сохранить профиль организации"}
