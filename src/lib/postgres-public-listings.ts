@@ -46,12 +46,17 @@ export class PostgresPublicListingStore{
  }
  private async listRows(options:PublicListingQuery){
   // Lists need only a cover; the detail read retains every attached photo for the gallery.
-  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${this.source} where ${this.eligible}
+  // Keep the sort below the joins so PostgreSQL can stop checking photo eligibility after filling the page.
+  const source=this.source.replace(/^from app\.listings l\b/,`from (
+   select id,published_at,created_at from app.listings where status='published' and is_paid
+   order by published_at desc,created_at desc,id desc offset 0
+  ) ordered join app.listings l on l.id=ordered.id`);
+  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${source} where ${this.eligible}
    and ($1::text is null or l.listing_type=$1) and ($3::uuid is null or l.author_id=$3)
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
    and ($8::text is null or city.name=$8)
-   order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset,query.city], "bounded-read")).rows;
+   order by ordered.published_at desc,ordered.created_at desc,ordered.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset,query.city], "bounded-read")).rows;
   return rows;
  }
  async list(options:PublicListingQuery={}):Promise<Listing[]>{
