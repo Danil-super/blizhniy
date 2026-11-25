@@ -719,7 +719,8 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   const [selectedId, setSelectedId] = useState("");
   const [cropEditorId, setCropEditorId] = useState("");
   const [mediaMessage, setMediaMessage] = useState("");
-  const [cropApplied, setCropApplied] = useState(false);
+  const [appliedCropId, setAppliedCropId] = useState("");
+  const cropStatusId = useId();
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxFiles = 20;
@@ -740,7 +741,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     if(preparingRef.current)return;
     setMediaMessage("");
-    setCropApplied(false);
+    setAppliedCropId("");
     const input=event.currentTarget;input.dataset.photoPreparing='true';
     const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
     preparingRef.current=true;setPreparing(true);
@@ -782,6 +783,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   }
 
   function removeMedia(item: PreviewMedia) {
+    if (appliedCropId === item.id) setAppliedCropId("");
     URL.revokeObjectURL(item.sourceUrl);
 
     if (item.url !== item.sourceUrl) {
@@ -842,7 +844,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
 
   function openCropEditor(id: string) {
     setMediaMessage("");
-    setCropApplied(false);
+    setAppliedCropId("");
     setCropEditorId(id);
   }
 
@@ -873,13 +875,13 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       return updated;
     });
     setCropEditorId("");
-    setCropApplied(true);
+    setAppliedCropId(item.id);
   }
 
   const mediaFeedback = (
     <>
       <p role="alert" className={mediaMessage ? "mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700" : "sr-only"}>{mediaMessage}</p>
-      <p role="status" className={cropApplied ? "mt-3 text-sm font-semibold text-slate-700" : "sr-only"}>{cropApplied ? "Кадр применён." : ""}</p>
+      <p id={cropStatusId} role="status" className={appliedCropId ? "mt-3 text-sm font-semibold text-slate-700" : "sr-only"}>{appliedCropId ? "Кадр применён." : ""}</p>
     </>
   );
 
@@ -957,6 +959,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
               <button
                 type="button"
                 onClick={() => openCropEditor(item.id)}
+                aria-describedby={appliedCropId === item.id ? cropStatusId : undefined}
                 className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
               >
                 Кадр

@@ -43,6 +43,7 @@ try{
  await page.goto(state.origin+'/auth');await page.getByLabel('Email',{exact:true}).fill(user.email);await page.getByLabel('Пароль',{exact:true}).fill(user.password);await page.getByRole('button',{name:'Войти',exact:true}).click();await page.waitForURL(state.origin+'/');
  phase='listing';await page.goto(state.origin+'/razmestit/obyavlenie');
  const photoInput=page.getByLabel('Фотографии объявления',{exact:true}),photoPicker=photoInput.locator('xpath=..');
+ await photoInput.waitFor({state:'attached'});
  const uploadError=photoPicker.locator(':scope > [role=alert]');
  const invalidPhoto={name:'keyboard-damaged.png',mimeType:'image/png',buffer:Buffer.from('invalid image')};
  assert.equal(await uploadError.count(),1,'the photo error announcement is present before selection');
@@ -79,7 +80,16 @@ try{
  await cropStatus.filter({hasText:/^Кадр применён\.$/}).waitFor();
  assert.equal(await libraryCrop.evaluate(node=>node===document.activeElement),true,'apply returns focus into the library');
  const output=await page.getByLabel('Фотографии объявления',{exact:true}).evaluate(async node=>{const image=await createImageBitmap(node.files[0]);const size={width:image.width,height:image.height};image.close();return size;});assert.deepEqual(output,{width:1600,height:1200});
- await page.getByRole('dialog',{name:'Медиатека',exact:true}).getByRole('button',{name:'Готово',exact:true}).click();await page.getByRole('button',{name:'Удалить файл 1',exact:true}).click();
+ await page.getByRole('dialog',{name:'Медиатека',exact:true}).getByRole('button',{name:'Готово',exact:true}).click();
+ phase='crop-direct';
+ const directCropButton=photoPicker.getByRole('button',{name:'Кадр',exact:true});await directCropButton.focus();await page.keyboard.press('Enter');
+ const directCrop=page.getByRole('dialog',{name:'Кадр для карточки',exact:true});
+ await directCrop.getByRole('button',{name:'Применить',exact:true}).click();await directCrop.waitFor({state:'detached'});
+ assert.equal(await directCropButton.evaluate(node=>node===document.activeElement),true);
+ const directStatus=photoPicker.locator(':scope > [role=status]').filter({hasText:/^Кадр применён\.$/});await directStatus.waitFor();
+ assert.ok(await directStatus.getAttribute('id'),'the crop confirmation has an ID for the restored button');
+ assert.equal(await directCropButton.getAttribute('aria-describedby'),await directStatus.getAttribute('id'));
+ await page.getByRole('button',{name:'Удалить файл 1',exact:true}).click();
  phase='order';await page.goto(state.origin+'/rabota/zakazy/sozdat');await page.locator('input[type=file]').setInputFiles({name:'order-keyboard.png',mimeType:'image/png',buffer:png});
  await page.getByRole('button',{name:'Изменить кадр',exact:true}).first().click();const orderCrop=page.getByRole('dialog',{name:'Кадр для карточки',exact:true});await moveAndReset(orderCrop);await tabCycle(orderCrop);await audit(orderCrop);await page.keyboard.press('Escape');await orderCrop.waitFor({state:'detached'});
  await page.getByRole('button',{name:'Убрать order-keyboard.png',exact:true}).click();results.push({flow:'order-crop'});
