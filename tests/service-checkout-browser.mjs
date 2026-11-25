@@ -1,10 +1,11 @@
 // Real compiled Next/Chromium; local isolated transport only, no DB/provider.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {spawn} from 'node:child_process';import {once} from 'node:events';import {createServer} from 'node:net';
+import {request as requestHttp} from 'node:http';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {randomBytes,randomUUID} from 'node:crypto';import {rootCertificates} from 'node:tls';import {createRequire} from 'node:module';import {chromium} from 'playwright';
 for(const hosted of [false,true])test((hosted?'hosted TEST marquee':'local service checkout')+' preserves one purchase through lost replies, queue status and cancellation',{timeout:120000},async()=>{
  const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(r=>probe.close(r));
  const origin='http://127.0.0.1:'+port,directory=await mkdtemp(join(tmpdir(),'blizhniy-service-checkout-ui-')),key=join(directory,'mail-key'),ca=join(directory,'ca');await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
- const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-renewal-ui-rate-key',BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-mail-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_PLACEMENT_RENEWALS:'local-v1',BLIZHNIY_SERVICE_CHECKOUT:'local-v1'};
+ const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-service-checkout-ui-rate-key',BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-mail-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_PLACEMENT_RENEWALS:'local-v1',BLIZHNIY_SERVICE_CHECKOUT:'local-v1'};
  const actor=randomUUID();
  if(hosted){
   delete env.BLIZHNIY_LOCAL_PRIMARY;delete env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN;
@@ -52,6 +53,17 @@ for(const hosted of [false,true])test((hosted?'hosted TEST marquee':'local servi
    return route.continue();
   });
   if(hosted){
+   const anonymousBody=JSON.stringify({action:'order',expectedOwnerId:actor,paymentId:randomUUID()});
+   const anonymous=await new Promise((resolve,reject)=>{
+    const request=requestHttp(origin+'/api/account/marquee-checkout',{method:'POST',headers:{
+     host:new URL(env.BLIZHNIY_AUTH_ORIGIN).host,origin:env.BLIZHNIY_AUTH_ORIGIN,'x-real-ip':'192.0.2.19',
+     'X-Blizhniy-Request':'1','content-type':'application/json','content-length':Buffer.byteLength(anonymousBody),
+    }},resolve);
+    request.on('error',reject);request.end(anonymousBody);
+   });
+   let reply='';for await(const chunk of anonymous)reply+=chunk;
+   assert.equal(anonymous.statusCode,401,reply);
+   assert.deepEqual(JSON.parse(reply),{error:{code:'UNAUTHENTICATED'}});
    const quotePath=origin+'/cabinet/oplata-uslugi?type=marquee&id='+randomUUID()+'&revision=2';
    await page.goto(quotePath,{waitUntil:'domcontentloaded'});
    await page.getByText('Тестовая оплата недоступна для этого аккаунта.',{exact:true}).waitFor();

@@ -6,6 +6,7 @@ import {PostgresPaymentReconciliationQueue} from '../src/lib/postgres-payment-re
 import * as verification from '../src/lib/postgres-payment-verification.ts';
 import * as intentModule from '../src/lib/postgres-payment-intents.ts';import * as period from '../src/lib/payment-publication-period.ts';
 import {createPrimaryPaymentWebhook} from '../src/lib/primary-payment-webhook.ts';import {formModule} from './listing-form-module.mjs';
+import {loadLocalPrimaryModule} from '../scripts/local-primary-modules.cjs';
 import {runPaymentReconciliationService} from '../scripts/payment-reconciliation-service.mjs';
 
 export async function testPaymentReconciliation(suite,admin,config){
@@ -88,7 +89,8 @@ export async function testPaymentReconciliation(suite,admin,config){
    try{await assert.rejects(admin.query(down),/Refusing to remove nonempty/);}finally{await admin.query('rollback');}
   });
   const fulfilled=formModule('postgres-listing-payment-fulfillment',{'./postgres-listing-form':formModule('postgres-listing-form'),'./postgres-payment-intents.ts':intentModule,'./payment-publication-period.ts':period});
-  const {createPaymentReconciliationWorker}=formModule('payment-reconciliation-worker',{'./postgres-payment-reconciliation.ts':{PostgresPaymentReconciliationQueue},'./postgres-payment-verification.ts':verification,'./postgres-listing-payment-fulfillment':fulfilled});
+  const {createPaymentReconciliationWorker}=formModule('payment-reconciliation-worker',{'./postgres-payment-reconciliation.ts':{PostgresPaymentReconciliationQueue},'./postgres-payment-verification.ts':verification,'./postgres-listing-payment-fulfillment':fulfilled,
+   './postgres-service-payment-fulfillment':loadLocalPrimaryModule('postgres-service-payment-fulfillment')});
   const publication=async()=>{
    const owner=randomUUID(),id=randomUUID();await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[owner,`reconciliation-${owner}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`]);
    await admin.query(`insert into app.listings(id,author_id,listing_type,category_id,city_id,title,description,contact_phone)
