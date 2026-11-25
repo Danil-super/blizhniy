@@ -49,8 +49,8 @@ function journal(schema=54){return[...getBootstrapPlan({includeListingContactMet
 }),...(schema>=58?[getMediaRetentionMigration()]:[]),...(schema===60?[getSpecialistCheckoutMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
 
 export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}={}){
- const hosted=[75,76,78].includes(schema);
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(hosted&&localPrimary)||!validDatabase(database)||![54,55,56,57,58,60,75,76,78].includes(schema))throw Error('Invalid refund database');
+ const hosted=[75,76,78,79].includes(schema);
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(hosted&&localPrimary)||!validDatabase(database)||![54,55,56,57,58,60,75,76,78,79].includes(schema))throw Error('Invalid refund database');
  const expected=hosted?getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256})):journal(schema);
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:expected,
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
@@ -84,7 +84,7 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrim
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
    if(hostedRefunds){
     const hostedSchema=await assertHostedRefundRelease(tx,actualJournal);
-    if(merchant.marqueeRefunds!==undefined&&merchant.marqueeRefunds!==(hostedSchema===78))throw Error('Marquee refund configuration does not match schema');
+    if(merchant.marqueeRefunds!==undefined&&merchant.marqueeRefunds!==(hostedSchema>=78))throw Error('Marquee refund configuration does not match schema');
    }
    else{
     const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
