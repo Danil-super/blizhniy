@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83|84)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83|84|85|86|87)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -107,8 +107,17 @@ export function getHostedMarqueeQueueMigration(){
  return readReleaseMigration('0084-hosted-marquee-queue.sql','19d9458c81e96834aa364e14278c4e033c8298fd4c5d6fd2e2a7b05c8eacd112');
 }
 
+export function getHostedNotificationMigrations(){
+ return [
+  readReleaseMigration('0085-business-email.sql','33a12166b8459591dc9689ffd7ffcd255472106a45f7711c420d838543440d68'),
+  readReleaseMigration('0086-push-subscriptions.sql','e411a73fd26c376c613eb8034b780b343a4be295b8809a8d8e6b9a8407472a01'),
+  readReleaseMigration('0087-push-delivery.sql','791bdcb617df67dd370608b662400d796b68f47295bce7971b1ec543c74867d7'),
+ ];
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0087-push-delivery.sql':return 87;
   case '0084-hosted-marquee-queue.sql':return 84;
   case '0083-hosted-marquee-admission.sql':return 83;
   case '0082-hosted-placement-renewals.sql':return 82;
@@ -128,7 +137,7 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80,81,82,83,84].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81,82,83,84,87].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
@@ -138,6 +147,7 @@ export function getHostedRefundReleasePlan(schema=75){
  if(schema>=82)plan.push(getHostedPlacementRenewalMigration());
  if(schema>=83)plan.push(getHostedMarqueeAdmissionMigration());
  if(schema>=84)plan.push(getHostedMarqueeQueueMigration());
+ if(schema===87)plan.push(...getHostedNotificationMigrations());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -178,6 +188,10 @@ export function getHostedMarqueeQueueUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(83),[getHostedMarqueeQueueMigration()]);
 }
 
+export function getHostedNotificationUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(84),getHostedNotificationMigrations());
+}
+
 function composeHostedRefundSql(previous,plan){
  const baseline=previous.sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const body=plan.map(({sql})=>{
@@ -210,7 +224,7 @@ export async function assertHostedRefundRelease(tx,journal){
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue,notifications:schema===87});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -247,6 +261,12 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedNotifications:[
+  '4ed3cf34526dbf71fef5129727a7318aa91a1a6ed0ed14693bae9674c0a9d17d',
+  'a1545f152d1872ec965b5c410b511727572a7203e865f0a65e7b581a8ffe1a00',
+ ],
+ businessEmail:'ea84a98ca7432decaa7c35f7d008665c863e4f79e95981b17c8c337b9fa5944d',
+ pushDelivery:'6406dd2a19072ef2e225785f7c0dfec34f7a894d63118d8e2665831260b26f42',
  hostedMarqueeQueue:[
   '7e9c2fb158ce975bba673d949767c058915e434c238868b3d0bd5a36c46297b6',
   '2f04539435c04571e97be26006b95c62df22f9dabcc0928f73153e59f395c047',
@@ -456,7 +476,7 @@ async function assertReconcilerFunctionAccess(tx,signature){
  if(rights.length!==1||rights[0].role!=='blizhniy_payment_reconciler'||rights[0].privilege!=='EXECUTE'||rights[0].grantable!==false)throw Error('Unexpected reconciliation function access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false,marqueeAdmission=false,marqueeQueue=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false,marqueeAdmission=false,marqueeQueue=false,notifications=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -516,7 +536,12 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!marqueeAdmission)throw Error('Unsupported marquee queue deployment');
   accepted=fingerprints.hostedMarqueeQueue;
  }
+ if(notifications){
+  if(!marqueeQueue)throw Error('Unsupported notifications deployment');
+  accepted=fingerprints.hostedNotifications;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(notifications)await assertHostedNotificationSchema(tx);
  if(marqueeQueue)await assertReconcilerFunctionAccess(tx,'app.next_hosted_marquee(text)');
  if(marqueeAdmission)await assertHostedMarqueeAdmissionAccess(tx);
  if(placementRenewals)await assertReconcilerFunctionAccess(tx,'app.apply_hosted_placement_renewal(uuid,uuid)');
@@ -551,4 +576,34 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
    where p.oid='app.apply_inbox_preference()'::regprocedure and acl.grantee<>p.proowner limit 1`);
   if(extra.rows.length)throw Error('Unexpected inbox function access');
  }
+}
+
+
+async function assertHostedNotificationSchema(tx){
+ for(const [namespace,expected] of [['notification_delivery',fingerprints.businessEmail],['app_push',fingerprints.pushDelivery]]){
+  const catalog=await readRefundSchema(tx,{namespace});
+  if(createHash('sha256').update(JSON.stringify(catalog)).digest('hex')!==expected)throw Error('Unexpected notification schema');
+ }
+ const rights=(await tx.query(`with objects as (
+  select n.nspname as schema,'' as name,'schema' as kind,n.nspowner as owner,coalesce(n.nspacl,acldefault('n',n.nspowner)) as acl
+   from pg_namespace n where n.nspname in ('notification_delivery','app_push')
+  union all select n.nspname,p.proname,'routine',p.proowner,coalesce(p.proacl,acldefault('f',p.proowner))
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('notification_delivery','app_push')
+  union all select n.nspname,c.relname,'table',c.relowner,coalesce(c.relacl,acldefault('r',c.relowner))
+   from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('notification_delivery','app_push') and c.relkind='r'
+  union all select n.nspname,c.relname,'column',c.relowner,a.attacl
+   from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+   where n.nspname in ('notification_delivery','app_push') and a.attnum>0 and not a.attisdropped
+  union all select n.nspname,'','default',d.defaclrole,d.defaclacl
+   from pg_default_acl d join pg_namespace n on n.oid=d.defaclnamespace where n.nspname in ('notification_delivery','app_push')
+ ) select o.schema,o.name,o.kind,a.grantee::regrole::text as role,a.privilege_type as privilege,a.is_grantable as grantable
+ from objects o cross join lateral aclexplode(o.acl) a where a.grantee<>o.owner limit 100`)).rows;
+ const allowed={
+  notification_delivery:{blizhniy_business_email:['claim_business_email','finish_business_email','sweep_business_email']},
+  app_push:{blizhniy_runtime:['subscription_state','set_subscription','may_display'],blizhniy_push_worker:['claim_delivery','finish_delivery','sweep_delivery']},
+ };
+ if(rights.length===100||rights.some(({schema,name,kind,role,privilege,grantable})=>{
+  const routines=Object.hasOwn(allowed[schema],role)?allowed[schema][role]:undefined;
+  return !routines||grantable||(kind==='schema'?privilege!=='USAGE':kind!=='routine'||privilege!=='EXECUTE'||!routines.includes(name));
+ }))throw Error('Unexpected notification privileges');
 }

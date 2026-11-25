@@ -36,3 +36,17 @@ test('the hosted refund package restores cancellation and records its pinned mig
  assert.ok(sql.lastIndexOf('checkout_cancellation_admitted(purchase)')<sql.indexOf('insert into blizhniy_meta.migrations'));
  for(const {name,sha256} of plan)assert.ok(sql.includes("('"+name+"','"+sha256+"')"));
 });
+
+test('hosted notifications add all three pinned migrations as one release after 0084',async()=>{
+ const {getHostedNotificationUpgradeSql,getHostedRefundSchemaVersion}=await import('../scripts/publication-test-release-plan.mjs');
+ const old=getHostedRefundReleasePlan(84),current=getHostedRefundReleasePlan(87),next=current.slice(old.length);
+ assert.deepEqual(current.slice(0,old.length),old);
+ assert.deepEqual(next.map(row=>row.name),['0085-business-email.sql','0086-push-subscriptions.sql','0087-push-delivery.sql']);
+ assert.equal(getHostedRefundSchemaVersion(current),87);
+ for(const schema of [85,86])assert.throws(()=>getHostedRefundReleasePlan(schema),/Invalid/);
+ const sql=getHostedNotificationUpgradeSql();
+ assert.equal([...sql.matchAll(/^begin;$/gm)].length,1);
+ assert.equal([...sql.matchAll(/^commit;$/gm)].length,1);
+ for(const {name,sha256} of next)assert.ok(sql.includes("('"+name+"','"+sha256+"')"));
+ assert.doesNotMatch(sql,/^\s*grant\b/im);
+});

@@ -39,7 +39,7 @@ const layouts=[
  {name:'hosted specialist admission',specialistTerms:true,inbox:false,account:true},
  {name:'hosted specialist admission and inbox preferences',specialistTerms:true,inbox:true,account:true},
 ];
-for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'specialist service startup on ':'candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment on ')+layout,{timeout:90000},async suite=>{
+for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'specialist service startup on ':'candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment on ')+layout,{timeout:account&&inbox?180000:90000},async suite=>{
  let container,admin,db,workerDb,artifactDirectory;const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
  const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
  const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
@@ -904,6 +904,75 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions,()=>assert.fail('Unexpected access')));
        for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,artifactOptions));
       }finally{await admin.query('revoke execute on function app.next_hosted_marquee(text) from blizhniy_runtime');}
+     });
+     await t.test('packaged payment and refund services accept only the complete hosted notification schema',async()=>{
+      const {getHostedNotificationUpgradeSql,getHostedRefundReleasePlan}=await import('../scripts/publication-test-release-plan.mjs');
+      const verifyOptions={database:config.database,publicationTest:true,specialistAccountTest:true};
+      const refundOptions={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
+      const refundArtifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'notifications-'+entry.kind);
+       assert.equal(entry.build(destination,{schema:87}).schema,87);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       const journal=getHostedRefundReleasePlan(87).map(({name,sha256})=>({name,sha256}));
+       assert.deepEqual(api[entry.plan](config.database,{schema:87}).journal,journal);
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       refundArtifacts.push({...entry,verify:api[entry.verify]});
+      }
+      const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions);
+      const verifyAll=async()=>{
+       await check();
+       for(const entry of refundArtifacts)await entry.verify(entry.db,refundOptions);
+      };
+      await verifyAll();
+      const upgrade=getHostedNotificationUpgradeSql(),runUpgrade=async sql=>{
+       const client=await admin.connect();
+       try{await client.query(sql);}catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      const interrupted=upgrade.replace(/\ncommit;\n$/,'\nselect 1/0;\ncommit;\n');
+      await assert.rejects(runUpgrade(interrupted),{code:'22012'});
+      assert.equal((await admin.query("select to_regnamespace('app_push') as schema")).rows[0].schema,null);
+      await verifyAll();
+      await runUpgrade(upgrade);
+      await assert.rejects(runUpgrade(upgrade),{code:'55000'});
+      await verifyAll();
+
+      for(const role of ['blizhniy_business_email','blizhniy_push_worker']){
+       await admin.query('create role '+role+' login noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls');
+      }
+      for(const file of ['business-email','push-subscriptions','push-delivery-worker']){
+       await admin.query(await readFile(new URL('../database/permissions/'+file+'.sql',import.meta.url),'utf8'));
+      }
+      await verifyAll();
+      await admin.query('grant select(endpoint) on app_push.subscriptions to blizhniy_runtime');
+      try{await assert.rejects(check());}
+      finally{await admin.query('revoke select(endpoint) on app_push.subscriptions from blizhniy_runtime');}
+      await admin.query('alter table app.notifications disable trigger enqueue_push_delivery');
+      try{await assert.rejects(check());}
+      finally{await admin.query('alter table app.notifications enable trigger enqueue_push_delivery');}
+      const migration=join(artifact,'database/candidates/0087-push-delivery.sql'),bytes=await readFile(migration);
+      await writeFile(migration,Buffer.concat([bytes,Buffer.from('\n-- fixture drift\n')]));
+      try{await assert.rejects(check());}
+      finally{await writeFile(migration,bytes);}
+      await verifyAll();
+
+      const database='hosted_notifications_restored';
+      await admin.query('create database hosted_notifications_restored template template0');
+      await admin.query(`revoke all on database hosted_notifications_restored from public;
+       grant connect on database hosted_notifications_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+       blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+      await docker(['exec',container,'bash','-euo','pipefail','-c',
+       'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+       'restore-fixture',config.database,database]);
+      const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+      try{await copiedGuard.verifyPaymentReconciliationDatabase(restored,{...verifyOptions,database});}
+      finally{await restored.close();}
+      for(const {role,password,verify} of refundArtifacts){
+       const connection=new PostgresDatabase(new pg.Pool({...config,database,user:role,password,max:2}));
+       try{await verify(connection,{...refundOptions,database});}
+       finally{await connection.close();}
+      }
      });
      await t.test('only an enrolled advertising purchase can prepare, dispatch, cancel, fulfill and refund on the hosted schema',
       ()=>testHostedMarqueeAdmission({admin,config,load,reconciler:workerDb,compiledWorker,refundOperator:operator.db,refundWorker:worker.db}));
