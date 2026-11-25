@@ -55,7 +55,7 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    const sql=error&&typeof error==='object'&&'code'in error?error.code:null;
    if(sql==='P7601'){state='waiting_phone';code='phone_required';}
    // A reserved refund is a durable publication fence, not a transient provider failure.
-   else if(sql==='P7602'||sql==='PBR01'||(claim.targetType==='specialist'&&sql==='PSP03')){state='blocked';code='publication_blocked';}
+   else if(sql==='P7602'||sql==='PBR01'||(publication&&sql==='PRN01')||(claim.targetType==='specialist'&&sql==='PSP03')){state='blocked';code='publication_blocked';}
    else{state='retry';code='processing_unavailable';failureStage=stage;}
   }
   if(state==='retry'&&claim.attempts>=12){state='blocked';code='attempts_exhausted';}

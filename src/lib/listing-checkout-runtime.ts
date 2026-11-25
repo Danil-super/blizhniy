@@ -1,4 +1,5 @@
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {readHostedPlacementRenewalOwner} from './placement-renewal-config';
 import {readSpecialistAccountTest} from './specialist-checkout-config';
 import {authJson} from './auth-http';
 import {readProductionAuthConfig} from './production-auth-config';
@@ -27,7 +28,13 @@ async function handleCheckout(request:Request,targetType?:'vacancy'|'workRequest
   return await createListingCheckoutHandler(auth,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(auth);
    const dispatch=hosted?.merchant??(targetType&&process.env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'?null:readAccountTestPaymentConfig(process.env,config));
-   const store=new PostgresListingCheckoutStore(db,config,{postmoderation:readPostmoderationEnabled(),testModeHistory:true,...(targetType?{targetType}:{}),...(dispatch?.publication?{publicationTestOwner:dispatch.ownerId}:{})});
+   const renewalOwner=targetType!=='specialist'&&readHostedPlacementRenewalOwner();
+   if(renewalOwner){
+    const ready=(await db.query<{ready:boolean}>(`select coalesce(has_function_privilege('blizhniy_payment_reconciler',
+      to_regprocedure('app.apply_hosted_placement_renewal(uuid,uuid)'), 'EXECUTE'),false) as ready`)).rows[0]?.ready;
+    if(!ready||dispatch?.ownerId!==renewalOwner)throw Error('Hosted TEST renewals unavailable');
+   }
+   const store=new PostgresListingCheckoutStore(db,config,{postmoderation:readPostmoderationEnabled(),testModeHistory:true,...(renewalOwner?{renewals:true}:{}),...(targetType?{targetType}:{}),...(dispatch?.publication?{publicationTestOwner:dispatch.ownerId}:{})});
    return{store,limiter,payments:dispatch?createAccountTestListingPayment(db,store,dispatch):null};
   },undefined,{readOnly:process.env.BLIZHNIY_LISTING_PAYMENT==='disabled'||!!targetType&&process.env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'})(request);
  }catch{return authJson({error:{code:'CHECKOUT_UNAVAILABLE'}},503);}

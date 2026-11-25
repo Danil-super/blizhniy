@@ -49,8 +49,8 @@ function journal(schema=54){return[...getBootstrapPlan({includeListingContactMet
 }),...(schema>=58?[getMediaRetentionMigration()]:[]),...(schema===60?[getSpecialistCheckoutMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
 
 export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}={}){
- const hosted=[75,76,78,79,80,81].includes(schema);
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(hosted&&localPrimary)||!validDatabase(database)||![54,55,56,57,58,60,75,76,78,79,80,81].includes(schema))throw Error('Invalid refund database');
+ const hosted=[75,76,78,79,80,81,82].includes(schema);
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(hosted&&localPrimary)||!validDatabase(database)||![54,55,56,57,58,60,75,76,78,79,80,81,82].includes(schema))throw Error('Invalid refund database');
  const expected=hosted?getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256})):journal(schema);
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:expected,
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,

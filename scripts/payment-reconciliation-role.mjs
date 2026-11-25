@@ -6,7 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
-import {getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
+import {getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -132,7 +132,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     expectedJournal.push(getPaymentReconciliationAlertMigration());
    }
    const hostedSchema=hostedRefunds?getHostedRefundSchemaVersion(journal):0;
-   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81;
+   const marqueeRefunds=hostedSchema>=78,placementRefundProof=hostedSchema>=79,specialistRefunds=hostedSchema>=80,specialistRepeat=hostedSchema>=81,placementRenewals=hostedSchema>=82;
    const undeliveredCompensation=hostedSchema>=76;
    if(hostedRefunds){
     if(!reconciliationAlert)throw new Error('Unsupported hosted refund deployment');
@@ -142,12 +142,13 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     if(placementRefundProof)expectedJournal.push(getHostedPlacementRefundProofMigration());
     if(specialistRefunds)expectedJournal.push(getHostedSpecialistRefundMigration());
     if(specialistRepeat)expectedJournal.push(getHostedSpecialistRepeatMigration());
+    if(placementRenewals)expectedJournal.push(getHostedPlacementRenewalMigration());
     expectedJournal.sort((a,b)=>a.name.localeCompare(b.name,'en'));
    }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx,{hostedRefunds});
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
@@ -167,7 +168,8 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
       (c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE'))) limit 1`);
    const functions=await tx.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE')
-     and ($1::boolean=false or p.oid is distinct from to_regprocedure('app_response.deliver(uuid,uuid)')) limit 1`,[responses===true]);
+     and ($1::boolean=false or p.oid is distinct from to_regprocedure('app_response.deliver(uuid,uuid)'))
+     and ($2::boolean=false or p.oid is distinct from to_regprocedure('app.apply_hosted_placement_renewal(uuid,uuid)')) limit 1`,[responses===true,placementRenewals]);
    if(dangerous.rows.length||functions.rows.length)throw new Error('Invalid object privileges');
    const guardBody=plan.at(-1).sql.match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
    if(!guardBody)throw new Error('Invalid guard source');

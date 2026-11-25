@@ -9,7 +9,10 @@ export function useListingPostmoderation(){return useContext(Context);}
 
 export function useLocalPaymentSimulation(){return useContext(SimulationContext);}
 export function useWorkOwnerActions(){return useContext(WorkActionsContext);}
-export function usePlacementRenewals(){return useContext(RenewalContext);}
+export function usePlacementRenewals(){
+ const enabled=useContext(RenewalContext),simulation=useContext(SimulationContext),account=usePrimaryAccountAuth();
+ return enabled&&(simulation||account?.workPublicationTest===true);
+}
 export function useDraftRemovals(){return useContext(DraftRemovalsContext);}
 
 export function useServiceCheckout(){return useContext(ServiceCheckoutContext);}

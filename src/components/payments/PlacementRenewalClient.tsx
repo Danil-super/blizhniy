@@ -12,7 +12,7 @@ export type RenewalKind='listing'|'vacancy'|'workRequest';
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-blue-800 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600';
 const cabinet={listing:'/cabinet/obyavleniya',vacancy:'/cabinet/vakansii',workRequest:'/cabinet/zakazy'};
 
-function Renewal({owner,id,revision,kind,visible}:{owner:string;id:string;revision:string;kind:RenewalKind;visible:boolean}){
+function Renewal({owner,id,revision,kind,visible,hosted}:{owner:string;id:string;revision:string;kind:RenewalKind;visible:boolean;hosted?:boolean}){
  const client=kind==='listing'?accountTestPayment:kind==='vacancy'?vacancyPayment:workRequestPayment;
  const [quote,setQuote]=useState<Awaited<ReturnType<typeof client.preview>>|null>(null),[ready,setReady]=useState(false),[pending,setPending]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[retry,setRetry]=useState(0);
  const key=useRef<string|null>(null),working=useRef(false),scope=useRef<AbortController|null>(null),live=useRef(visible);live.current=visible;
@@ -57,8 +57,8 @@ function Renewal({owner,id,revision,kind,visible}:{owner:string;id:string;revisi
   finally{if(scope.current===controller){working.current=false;if(!controller.signal.aborted)setBusy(false);}}
  }
  return <div hidden={!visible} inert={!visible} aria-busy={busy}>
-  <p className="text-sm leading-6 text-slate-700">Оставшееся оплаченное время сохранится. Новый срок добавим после подтверждения оплаты.</p>
-  {quote&&!pending&&<div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4"><p className="font-bold text-slate-950">Ещё {quote.tariff.durationDays} дн. · {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(quote.tariff.amount))}</p><p className="mt-2 text-sm text-slate-700">Локальная симуляция, без списания денег.</p></div>}
+  <p className="text-sm leading-6 text-slate-700">Оставшееся оплаченное время сохранится. Если срок уже истёк, новый начнётся после подтверждения оплаты.</p>
+  {quote&&!pending&&<div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4"><p className="font-bold text-slate-950">Ещё {quote.tariff.durationDays} дн. · {new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(quote.tariff.amount))}</p><p className="mt-2 text-sm text-slate-700">{hosted?'TEST-оплата, без списания денег.':'Локальная симуляция, без списания денег.'}</p></div>}
   {pending&&<p role="status" className="mt-4 text-sm text-slate-700">Сначала проверим начатую оплату. Новый заказ не создаётся.</p>}
   {notice&&<p role="status" className="mt-3 text-sm text-slate-700">{notice}</p>}
   {error&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{error}</p>}
@@ -66,12 +66,12 @@ function Renewal({owner,id,revision,kind,visible}:{owner:string;id:string;revisi
  </div>;
 }
 
-export function PlacementRenewalClient(props:{id:string;revision:string;kind:RenewalKind}){
+export function PlacementRenewalClient(props:{id:string;revision:string;kind:RenewalKind;hosted?:boolean}){
  const auth=usePrimaryAccountAuth(),owner=auth&&(auth.state==='signed-in'||auth.state==='admin')?auth.userId:null,[actor,setActor]=useState(owner);
  if(owner&&owner!==actor)setActor(owner);if(auth?.state==='signed-out'&&actor)setActor(null);
- const visible=!!owner&&owner===actor;
+ const allowed=!props.hosted||auth?.workPublicationTest===true,visible=allowed&&!!owner&&owner===actor;
  return <main className="page-container flex min-h-[70vh] items-center justify-center py-8"><section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-card sm:p-6"><h1 className="mb-4 text-2xl font-bold text-slate-950">Продлить размещение</h1>
-  {!visible&&<p role="status" className="text-sm text-slate-700">{auth?.state==='signed-out'?'Войдите в аккаунт, которому принадлежит публикация.':'Проверяем вход. Данные оплаты временно скрыты.'}</p>}
+  {!visible&&<p role="status" className="text-sm text-slate-700">{auth?.state==='signed-out'?'Войдите в аккаунт, которому принадлежит публикация.':owner&&!allowed?'TEST-продление недоступно этому аккаунту.':'Проверяем вход. Данные оплаты временно скрыты.'}</p>}
   {actor&&<Renewal key={`${actor}:${props.kind}:${props.id}:${props.revision}`} {...props} owner={actor} visible={visible}/>}
  </section></main>;
 }

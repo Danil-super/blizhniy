@@ -21,8 +21,8 @@ import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getHostedMarqueeRefundUpgradeSql,getHostedMarqueeRefundRecoveryMigration,getHostedPlacementRefundProofUpgradeSql,getHostedPlacementRefundProofMigration,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
-import {getHostedSpecialistRepeatMigration,getHostedSpecialistRepeatUpgradeSql,getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
-import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund,testHostedSpecialistRepeat} from './hosted-refund-workflow-cases.mjs';
+import {getHostedPlacementRenewalMigration,getHostedPlacementRenewalUpgradeSql,getHostedSpecialistRepeatMigration,getHostedSpecialistRepeatUpgradeSql,getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
+import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund,testHostedSpecialistRepeat,testHostedPlacementRenewals} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import {testHostedPaidResponses} from './hosted-paid-response-cases.mjs';
 import pg from 'pg';
@@ -44,7 +44,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
  const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
  const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
  try{
-  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory',account&&inbox?'640m':'512m','--cpus','1','--tmpfs',account&&inbox?'/var/lib/postgresql:rw,size=402653184':'/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
+  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory',account&&inbox?'768m':'512m','--cpus','1','--tmpfs',account&&inbox?'/var/lib/postgresql:rw,size=536870912':'/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
   const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);
   const binding=metadata.NetworkSettings.Ports['5432/tcp'][0];assert.equal(binding.HostIp,'127.0.0.1');const config={host:'127.0.0.1',port:Number(binding.HostPort),database:'blizhniy_test',user:'postgres',password,ssl:false,connectionTimeoutMillis:3000};
   const deadline=Date.now()+20000;for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_test']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
@@ -769,6 +769,54 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        {database:config.database,publicationTest:true,applicationAccountTest:true}),true);
       await testHostedPaidResponses({admin,config,workerDb,refundDb:worker.db,compiledWorker,load});
      });
+     await t.test('hosted placement renewal package pins the installed and restored worker authority',async()=>{
+      const sql=getHostedPlacementRenewalUpgradeSql(),migration=getHostedPlacementRenewalMigration();
+      const options={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
+      const artifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'placement-renewal-'+entry.kind);
+       assert.equal(entry.build(destination,{schema:82}).schema,82);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       assert.deepEqual(api[entry.plan](config.database,{schema:82}).journal.at(-1),{name:migration.name,sha256:migration.sha256});
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       artifacts.push({...entry,verify:api[entry.verify]});
+      }
+      const apply=async()=>{
+       const client=await admin.connect();
+       try{await client.query(sql);}catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      await apply();
+      await assert.rejects(apply(),{code:'55000'});
+      assert.deepEqual((await admin.query('select name,sha256 from blizhniy_meta.migrations order by name desc limit 1')).rows,
+       [{name:migration.name,sha256:migration.sha256}]);
+      const database='placement_renewal_restored';
+      await admin.query('create database placement_renewal_restored template template0');
+      await admin.query(`revoke all on database placement_renewal_restored from public;
+       grant connect on database placement_renewal_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+       blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+      await docker(['exec',container,'bash','-euo','pipefail','-c',
+       'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+       'restore-fixture',config.database,database]);
+      const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+      const verifyOptions={database:config.database,publicationTest:true,specialistAccountTest:true};
+      try{
+       const verified=await Promise.allSettled([copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions),
+        copiedGuard.verifyPaymentReconciliationDatabase(restored,{...verifyOptions,database})]);
+       assert.deepEqual(verified,[{status:'fulfilled',value:true},{status:'fulfilled',value:true}]);
+      }finally{await restored.close();}
+      for(const entry of artifacts)await entry.verify(entry.db,options);
+      await admin.query('grant execute on function app.apply_hosted_placement_renewal(uuid,uuid) to blizhniy_runtime');
+      try{
+       await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));
+       for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,options));
+      }finally{await admin.query('revoke execute on function app.apply_hosted_placement_renewal(uuid,uuid) from blizhniy_runtime');}
+      await admin.query('revoke execute on function app.apply_hosted_placement_renewal(uuid,uuid) from blizhniy_payment_reconciler');
+      try{await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));}
+      finally{await admin.query('grant execute on function app.apply_hosted_placement_renewal(uuid,uuid) to blizhniy_payment_reconciler');}
+     });
+     await t.test('the compiled worker settles a hosted TEST renewal for all three supported kinds',
+      ()=>testHostedPlacementRenewals({admin,config,load,reconciler:workerDb,compiledWorker,refundOperator:operator.db,refundWorker:worker.db}));
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;

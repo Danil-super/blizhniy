@@ -71,7 +71,7 @@ async function capturePlacement(admin,{id,ownerId,targetId,targetType,tariffId,a
 async function captureHostedPlacement({admin,load,merchant,origin,payer,targetId,targetType,tariffId}){
  const specialist=targetType==='specialist';
  await admin.query("insert into app.tariffs(id,action,name,price,duration_days) values($1,$2,'Стендовое размещение',199,30) on conflict(id) do nothing",
-  [tariffId,specialist?'specialist_publication':'vacancy_publication']);
+  [tariffId,({specialist:'specialist_publication',listing:'listing_publication',vacancy:'vacancy_publication',workRequest:'work_request_publication'})[targetType]]);
  const flags=specialist?{BLIZHNIY_SPECIALIST_PAYMENT:'account-publication-test',
   BLIZHNIY_LISTING_PAYMENT:'account-publication-test',BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',
   BLIZHNIY_PAYMENT_SHOP_ID:merchant.shopId,BLIZHNIY_PAYMENT_RECEIPT_VAT:'1',BLIZHNIY_PAYMENT_TEST_USER_ID:payer.id,
@@ -81,7 +81,7 @@ async function captureHostedPlacement({admin,load,merchant,origin,payer,targetId
  Object.assign(process.env,flags);
  try{
   const db=new(load('postgres').PostgresDatabase)(admin);
-  const policy={postmoderation:true,targetType,publicationTestOwner:payer.id};
+  const policy={postmoderation:true,...(targetType==='listing'?{}:{targetType}),publicationTestOwner:payer.id};
   const checkout=new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(db,{...merchant,siteOrigin:origin,receiptVatCode:1},policy);
   const preview=await checkout.preview(payer.token,payer.id,targetId,'1');
   const order=await checkout.prepare(payer.token,payer.id,{listingId:targetId,expectedRevision:'1',creationKey:randomUUID(),
@@ -572,6 +572,154 @@ export async function testHostedSpecialistRepeat({admin,config,load,reconciler,r
   assert.deepEqual(refundedHistory.fulfillment,originalHistory.fulfillment);
   assert.deepEqual((await checkout.readOrder(payer.token,payer.id,next.id)).fulfillment,settled[0].period);
   assert.equal(remote.posts(),1);
+ }finally{
+  for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  await web.close();
+ }
+}
+
+export async function testHostedPlacementRenewals({admin,config,load,reconciler,compiledWorker,refundOperator,refundWorker}){
+ const payer=await hostedRefundActor(admin,load,'user'),peer=await hostedRefundActor(admin,load,'user');
+ const reviewer=await hostedRefundActor(admin,load,'admin');
+ const origin=process.env.BLIZHNIY_AUTH_ORIGIN,merchant={shopId:'900000001',isTest:true,secretKey:'test_synthetic_only'};
+ const city=(await admin.query("select id from app.cities where slug='hosted-refund-city'")).rows[0].id;
+ const profession=(await admin.query("select id from app.specialist_categories where slug='hosted-refund-work'")).rows[0].id;
+ const category=(await admin.query("select id from app.categories where slug='hosted-refund-category'")).rows[0].id;
+ const phone='+79995551290',name='Стендовый заказчик';
+ await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer.id,{name,phone}]);
+ await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[payer.id,phone,'hosted-placement-renewal']);
+ await admin.query(`grant select on app.listings,app.listing_blocks,app.listing_photos,app.categories,app.listing_owner_removals to blizhniy_runtime;
+  grant update(title) on app.listings to blizhniy_runtime`);
+ const password=randomBytes(32).toString('hex');
+ await admin.query('alter role blizhniy_runtime login password '+pg.escapeLiteral(password));
+ const dbType=load('postgres').PostgresDatabase;
+ const web=new dbType(new pg.Pool({...config,user:'blizhniy_runtime',password,max:3}));
+ const flags={BLIZHNIY_PLACEMENT_RENEWALS:'account-publication-test',BLIZHNIY_LISTING_PAYMENT:'account-publication-test',
+  BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:merchant.shopId,
+  BLIZHNIY_PAYMENT_RECEIPT_VAT:'1',BLIZHNIY_PAYMENT_TEST_USER_ID:payer.id,YOOKASSA_SHOP_ID:merchant.shopId,YOOKASSA_SECRET_KEY:merchant.secretKey};
+ const previous=Object.fromEntries(Object.keys(flags).map(key=>[key,process.env[key]]));
+ Object.assign(process.env,flags);
+ const stamp=column=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+ try{
+  for(const [kind,tariffId,expired] of [['listing','listing-publication',false],['vacancy','vacancy-publication',true],['workRequest','work-request-publication',false]]){
+   const targetId=randomUUID(),table=kind==='listing'?'listings':'work_publications';
+   if(kind==='listing'){
+    await admin.query(`insert into app.listings(id,author_id,listing_type,category_id,city_id,title,description,price,contact_phone)
+     values($1,$2,'sell',$3,$4,'Тестовое продление объявления','Подробное описание синтетического объявления.',500,$5)`,[targetId,payer.id,category,city,phone]);
+   }else{
+    const form=load('work-publication-contract').parseWorkPublicationForm(kind,{title:'Синтетическое размещение',
+     description:'Подробное описание синтетической публикации для проверки продления.',cityName:'Стендовый город',
+     professionName:'Стендовая профессия',professionId:profession,
+     ...(kind==='vacancy'?{employerType:'person',organization:name,salary:'3500'}:{budget:'3500'}),
+     contactPhone:phone,placementRightConfirmed:true});
+    await admin.query('insert into app.work_publications(id,author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,$3,$4,$5,$6,$7)',
+     [targetId,payer.id,kind,randomUUID(),form,city,profession]);
+   }
+   const initial=await captureHostedPlacement({admin,load,merchant,origin,payer,targetId,targetType:kind,tariffId});
+   const window=async()=>(await admin.query(`select status,is_paid,${stamp('published_at')} as "publishedAt",${stamp('expires_at')} as "expiresAt"
+    from app.${table} where id=$1`,[targetId])).rows[0];
+   if(expired)await new dbType(admin).transaction(async tx=>{
+    // Age the fixture while preserving the correlation between target and its paid receipt.
+    await tx.query('alter table app.payment_fulfillments disable trigger payment_fulfillment_guard');
+    const aged=(await tx.query(`update app.payment_fulfillments set published_at=statement_timestamp()-(expires_at-published_at),expires_at=statement_timestamp()
+     where intent_id=$1 returning ${stamp('published_at')} as start,${stamp('expires_at')} as finish`,[initial.id])).rows[0];
+    await tx.query(`update app.${table} set published_at=$2,expires_at=$3 where id=$1`,[targetId,aged.start,aged.finish]);
+    await tx.query('alter table app.payment_fulfillments enable trigger payment_fulfillment_guard');
+   });
+   const before=await window();
+   const policy={postmoderation:true,publicationTestOwner:payer.id,...(kind==='listing'?{}:{targetType:kind})};
+   const offerConfig={...merchant,siteOrigin:origin,receiptVatCode:1};
+   const checkout=new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(web,offerConfig,{...policy,renewals:true});
+   const quote=()=>checkout.preview(payer.token,payer.id,targetId,'1');
+   const original=await checkout.readOrder(payer.token,payer.id,initial.id);
+   const offer=await quote();
+   assert.equal(offer.activePayment,null);
+   await assert.rejects(checkout.preview(peer.token,peer.id,targetId,'1'),{name:'ListingCheckoutUnavailableError'});
+   const input={listingId:targetId,expectedRevision:'1',creationKey:randomUUID(),expectedTariffId:offer.tariff.id,expectedAmount:offer.tariff.amount,
+    expectedDurationDays:offer.tariff.durationDays};
+   const prepare=value=>checkout.prepare(payer.token,payer.id,value);
+   if(kind==='listing'){
+    await admin.query("insert into app.checkout_cancellation_test_enrollment(target_type,owner_id,shop_id) values('listing',$1,$2) on conflict(target_type) do update set owner_id=excluded.owner_id,shop_id=excluded.shop_id",[payer.id,merchant.shopId]);
+    const canceled=await prepare(input);
+    const cancellation=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(web,{listing:{shopId:merchant.shopId,ownerId:payer.id,publicationMode:'account-test-v1'}});
+    assert.equal((await cancellation.cancel(payer.token,payer.id,{targetType:'listing',paymentId:canceled.id})).state,'cancelled');
+    assert.deepEqual(await window(),before);
+   }
+   const attempts=[{...input,creationKey:randomUUID()},{...input,creationKey:randomUUID()}];
+   const prepared=await Promise.allSettled(attempts.map(prepare)),index=prepared.findIndex(value=>value.status==='fulfilled');
+   assert.ok(index>=0);assert.equal(prepared[1-index].status,'rejected');assert.equal(prepared[1-index].reason.name,'ListingCheckoutConflictError');
+   let order=prepared[index].value;
+   assert.deepEqual(await prepare(attempts[index]),order);
+   assert.equal((await quote()).activePayment.id,order.id);
+   assert.deepEqual(await window(),before);
+   assert.equal((await admin.query('select app.refund_target_admitted($1,$1) ready',[initial.id])).rows[0].ready,false);
+   let providerId=randomUUID();
+   let status='pending',body,capturedAt,posts=0;
+   const fetcher=async(url,init)=>{
+    if(init.method==='POST'){
+     assert.equal(String(url),'https://api.yookassa.ru/v3/payments');posts++;
+     assert.equal(init.headers['Idempotence-Key'],order.id);
+     body=JSON.parse(init.body);
+     assert.equal(body.metadata.targetId,targetId);assert.equal(body.metadata.publicationMode,'account-test-v1');
+    }else{assert.equal(init.method,'GET');assert.equal(String(url),'https://api.yookassa.ru/v3/payments/'+providerId);}
+    return Response.json({id:providerId,status,paid:status==='succeeded',test:true,recipient:{account_id:merchant.shopId},
+     amount:body.amount,metadata:body.metadata,...(status==='pending'?{confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout'}}:status==='succeeded'?{captured_at:capturedAt}:{})});
+   };
+   const payments=load('account-test-listing-payment').createAccountTestListingPayment(web,checkout,{...merchant,publication:true,ownerId:payer.id},fetcher);
+   await admin.query('update app.tariffs set price=price+1 where id=$1',[tariffId]);
+   try{await assert.rejects(payments.dispatch(payer.token,payer.id,order.id),{name:'ListingCheckoutConflictError'});assert.equal(posts,0);}
+   finally{await admin.query('update app.tariffs set price=$2 where id=$1',[tariffId,offer.tariff.amount]);}
+   await payments.dispatch(payer.token,payer.id,order.id);
+   const verify=new(load('postgres-payment-verification').PostgresPaymentVerificationStore)(reconciler,merchant,fetcher);
+   assert.equal((await verify.reconcile(order.id)).orderStatus,'pending');
+   assert.deepEqual(await window(),before);
+   const worker=compiledWorker(reconciler,merchant,fetcher,payer.id);
+   if(kind==='workRequest'){
+    status='canceled';
+    assert.deepEqual(await worker.tick(),{state:'completed'});
+    assert.equal((await checkout.readOrder(payer.token,payer.id,order.id)).order.status,'failed');
+    assert.deepEqual(await window(),before);
+    order=await prepare({...input,creationKey:randomUUID()});
+    providerId=randomUUID();status='pending';
+    await payments.dispatch(payer.token,payer.id,order.id);
+   }
+   capturedAt=(await admin.query(`select ${stamp('clock_timestamp()')} as stamp`)).rows[0].stamp;
+   status='succeeded';
+   process.env.BLIZHNIY_PLACEMENT_RENEWALS='disabled';
+   try{assert.deepEqual(await worker.tick(),{state:'completed'});}
+   finally{process.env.BLIZHNIY_PLACEMENT_RENEWALS=flags.BLIZHNIY_PLACEMENT_RENEWALS;}
+   assert.deepEqual(await worker.tick(),{state:'idle'});
+   const renewed=await window(),readback=await checkout.readOrder(payer.token,payer.id,order.id);
+   const historical=new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(web,offerConfig,{...policy,testModeHistory:true});
+   assert.deepEqual((await historical.readOrder(payer.token,payer.id,order.id)).fulfillment,readback.fulfillment);
+   assert.deepEqual(await checkout.readOrder(payer.token,payer.id,initial.id),original);
+   assert.equal(renewed.status,'published');assert.equal(renewed.is_paid,true);
+   assert.equal(renewed.expiresAt,readback.fulfillment.expiresAt);
+   if(expired){assert.equal(renewed.publishedAt,readback.fulfillment.publishedAt);assert.ok(renewed.publishedAt>=capturedAt);}
+   else{assert.equal(renewed.publishedAt,before.publishedAt);assert.equal(readback.fulfillment.publishedAt,before.expiresAt);}
+   assert.equal(Date.parse(renewed.expiresAt)-Date.parse(readback.fulfillment.publishedAt),offer.tariff.durationDays*86400000);
+   const journal=(await admin.query('select previous_intent_id from app.payment_renewals where intent_id=$1',[order.id])).rows;
+   assert.deepEqual(journal,[{previous_intent_id:initial.id}]);
+   assert.equal((await admin.query('select app.refund_target_admitted($1,$1) ready',[initial.id])).rows[0].ready,false);
+   assert.equal(posts,kind==='workRequest'?2:1);
+   if(expired){
+    const refundMerchant={...merchant,marqueeRefunds:true,specialistRefunds:true};
+    const approvals=new(load('postgres-refund-approvals').PostgresRefundApprovalStore)(refundOperator,refundMerchant);
+    const approval={id:randomUUID(),paymentIntentId:order.id,reason:'Возврат за последнее продление.'};
+    await approvals.approve(reviewer.token,reviewer.id,approval);
+    const remote=provider({id:order.id,providerPaymentId:providerId,amount:order.amount,capturedAt,metadata:body.metadata},approval.id,merchant);
+    const processor=load('primary-approved-placement-refund').createApprovedPlacementRefundProcessor(refundWorker,refundMerchant,remote.fetcher);
+    const refunded=await processor.process(approval.id);
+    assert.equal(refunded.state,'applied');assert.equal(refunded.effect.effect,'revoked');
+    assert.deepEqual(await window(),{...before,status:'archived'});
+    const history=await checkout.readOrder(payer.token,payer.id,order.id);
+    assert.equal(history.order.status,'refunded');assert.deepEqual(history.fulfillment,readback.fulfillment);
+    assert.equal(remote.posts(),1);
+   }
+  }
+  await assert.rejects(web.query('select * from app.apply_hosted_placement_renewal($1,$2)',[randomUUID(),randomUUID()]),{code:'42501'});
+  await assert.rejects(reconciler.query('select * from app.apply_hosted_placement_renewal($1,$2)',[randomUUID(),randomUUID()]),{code:'PRN01'});
+  assert.equal((await reconciler.query("select has_any_column_privilege('app.payment_renewals','INSERT') as granted")).rows[0].granted,false);
  }finally{
   for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
   await web.close();

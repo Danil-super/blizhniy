@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -95,8 +95,13 @@ export function getHostedSpecialistRepeatMigration(){
  return readReleaseMigration('0081-hosted-specialist-repeat.sql','55aedc43d0a2f7ab021394ddf83632041f294757923c6543f816a45955ae2961');
 }
 
+export function getHostedPlacementRenewalMigration(){
+ return readReleaseMigration('0082-hosted-placement-renewals.sql','49f893891d52a3dcd9acb98ebd701332b06133a0563c1475df2d320480821f0c');
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0082-hosted-placement-renewals.sql':return 82;
   case '0081-hosted-specialist-repeat.sql':return 81;
   case '0080-hosted-specialist-refunds.sql':return 80;
   case '0079-hosted-placement-refund-proof.sql':return 79;
@@ -113,13 +118,14 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80,81].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81,82].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
  if(schema>=79)plan.push(getHostedPlacementRefundProofMigration());
  if(schema>=80)plan.push(getHostedSpecialistRefundMigration());
  if(schema>=81)plan.push(getHostedSpecialistRepeatMigration());
+ if(schema>=82)plan.push(getHostedPlacementRenewalMigration());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -146,6 +152,10 @@ export function getHostedSpecialistRefundUpgradeSql(){
 
 export function getHostedSpecialistRepeatUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(80),[getHostedSpecialistRepeatMigration()]);
+}
+
+export function getHostedPlacementRenewalUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(81),[getHostedPlacementRenewalMigration()]);
 }
 
 function composeHostedRefundSql(previous,plan){
@@ -175,12 +185,12 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81;
+ const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82;
  const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -217,6 +227,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedPlacementRenewals:[
+  'e39b396a801544c7588a3191e82c30218d9e05c52e900ff6e44f00c67aa923ee',
+  '4f90458b71f6658b06cbb0d82e50d7fb9304e353d502b2bbc812ffdb94063603',
+ ],
  hostedSpecialistRepeat:[
   '85ee3173ac4abc2032fe8bedc4f24ed7dbca260bea28afc048b1ec9c69060306',
   'da3d5d1fb572c5df80acc173d18b9eed977c47b8ca4e495530bc812cfd9f1dfe',
@@ -389,7 +403,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false,placementRenewals=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -437,7 +451,17 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!specialistRefunds)throw Error('Unsupported specialist repeat deployment');
   accepted=fingerprints.hostedSpecialistRepeat;
  }
+ if(placementRenewals){
+  if(!specialistRepeat)throw Error('Unsupported placement renewal deployment');
+  accepted=fingerprints.hostedPlacementRenewals;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(placementRenewals){
+  const rights=(await tx.query(`select a.grantee::regrole::text as role,a.privilege_type as privilege,a.is_grantable as grantable
+   from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+   where p.oid='app.apply_hosted_placement_renewal(uuid,uuid)'::regprocedure and a.grantee<>p.proowner`)).rows;
+  if(rights.length!==1||rights[0].role!=='blizhniy_payment_reconciler'||rights[0].privilege!=='EXECUTE'||rights[0].grantable!==false)throw Error('Unexpected placement renewal function access');
+ }
  if(cancellations)await assertCheckoutCancellationAccess(tx);
  if(recovery)await assertReconciliationCommandAccess(tx);
  if(reconciliationAlert)await assertReconciliationCommandAccess(tx,true);

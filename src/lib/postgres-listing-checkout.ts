@@ -8,6 +8,7 @@ import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavail
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {readHostedPlacementRenewalOwner} from './placement-renewal-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
 import {readSpecialistCheckoutEnabled,readSpecialistAccountTest} from './specialist-checkout-config';
 import {hashSessionToken} from './identity';
@@ -34,10 +35,15 @@ export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:stri
  const publicationMarker=target==='specialist'
   ?(specialistTerms?'exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':'false')
   :"i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
+ // The combined window outlives the checkout flag. Show the covered time of
+ // this payment for marked hosted purchases and for the local simulator.
+ const paidStart="greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')";
+ const publishedAt=options.renewals?paidStart:options.includeTestFlag&&target!=='specialist'?
+  `case when i.is_test and (${publicationMarker}) then ${paidStart} else f.published_at end`:'f.published_at';
  const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean;storedShop?:string;publicationMode?:string}>(`select ${columns},i.is_test as "testOnly",
   ${options.specialistShop?`i.merchant_shop_id as "storedShop",i.request_body::jsonb#>>'{metadata,publicationMode}' as "publicationMode",`:''}
   coalesce(i.is_test and (${publicationMarker}),false) as "testPublication",
-  to_char(${options.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
+  to_char(${publishedAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
   to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
   ${source} and i.owner_id=o.owner_id and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision
   left join app.payment_fulfillments f on f.intent_id=o.id
@@ -69,7 +75,8 @@ export class PostgresListingCheckoutStore{
    readSpecialistCheckoutEnabled();
    if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled()||!config.isTest||config.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
   }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
-  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
+  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||(policy.publicationTestOwner!==undefined?
+    readHostedPlacementRenewalOwner()!==policy.publicationTestOwner:process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled')||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
  private specialistEnabled(config=this.config){
@@ -91,8 +98,10 @@ export class PostgresListingCheckoutStore{
   const row=(await tx.query<{available:boolean}>(`select (not target.is_paid or
    (select count(*) from app.payment_checkout_intents i join app.payment_orders o on o.id=i.id and o.status='succeeded'
     join app.payment_fulfillments f on f.intent_id=i.id where i.owner_id=target.author_id and i.target_type=$3 and i.target_id=target.id
-     and i.merchant_shop_id=$4 and i.is_test=$5 and f.published_at=target.published_at and f.expires_at=target.expires_at)=1) as available
-   from app.${table} target where target.id=$1 and target.author_id=$2`,[id,owner,this.targetType,this.config.shopId,this.config.isTest])).rows[0];
+     and i.merchant_shop_id=$4 and i.is_test=$5
+     and (not $6::boolean or i.request_body::jsonb#>>'{metadata,publicationMode}'='account-test-v1')
+     and f.published_at=target.published_at and f.expires_at=target.expires_at)=1) as available
+   from app.${table} target where target.id=$1 and target.author_id=$2`,[id,owner,this.targetType,this.config.shopId,this.config.isTest,this.policy.publicationTestOwner!==undefined])).rows[0];
   if(!row?.available)throw new ListingCheckoutUnavailableError();
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
