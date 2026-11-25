@@ -37,6 +37,12 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
     snapshot={...snapshot,order:{...snapshot.order,status:'failed'}};
     return route.fulfill({json:{...input,state:'cancelled'}});
    }
+   if(url.pathname===endpoint&&endpoint==='/api/account/payments'){
+    assert.equal(request.method(),'POST');
+    const body=request.postDataJSON();calls.push(body);
+    assert.deepEqual(body,{expectedOwnerId:owner,action:'specialistOrder',paymentId:id});
+    return route.fulfill({json:snapshot});
+   }
    if(url.pathname!==endpoint){assert.equal(request.method(),'POST');return route.fulfill({status:503,json:{error:{code:'AUTH_UNAVAILABLE'}}});}
    assert.equal(request.method(),'POST');const body=request.postDataJSON();calls.push(body);
    assert.deepEqual(body,{expectedOwnerId:owner,action:'order',paymentId:id});
@@ -44,15 +50,29 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
    if(fail)return route.abort();if(disabled)return route.fulfill({status:503,json:{error:{code:'CHECKOUT_DISABLED'}}});
    return route.fulfill({json:result});
   });
-  for(const [type,path,cabinet] of [['','listing-checkout','obyavleniya'],['vacancy','vacancy-checkout','vakansii'],['workRequest','work-request-checkout','zakazy']]){
+  for(const [type,path,cabinet,tariffId] of [
+   ['','listing-checkout','obyavleniya','listing-publication'],
+   ['vacancy','vacancy-checkout','vakansii','vacancy-publication'],
+   ['workRequest','work-request-checkout','zakazy','work-request-publication'],
+   ['specialist','payments','specialist','specialist-publication'],
+  ]){
+   const specialist=type==='specialist';
    endpoint='/api/account/'+path;
-   snapshot={order:{...order,status:'succeeded'},fulfillment:null,testPublication:true,testOnly:true};
+   snapshot={order:{...order,tariffId,status:specialist?'pending':'succeeded'},fulfillment:null,testPublication:true,testOnly:true};
    const url=origin+`/oplata/${id}`+(type?'?type='+type:'');
    assert.equal((await page.goto(url,{waitUntil:'domcontentloaded'})).status(),200);
+   if(specialist){
+    await page.getByRole('heading',{name:'Платёж обрабатывается',exact:true}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:'Размещение выполнено',exact:true}).count(),0);
+    snapshot={...snapshot,order:{...snapshot.order,status:'succeeded'}};
+    await page.getByRole('button',{name:'Проверить статус',exact:true}).click();
+   }
    await page.getByRole('heading',{name:'Оплата подтверждена',exact:true}).waitFor().catch(async error=>{
     throw Error((type||'listing')+': '+(await page.locator('main').innerText())+' | order reads: '+calls.length,{cause:error});
    });
    await page.getByText('Тестовый платёж · Без списания денег',{exact:true}).waitFor();
+   await page.getByText('199,99 ₽',{exact:true}).waitFor();
+   await page.getByText('30 дн.',{exact:true}).waitFor();
    await page.getByText('Размещение ещё не подтверждено. Не оплачивайте повторно; проверьте статус позже.',{exact:true}).waitFor();
    assert.equal(await page.getByText('Возвращаем в личный кабинет…',{exact:true}).count(),0);
    await page.waitForTimeout(2300);assert.equal(page.url(),url,'a provider success cannot masquerade as publication');
