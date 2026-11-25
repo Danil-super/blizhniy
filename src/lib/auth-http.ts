@@ -131,6 +131,12 @@ export class AuthRateLimiter {
     return await this.consume(`production:phone:ip:${ip}`,10) && await this.consume('production:phone:all',100);
   }
 
+  /** Background display checks never spend the ordinary account session budget. */
+  async allowPushSubscription(ip: string): Promise<boolean> {
+    if (!isIP(ip)) throw new Error("Invalid push rate key");
+    return await this.consume('production:push:ip:'+ip,300) && await this.consume('production:push:all',2000);
+  }
+
   /** Bound provider traffic before CAPTCHA, without spending the account's email budget. */
   async allowProductionAttempt(action: CredentialAction, ip: string): Promise<boolean> {
     if (!credentialActions.includes(action) || !isIP(ip)) throw new Error("Invalid production rate limit key");

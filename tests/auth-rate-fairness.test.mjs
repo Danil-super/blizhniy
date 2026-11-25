@@ -81,3 +81,11 @@ test('real Telegram HTTP start flood cannot exhaust phone or session capacity fo
  for(let i=0;i<2020;i++)assert.equal((await start('192.0.2.1')).status,i<10?200:429);
  assert.equal((await start('192.0.2.2')).status,200);
 });
+
+test('push display and consent can exhaust a device IP budget without affecting account sessions',async()=>{
+ const limiter=fixture();
+ for(let i=0;i<300;i++)assert.equal(await limiter.allowPushSubscription('192.0.2.61'),true);
+ assert.equal(await limiter.allowPushSubscription('192.0.2.61'),false);
+ assert.equal(await limiter.allowProduction('session','192.0.2.61'),true);
+ assert.equal(await limiter.allowPushSubscription('192.0.2.62'),true);
+});
