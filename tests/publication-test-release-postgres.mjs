@@ -214,6 +214,11 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
    });
+   const webCompatibility=process.env.BLIZHNIY_TEST_WEB_COMPATIBILITY_DIR;
+   if(inbox&&webCompatibility)await suite.test('new web builds on the restored 43-migration deployment baseline',async()=>{
+    const {testWebReleaseCompatibility}=await import('./web-release-compatibility.mjs');
+    await testWebReleaseCompatibility({admin,config,docker,container,phase:'baseline',evidence:webCompatibility});
+   });
    if(inbox)await suite.test('account export reads the hosted release without staging financial relations',async t=>{
     const {rows:[schema]}=await admin.query(`select (select count(*)::int from blizhniy_meta.migrations) as migrations,
      to_regclass('app.payment_checkout_cancellations') as cancelled_payment_relation,
@@ -985,6 +990,10 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
       const {testHostedUserAccess}=await import('./hosted-user-access-postgres.mjs');
       await testHostedUserAccess(users,{admin,config,load,verifyFinance:()=>copiedGuard.verifyPaymentReconciliationDatabase(
        workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true})});
+     });
+     if(webCompatibility)await t.test('previous web build rolls back on the restored expanded schema and keeps the profile',async()=>{
+      const {testWebReleaseCompatibility}=await import('./web-release-compatibility.mjs');
+      await testWebReleaseCompatibility({admin,config,docker,container,phase:'expanded',evidence:webCompatibility});
      });
     }finally{for(const entry of entries)await entry.db?.close();}
    });

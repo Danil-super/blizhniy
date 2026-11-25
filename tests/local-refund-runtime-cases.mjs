@@ -7,9 +7,9 @@ import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
 
-export async function enableRefundFixtureTls(admin,{docker,container},ca,key){
+export async function enableRefundFixtureTls(admin,{docker,container},ca,key,dnsName){
  await promisify(execFile)('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=local-refund-test',
-  '-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});
+  '-addext','subjectAltName=IP:127.0.0.1'+(dnsName?',DNS:'+dnsName:''),'-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});
  await chmod(ca,0o644);
  for(const [source,name]of [[ca,'server.crt'],[key,'server.key']]){
   await docker(['cp',source,`${container}:/tmp/refund-${name}`]);
