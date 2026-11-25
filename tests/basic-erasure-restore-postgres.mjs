@@ -1,14 +1,15 @@
 // Real custom-format backup and restore, restricted to owned tmpfs synthetic containers.
 import assert from'node:assert/strict';import{test}from'node:test';import{randomBytes,randomUUID,createHash}from'node:crypto';import{createRequire}from'node:module';import{execFile}from'node:child_process';import{promisify}from'node:util';import{readFile,mkdtemp,open}from'node:fs/promises';import{join}from'node:path';import pg from'pg';
 import{lstat,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';
-import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{stateDirectory}from'../scripts/local-primary-fixture.mjs';import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
+import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{eraseAccountWithRetiredMedia,eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';import{exportBasicErasureLedger,reapplyBasicErasureLedger,sealBasicErasureLedger,verifyBasicErasureLedger}from'../scripts/basic-erasure-ledger.mjs';
 import{prepareBasicErasurePhotos}from'../scripts/basic-erasure-ledger.mjs';
 import{restoreBasicErasure63Checks}from'../scripts/restore-basic-erasure63-checks.mjs';
 import{loadMediaModule}from'./media-module.mjs';import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const run=promisify(execFile),load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,database='blizhniy_erasure_test',sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 test('a signed erasure ledger removes resurrected basic identities after real backup/restore',{timeout:90000},async suite=>{
- const password=randomBytes(32).toString('hex'),key=randomBytes(32),sourceId=randomUUID(),containers=[],clients=[],databases=[],checks=[],directory=await mkdtemp(join(stateDirectory,'erasure-restore63-')),old=process.env.NODE_ENV;process.env.NODE_ENV='test';let report;
+ assert.equal(localPrimaryImage,'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873');
+ const password=randomBytes(32).toString('hex'),key=randomBytes(32),sourceId=randomUUID(),containers=[],clients=[],databases=[],checks=[],directory=await mkdtemp(join(tmpdir(),'blizhniy-erasure-restore63-')),old=process.env.NODE_ENV;process.env.NODE_ENV='test';let report;
  const check=async(name,work)=>suite.test(name,async()=>{await work();checks.push(name);});
  const docker=async(args,options={})=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:16777216,env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password},...options})).stdout;
  async function fixture(){

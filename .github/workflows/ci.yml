@@ -129,7 +129,11 @@ jobs:
             tests/publication-test-release-postgres.mjs \
             tests/approved-account-export-postgres.mjs \
             tests/specialist-checkout-postgres.mjs \
-            tests/specialist-checkout-guards-postgres.mjs
+            tests/specialist-checkout-guards-postgres.mjs \
+            tests/admin-user-access-postgres-integration.mjs \
+            tests/admin-tariff-postgres-integration.mjs \
+            tests/logical-backup-restore-postgres.mjs \
+            tests/basic-erasure-restore-postgres.mjs
           do
             node --experimental-strip-types --test --test-concurrency=1 "$suite"
           done
