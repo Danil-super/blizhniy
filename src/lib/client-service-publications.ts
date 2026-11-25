@@ -29,13 +29,15 @@ function financial(row:Record<string,unknown>){
 export function parseServicePublicationSnapshot(value:unknown,chosen:ServicePublicationKind,expectedId?:string):ServicePublicationSnapshot{
  try{
   const reference=!!value&&typeof value==='object'&&Object.hasOwn(value,'professionId');
-  const row=exact(value,['id','kind','form','photos','revision','status','paid','createdAt','updatedAt','publishedAt','expiresAt',...(reference?['professionId']:[])]),id=parseListingDraftId(row.id);
+  const repeat=!!value&&typeof value==='object'&&Object.hasOwn(value,'canRepeat');
+  const row=exact(value,['id','kind','form','photos','revision','status','paid','createdAt','updatedAt','publishedAt','expiresAt',...(reference?['professionId']:[]),...(repeat?['canRepeat']:[])]),id=parseListingDraftId(row.id);
+  if(repeat&&(chosen!=='specialist'||row.canRepeat!==true||row.status!=='expired'||row.paid!==true||row.publishedAt===null||row.expiresAt===null))throw Error();
   if(kind(row.kind)!==chosen||expectedId&&id!==parseListingDraftId(expectedId)||!Array.isArray(row.photos)||row.photos.length>12)throw Error();
   const form=parseServicePublicationForm(chosen,row.form),photos=row.photos.map(parseUploadedImage);
   if(Object.keys(row.form as object).sort().join()!==Object.keys(form).sort().join()||photos.map(item=>item.id).join()!==(form.kind==='marquee'?[]:form.photoIds).join())throw Error();
   const professionId=reference?(row.professionId===null?null:parseListingDraftId(row.professionId)):undefined;
   if(reference&&form.kind==='specialist'&&form.professionId&&form.professionId!==professionId)throw Error();
-  return{id,kind:chosen,form,photos,...(reference?{professionId}:{}),revision:parseListingDraftRevision(row.revision),...financial(row),createdAt:timestamp(row.createdAt),updatedAt:timestamp(row.updatedAt),
+  return{id,kind:chosen,form,photos,...(reference?{professionId}:{}),...(repeat?{canRepeat:true as const}:{}),revision:parseListingDraftRevision(row.revision),...financial(row),createdAt:timestamp(row.createdAt),updatedAt:timestamp(row.updatedAt),
    publishedAt:row.publishedAt===null?null:timestamp(row.publishedAt),expiresAt:row.expiresAt===null?null:timestamp(row.expiresAt)};
  }catch{throw new ServiceClientError('UNKNOWN');}
 }
@@ -51,7 +53,7 @@ function transportRequest(transport:typeof fetch){
  return async(path:string,method:'POST'|'PUT',body:unknown,options:Options={},image=false):Promise<unknown>=>{
   try{
    options.signal?.throwIfAborted();const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
-   const response=await transport(path,{method,credentials:'same-origin',redirect:'error',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1','X-Blizhniy-Profession-Refs':'1'},body:JSON.stringify(body)});
+   const response=await transport(path,{method,credentials:'same-origin',redirect:'error',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1','X-Blizhniy-Profession-Refs':'1','X-Blizhniy-Specialist-Repeat':'1'},body:JSON.stringify(body)});
    if(!response.body)throw Error();const reader=response.body.getReader(),chunks:Uint8Array[]=[],limit=image&&response.status===200?2097152:262144;let length=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;break;}length+=part.value.byteLength;if(length>limit||chunks.length>=2048)throw Error();chunks.push(part.value);}}
    finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}

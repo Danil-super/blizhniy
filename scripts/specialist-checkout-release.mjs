@@ -12,7 +12,7 @@ export const specialistCheckoutRuntimeGrants=[
  'grant select(intent_id,created_at),insert(intent_id) on app.specialist_checkout_terms to blizhniy_runtime',
 ];
 const specialistFunctions=['specialist_checkout_ready','guard_specialist_checkout_terms','guard_specialist_checkout_edit','guard_specialist_checkout_photo',
-    'guard_specialist_payment_fulfillment','apply_specialist_payment_fulfillment','guard_specialist_publication_window'];
+    'guard_specialist_payment_fulfillment','apply_specialist_payment_fulfillment','guard_specialist_publication_window','specialist_repeat_basis','guard_specialist_repeat_purchase'];
 export async function hasSpecialistCheckoutObjects(tx){
  const result=await tx.query(`select to_regclass('app.specialist_checkout_terms') is not null or exists(
   select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace

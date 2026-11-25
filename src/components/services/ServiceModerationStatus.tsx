@@ -30,7 +30,8 @@ function RevisionModeration({owner,snapshot}:ModerationProps){
  return <section aria-label="Модерация материала" className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4"><h3 className="font-bold">Модерация</h3>
   <p className="mt-2" role="status">{value?labels[value.state]:'Проверяем статус…'}</p>{value?.note&&<p className="mt-2 break-words">Причина: {value.note}</p>}
   {value?.state==='approved'&&(snapshot.paid?
-   <p className="mt-2 text-sm text-slate-600">{snapshot.status==='published'?'Размещение оплачено.':snapshot.kind==='specialist'&&snapshot.status==='expired'?'Срок размещения истёк.':'Оплата сохранена. Проверьте статус размещения.'}</p>:
+   <><p className="mt-2 text-sm text-slate-600">{snapshot.status==='published'?'Размещение оплачено.':snapshot.kind==='specialist'&&snapshot.status==='expired'?'Срок размещения истёк.':'Оплата сохранена. Проверьте статус размещения.'}</p>
+    {specialistCheckout&&snapshot.canRepeat&&<PrivateListingCheckout owner={owner} id={snapshot.id} revision={snapshot.revision} attempt={attempt.current} specialist repeatSpecialist/>}</>:
    specialistCheckout&&specialistDraft?<PrivateListingCheckout owner={owner} id={snapshot.id} revision={snapshot.revision} attempt={attempt.current} specialist/>:
    checkout&&snapshot.kind!=='specialist'?<Link prefetch={false} className={draftButton+' mt-3'} href={`/cabinet/oplata-uslugi?type=${snapshot.kind}&id=${snapshot.id}&revision=${snapshot.revision}`}>Перейти к оплате</Link>:
    (snapshot.kind!=='specialist'||specialistDraft)&&<p className="mt-2 text-sm text-slate-600">Материал одобрен. Оплата и размещение выполняются отдельно.</p>)}

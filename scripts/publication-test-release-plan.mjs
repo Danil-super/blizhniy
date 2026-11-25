@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -91,8 +91,13 @@ export function getHostedSpecialistRefundMigration(){
  return readReleaseMigration('0080-hosted-specialist-refunds.sql','5b0c5e485f7493e8ee048ee856a6d9de310f8bb5a93553a7673611332cf9c681');
 }
 
+export function getHostedSpecialistRepeatMigration(){
+ return readReleaseMigration('0081-hosted-specialist-repeat.sql','55aedc43d0a2f7ab021394ddf83632041f294757923c6543f816a45955ae2961');
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0081-hosted-specialist-repeat.sql':return 81;
   case '0080-hosted-specialist-refunds.sql':return 80;
   case '0079-hosted-placement-refund-proof.sql':return 79;
   case '0078-hosted-marquee-refund-recovery.sql':return 78;
@@ -108,12 +113,13 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
  if(schema>=79)plan.push(getHostedPlacementRefundProofMigration());
- if(schema===80)plan.push(getHostedSpecialistRefundMigration());
+ if(schema>=80)plan.push(getHostedSpecialistRefundMigration());
+ if(schema>=81)plan.push(getHostedSpecialistRepeatMigration());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -136,6 +142,10 @@ export function getHostedPlacementRefundProofUpgradeSql(){
 
 export function getHostedSpecialistRefundUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(79),[getHostedSpecialistRefundMigration()]);
+}
+
+export function getHostedSpecialistRepeatUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(80),[getHostedSpecialistRepeatMigration()]);
 }
 
 function composeHostedRefundSql(previous,plan){
@@ -165,12 +175,12 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema===80;
+ const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81;
  const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -207,6 +217,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedSpecialistRepeat:[
+  '85ee3173ac4abc2032fe8bedc4f24ed7dbca260bea28afc048b1ec9c69060306',
+  'da3d5d1fb572c5df80acc173d18b9eed977c47b8ca4e495530bc812cfd9f1dfe',
+ ],
  hostedRefundsWithSpecialist:[
   '72250ece8dac59eababf86f36796cdaeebad836ff1b56dce631f11d824746ed0',
   'b57f5f1dd951a768632455a0061a89936ffeda21032b6ead7b8367414d54af79',
@@ -375,7 +389,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false,placementRefundProof=false,specialistRefunds=false,specialistRepeat=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -419,6 +433,10 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!placementRefundProof)throw Error('Unsupported specialist refund deployment');
   accepted=fingerprints.hostedRefundsWithSpecialist;
  }
+ if(specialistRepeat){
+  if(!specialistRefunds)throw Error('Unsupported specialist repeat deployment');
+  accepted=fingerprints.hostedSpecialistRepeat;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(cancellations)await assertCheckoutCancellationAccess(tx);
  if(recovery)await assertReconciliationCommandAccess(tx);
@@ -442,7 +460,7 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
     ))
    union all select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
     where p.pronamespace='app'::regnamespace and p.proname=any($1::text[]) and a.grantee<>p.proowner limit 1`,
-   [['check_specialist_test_dispatch','require_specialist_test_terms','guard_specialist_checkout_terms','guard_specialist_payment_fulfillment','guard_specialist_publication_window','guard_phone_wait_job']]);
+   [['check_specialist_test_dispatch','require_specialist_test_terms','guard_specialist_checkout_terms','guard_specialist_payment_fulfillment','guard_specialist_publication_window','guard_phone_wait_job','specialist_repeat_basis','guard_specialist_repeat_purchase']]);
   if(unexpected.rows.length)throw Error('Unexpected specialist TEST object access');
  }
  if(inbox){

@@ -107,20 +107,24 @@ async function captureHostedPlacement({admin,load,merchant,origin,payer,targetId
  }
 }
 
-async function verifyHostedSpecialistExpiry({admin,load,payer,peer,targetId,paymentId}){
- const client=await admin.connect();
- try{
-  await client.query('begin');
-  // Age the captured period only in this disposable fixture; roll back the dates and DDL together.
-  await client.query(`alter table app.payment_fulfillments disable trigger payment_fulfillment_guard;
-   alter table app.service_publications disable trigger specialist_publication_window_guard`);
+async function expireSpecialistFixture(client,targetId,paymentId){
+ // Age captured periods only in this disposable fixture.
+  await client.query('alter table app.payment_fulfillments disable trigger payment_fulfillment_guard');
+  await client.query('alter table app.service_publications disable trigger specialist_publication_window_guard');
   const aged=(await client.query(`update app.payment_fulfillments
    set published_at=statement_timestamp()-(expires_at-published_at),expires_at=statement_timestamp()
    where intent_id=$1 returning published_at::text,expires_at::text`,[paymentId])).rows[0];
   await client.query('update app.service_publications set published_at=$2,expires_at=$3 where id=$1',
    [targetId,aged.published_at,aged.expires_at]);
-  await client.query(`alter table app.payment_fulfillments enable trigger payment_fulfillment_guard;
-   alter table app.service_publications enable trigger specialist_publication_window_guard`);
+  await client.query('alter table app.payment_fulfillments enable trigger payment_fulfillment_guard');
+  await client.query('alter table app.service_publications enable trigger specialist_publication_window_guard');
+}
+
+async function verifyHostedSpecialistExpiry({admin,load,payer,peer,targetId,paymentId}){
+ const client=await admin.connect();
+ try{
+  await client.query('begin');
+  await expireSpecialistFixture(client,targetId,paymentId);
   const query=(sql,params)=>client.query(sql,params);
   const db={query,transaction:work=>work({query})};
   const cabinet=new(load('postgres-service-publications').PostgresServicePublicationStore)(db,{specialistProfileIdentity:true});
@@ -205,6 +209,30 @@ async function seedAdvertisingQueue({admin,load,actor,payer,merchant,city,create
  return{purchase:paid[0],fair,active,services,waiting,original:paid.slice(0,5)};
 }
 
+async function hostedRefundActor(admin,load,role){
+  const id=randomUUID(),token=randomBytes(32).toString('hex');
+  await admin.query('insert into app.users(id,email,password_hash,email_verified_at,role) values($1,$2,$3,clock_timestamp(),$4)',
+   [id,id+'@refund.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
+  const {hashSessionToken}=load('identity');
+  await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[hashSessionToken(token),id]);
+  return{id,token};
+ }
+
+async function hostedSpecialistCard(admin,load,payer,profession,phone,subject){
+  const name='Стендовый специалист';
+  await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer.id,{name,phone}]);
+  await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[payer.id,phone,subject]);
+  const db=new(load('postgres').PostgresDatabase)(admin);
+  const forms=new(load('postgres-service-publications').PostgresServicePublicationStore)(db,{specialistProfileIdentity:true});
+  const draft=await forms.create(payer.token,payer.id,'specialist',randomUUID(),{title:name,cityName:'Стендовый город',
+   professionName:'Стендовая профессия',professionId:profession,description:'Синтетическая анкета специалиста для проверки платежа.',
+   price:'1500',contactPhone:phone,placementRightConfirmed:true});
+  assert.equal(draft.revision,'1');
+  await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_at) values($1,1,'approved',clock_timestamp())",[draft.id]);
+
+  return draft.id;
+}
+
 async function verifyPlacementRefund({admin,config,load,operator,worker,ca,city,profession,targetType,tariffId,outcome,withReceipt=false,marqueeScope=targetType==='ad_marquee',upgrade}){
  const specialist=targetType==='specialist';
  const origin=specialist?process.env.BLIZHNIY_AUTH_ORIGIN:'https://refund-fixture.example.invalid';
@@ -222,29 +250,14 @@ async function verifyPlacementRefund({admin,config,load,operator,worker,ca,city,
  const {startLocalRefundOperatorServer}=await compiled(operator,'local-refund-operator-server');
  const {createLocalRefundWorkerRuntime}=await compiled(worker,'local-refund-worker-runtime');
  const {hashSessionToken}=load('identity');
- async function actor(role){
-  const id=randomUUID(),token=randomBytes(32).toString('hex');
-  await admin.query('insert into app.users(id,email,password_hash,email_verified_at,role) values($1,$2,$3,clock_timestamp(),$4)',
-   [id,id+'@refund.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
-  await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[hashSessionToken(token),id]);
-  return{id,token};
- }
+ const actor=role=>hostedRefundActor(admin,load,role);
  const payer=await actor('user'),reviewer=await actor('admin'),peer=await actor('admin');
  const createdAt=new Date(Date.now()-120000).toISOString(),capturedAt=new Date(Date.now()-60000).toISOString();
  const ads=targetType==='ad_marquee'?await seedAdvertisingQueue({admin,load,actor,payer,merchant,city,createdAt,capturedAt,origin}):null;
  let targetId=ads?.purchase.targetId??randomUUID();
  const targetTable=ads||specialist?'service_publications':targetType==='listing'?'listings':'work_publications';
  if(specialist){
-  const name='Стендовый специалист',phone='+79995551298';
-  await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer.id,{name,phone}]);
-  await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[payer.id,phone,'hosted-specialist-refund']);
-  const db=new(load('postgres').PostgresDatabase)(admin);
-  const forms=new(load('postgres-service-publications').PostgresServicePublicationStore)(db,{specialistProfileIdentity:true});
-  const draft=await forms.create(payer.token,payer.id,'specialist',randomUUID(),{title:name,cityName:'Стендовый город',
-   professionName:'Стендовая профессия',professionId:profession,description:'Синтетическая анкета специалиста для проверки платежа.',
-   price:'1500',contactPhone:phone,placementRightConfirmed:true});
-  assert.equal(draft.revision,'1');targetId=draft.id;
-  await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_at) values($1,1,'approved',clock_timestamp())",[targetId]);
+  targetId=await hostedSpecialistCard(admin,load,payer,profession,'+79995551298','hosted-specialist-refund');
  }else if(!ads&&targetType==='listing'){
   const category=(await admin.query("insert into app.categories(slug,name) values('hosted-refund-category','Стендовая категория') returning id")).rows[0].id;
   await admin.query(`insert into app.listings(id,author_id,listing_type,title,description,created_at,category_id,city_id)
@@ -419,5 +432,148 @@ async function verifyPlacementRefund({admin,config,load,operator,worker,ca,city,
  }finally{
   if(operatorSocket)await operatorSocket.close();else await operatorRuntime?.close();
   await workerRuntime?.close();await webDb?.close();
+ }
+}
+
+export async function testHostedSpecialistRepeat({admin,config,load,reconciler,refundOperator,refundWorker,upgrade}){
+ const payer=await hostedRefundActor(admin,load,'user'),peer=await hostedRefundActor(admin,load,'user');
+ const reviewer=await hostedRefundActor(admin,load,'admin');
+ const merchant={shopId:'900000001',isTest:true,secretKey:'test_synthetic_only'},origin=process.env.BLIZHNIY_AUTH_ORIGIN;
+ const profession=(await admin.query("select id from app.specialist_categories where slug='hosted-refund-work'")).rows[0].id;
+ const targetId=await hostedSpecialistCard(admin,load,payer,profession,'+79995551291','hosted-specialist-repeat');
+ const original=await captureHostedPlacement({admin,load,merchant,origin,payer,targetId,targetType:'specialist',tariffId:'specialist-publication'});
+ await upgrade();
+ const PostgresDatabase=load('postgres').PostgresDatabase,password=randomBytes(32).toString('hex');
+ await admin.query('alter role blizhniy_runtime login password '+pg.escapeLiteral(password));
+ const web=new PostgresDatabase(new pg.Pool({...config,user:'blizhniy_runtime',password,max:3}));
+ const vars={BLIZHNIY_SPECIALIST_PAYMENT:'account-publication-test',BLIZHNIY_LISTING_PAYMENT:'account-publication-test',
+  BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:merchant.shopId,
+  BLIZHNIY_PAYMENT_RECEIPT_VAT:'1',BLIZHNIY_PAYMENT_TEST_USER_ID:payer.id,YOOKASSA_SHOP_ID:merchant.shopId,YOOKASSA_SECRET_KEY:merchant.secretKey};
+ const previous=Object.fromEntries(Object.keys(vars).map(key=>[key,process.env[key]]));
+ Object.assign(process.env,vars);
+ try{
+  await admin.query(`grant connect on database blizhniy_test to blizhniy_runtime;
+   grant usage on schema app to blizhniy_runtime;
+   grant select on app.users,app.sessions,app.cabinet_profiles,app.cities,app.specialist_categories,app.tariffs,
+    app.service_publications,app.service_moderation,app.service_publication_photos,app.media_objects to blizhniy_runtime;
+   grant update(auth_version) on app.users to blizhniy_runtime;
+   grant update(last_seen_at) on app.sessions to blizhniy_runtime;
+   grant update(profile) on app.cabinet_profiles to blizhniy_runtime;
+   grant update(form) on app.service_publications to blizhniy_runtime;
+   grant update(state) on app.service_moderation to blizhniy_runtime;
+   grant execute on function app.phone_is_confirmed(uuid) to blizhniy_runtime`);
+  for(const file of ['listing-checkout.sql','listing-checkout-dispatch.sql']){
+   await admin.query(await readFile(new URL('../database/permissions/'+file,import.meta.url),'utf8'));
+  }
+  await admin.query('insert into app.specialist_test_enrollment(owner_id,shop_id) values($1,$2)',[payer.id,merchant.shopId]);
+  await admin.query("insert into app.checkout_cancellation_test_enrollment(target_type,owner_id,shop_id) values('specialist',$1,$2)",[payer.id,merchant.shopId]);
+  const {checkout:offerConfig,merchant:dispatchConfig}=load('specialist-checkout-config').readSpecialistAccountTest();
+  const policy={postmoderation:true,targetType:'specialist',publicationTestOwner:payer.id};
+  const checkout=new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(web,offerConfig,policy);
+  const fulfill=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(reconciler,merchant,{...policy,specialistAccountTest:true});
+  const refundMerchant={...merchant,marqueeRefunds:true,specialistRefunds:true};
+  const approvals=new(load('postgres-refund-approvals').PostgresRefundApprovalStore)(refundOperator,refundMerchant);
+  const approval={id:randomUUID(),paymentIntentId:original.id,reason:'Возврат за первый срок размещения.'};
+  const cancel=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(web,{specialist:{
+   shopId:merchant.shopId,ownerId:payer.id,publicationMode:'specialist-account-test-v1',
+  }});
+  const catalog=new(load('postgres-public-service').PostgresPublicServiceStore)(web,{specialistProfileIdentity:true,testPublicationLabels:true});
+  const cabinet=new(load('postgres-service-publications').PostgresServicePublicationStore)(web,{specialistProfileIdentity:true});
+  const current=()=>cabinet.read(payer.token,payer.id,'specialist',targetId,true);
+  const preview=()=>checkout.preview(payer.token,payer.id,targetId,'1');
+  const prepare=input=>checkout.prepare(payer.token,payer.id,input);
+  assert.equal((await current()).canRepeat,undefined);
+  assert.equal((await catalog.read('specialist',targetId))?.id,targetId);
+  await assert.rejects(preview(),{name:'ListingCheckoutUnavailableError'});
+  await assert.rejects(admin.query("insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,'specialist',$4,1)",
+   [randomUUID(),payer.id,randomUUID(),targetId]),{code:'PSP01'});
+  await new PostgresDatabase(admin).transaction(tx=>expireSpecialistFixture(tx,targetId,original.id));
+  const originalHistory=await checkout.readOrder(payer.token,payer.id,original.id);
+  const expired=await current();
+  assert.equal(expired.status,'expired');assert.equal(expired.canRepeat,true);
+  assert.equal(await catalog.read('specialist',targetId),undefined);
+  await assert.rejects(checkout.preview(peer.token,peer.id,targetId,'1'),{name:'ListingCheckoutUnavailableError'});
+  const quote=await preview();
+  assert.equal(quote.activePayment,null);
+  const input={listingId:targetId,expectedRevision:'1',creationKey:randomUUID(),expectedTariffId:quote.tariff.id,
+   expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays};
+  const inputs=[input,{...input,creationKey:randomUUID()}];
+  const attempts=await Promise.allSettled(inputs.map(prepare));
+  const winnerIndex=attempts.findIndex(result=>result.status==='fulfilled');
+  assert.ok(winnerIndex>=0);
+  const loser=attempts[1-winnerIndex];
+  assert.equal(loser.status,'rejected');assert.equal(loser.reason.name,'ListingCheckoutConflictError');
+  const draft=attempts[winnerIndex].value;
+  assert.deepEqual(await prepare(inputs[winnerIndex]),draft);
+  assert.equal((await preview()).activePayment.id,draft.id);
+  const cancelInput={targetType:'specialist',paymentId:draft.id};
+  assert.equal((await cancel.cancel(payer.token,payer.id,cancelInput)).state,'cancelled');
+  assert.deepEqual(await current(),expired);
+  await admin.query('update app.tariffs set price=price+1,duration_days=duration_days+1 where id=$1',[quote.tariff.id]);
+  try{await assert.rejects(prepare({...input,creationKey:randomUUID()}),{name:'ListingCheckoutConflictError'});}
+  finally{await admin.query('update app.tariffs set price=$2,duration_days=$3 where id=$1',[quote.tariff.id,quote.tariff.amount,quote.tariff.durationDays]);}
+  const next=await prepare({...input,creationKey:randomUUID()}),providerId=randomUUID();
+  assert.notEqual(next.id,original.id);
+  let status='pending',body,capturedAt,writes=0,reads=0;
+  const fetcher=async(url,init)=>{
+   if(init.method==='POST'){
+    assert.equal(String(url),'https://api.yookassa.ru/v3/payments');writes++;
+    assert.equal(init.headers['Idempotence-Key'],next.id);
+    body=JSON.parse(init.body);
+    assert.equal(body.metadata.targetId,targetId);
+    assert.equal(body.metadata.publicationMode,'specialist-account-test-v1');
+    assert.equal(body.receipt.items[0].amount.value,quote.tariff.amount);
+   }else{
+    assert.equal(init.method,'GET');assert.equal(String(url),'https://api.yookassa.ru/v3/payments/'+providerId);reads++;
+   }
+   return Response.json({id:providerId,status,paid:status==='succeeded',test:true,recipient:{account_id:merchant.shopId},
+    amount:body.amount,metadata:body.metadata,...(status==='pending'?{confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout'}}:{captured_at:capturedAt})});
+  };
+  const payments=load('account-test-listing-payment').createAccountTestListingPayment(web,checkout,dispatchConfig,fetcher);
+  const verification=new(load('postgres-payment-verification').PostgresPaymentVerificationStore)(reconciler,merchant,fetcher);
+  await payments.dispatch(payer.token,payer.id,next.id);
+  assert.equal((await verification.reconcile(next.id)).orderStatus,'pending');
+  assert.equal((await fulfill.fulfill(next.id)).state,'not_ready');
+  assert.deepEqual(await current(),expired);
+  assert.equal(await catalog.read('specialist',targetId),undefined);
+  assert.equal((await admin.query('select app.refund_target_admitted($1,$1) ready',[original.id])).rows[0].ready,false);
+  await assert.rejects(approvals.approve(reviewer.token,reviewer.id,approval));
+  await assert.rejects(cancel.cancel(payer.token,payer.id,{targetType:'specialist',paymentId:next.id}),{code:'CHECKOUT_STARTED'});
+  capturedAt=(await admin.query(`select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp`)).rows[0].stamp;
+  status='succeeded';
+  assert.equal((await verification.reconcile(next.id)).orderStatus,'succeeded');
+  assert.deepEqual(await current(),expired);
+  const settled=await Promise.all([fulfill.fulfill(next.id),fulfill.fulfill(next.id)]);
+  assert.equal(settled[0].state,'fulfilled');assert.deepEqual(settled[1],settled[0]);
+  const fresh=await current();
+  assert.equal(fresh.id,targetId);assert.equal(fresh.revision,expired.revision);assert.deepEqual(fresh.form,expired.form);
+  assert.equal(fresh.status,'published');assert.equal(fresh.canRepeat,undefined);
+  assert.deepEqual(settled[0].period,{publishedAt:fresh.publishedAt,expiresAt:fresh.expiresAt});
+  assert.ok(fresh.publishedAt>=capturedAt);assert.ok(fresh.publishedAt>expired.expiresAt);
+  assert.equal(Date.parse(fresh.expiresAt)-Date.parse(fresh.publishedAt),86400000*quote.tariff.durationDays);
+  assert.equal((await catalog.read('specialist',targetId))?.testPublication,true);
+  assert.deepEqual(await checkout.readOrder(payer.token,payer.id,original.id),originalHistory);
+  assert.deepEqual((await fulfill.fulfill(original.id)).period,originalHistory.fulfillment);
+  assert.equal((await admin.query('select app.refund_target_admitted($1,$1) ready',[original.id])).rows[0].ready,true);
+  await assert.rejects(admin.query('update app.service_publications set published_at=$2,expires_at=$3 where id=$1',
+   [targetId,expired.publishedAt,expired.expiresAt]),{code:'PSP03'});
+  const receipts=await admin.query('select intent_id from app.payment_fulfillments where intent_id=any($1::uuid[])',[ [original.id,draft.id,next.id] ]);
+  assert.deepEqual(new Set(receipts.rows.map(r=>r.intent_id)),new Set([original.id,next.id]));
+  assert.equal(writes,1);assert.equal(reads,2);
+  await approvals.approve(reviewer.token,reviewer.id,approval);
+  const remote=provider(original,approval.id,merchant);
+  const processor=load('primary-approved-placement-refund').createApprovedPlacementRefundProcessor(refundWorker,refundMerchant,remote.fetcher);
+  const refunded=await processor.process(approval.id);
+  assert.equal(refunded.state,'applied');assert.equal(refunded.effect.effect,'superseded');
+  assert.deepEqual(await current(),fresh);
+  assert.equal((await catalog.read('specialist',targetId))?.id,targetId);
+  const refundedHistory=await checkout.readOrder(payer.token,payer.id,original.id);
+  assert.equal(refundedHistory.order.status,'refunded');
+  assert.deepEqual(refundedHistory.fulfillment,originalHistory.fulfillment);
+  assert.deepEqual((await checkout.readOrder(payer.token,payer.id,next.id)).fulfillment,settled[0].period);
+  assert.equal(remote.posts(),1);
+ }finally{
+  for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  await web.close();
  }
 }

@@ -21,8 +21,8 @@ import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getHostedMarqueeRefundUpgradeSql,getHostedMarqueeRefundRecoveryMigration,getHostedPlacementRefundProofUpgradeSql,getHostedPlacementRefundProofMigration,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
-import {getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
-import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund} from './hosted-refund-workflow-cases.mjs';
+import {getHostedSpecialistRepeatMigration,getHostedSpecialistRepeatUpgradeSql,getHostedSpecialistRefundMigration,getHostedSpecialistRefundUpgradeSql} from '../scripts/publication-test-release-plan.mjs';
+import {testHostedMarqueeRefund,testHostedPlacementRefundWithReceipt,testHostedRefundWorkflow,testHostedSpecialistRefund,testHostedSpecialistRepeat} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import {testHostedPaidResponses} from './hosted-paid-response-cases.mjs';
 import pg from 'pg';
@@ -44,7 +44,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
  const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
  const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
  try{
-  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
+  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory',account&&inbox?'640m':'512m','--cpus','1','--tmpfs',account&&inbox?'/var/lib/postgresql:rw,size=402653184':'/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
   const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);
   const binding=metadata.NetworkSettings.Ports['5432/tcp'][0];assert.equal(binding.HostIp,'127.0.0.1');const config={host:'127.0.0.1',port:Number(binding.HostPort),database:'blizhniy_test',user:'postgres',password,ssl:false,connectionTimeoutMillis:3000};
   const deadline=Date.now()+20000;for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_test']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
@@ -711,6 +711,58 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        }finally{await admin.query('alter function app.guard_specialist_publication_window() set search_path=pg_catalog');}
       };
       await testHostedSpecialistRefund({admin,config,load,operator:artifacts[0],worker:artifacts[1],directory:artifactDirectory,upgrade});
+     });
+     await t.test('hosted specialist repeat preserves each receipt and starts one new period after capture',async()=>{
+      const schema=81,migration=getHostedSpecialistRepeatMigration(),sql=getHostedSpecialistRepeatUpgradeSql();
+      const options={database:config.database,merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true},hostedRefunds:true};
+      const verifyOptions={database:config.database,publicationTest:true,specialistAccountTest:true};
+      const artifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'specialist-repeat-'+entry.kind);
+       assert.equal(entry.build(destination,{schema}).schema,schema);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       const plan=api[entry.plan](config.database,{schema});
+       assert.equal(plan.journal.length,72);
+       assert.deepEqual(plan.journal.at(-1),{name:migration.name,sha256:migration.sha256});
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       artifacts.push({...entry,verify:api[entry.verify]});
+      }
+      const apply=async()=>{
+       const client=await admin.connect();
+       try{await client.query(sql);}
+       catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      const upgrade=async()=>{
+       await apply();
+       await assert.rejects(apply(),{code:'55000'});
+       const database='specialist_repeat_restored';
+       await admin.query('create database specialist_repeat_restored template template0');
+       await admin.query(`revoke all on database specialist_repeat_restored from public;
+        grant connect on database specialist_repeat_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+        blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+       await docker(['exec',container,'bash','-euo','pipefail','-c',
+        'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+        'restore-fixture',config.database,database]);
+       const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+       const hashes=await Promise.allSettled([
+        copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions),
+        copiedGuard.verifyPaymentReconciliationDatabase(restored,{...verifyOptions,database}),
+       ]);
+       await restored.close();
+       assert.deepEqual(hashes,[{status:'fulfilled',value:true},{status:'fulfilled',value:true}]);
+       for(const entry of artifacts)await entry.verify(entry.db,options);
+       await admin.query('alter table app.payment_orders disable trigger specialist_repeat_purchase_guard');
+       try{
+        await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));
+        for(const entry of artifacts)await assert.rejects(entry.verify(entry.db,options));
+       }finally{await admin.query('alter table app.payment_orders enable always trigger specialist_repeat_purchase_guard');}
+       await admin.query('grant execute on function app.specialist_repeat_basis(uuid,uuid,bigint,text) to blizhniy_runtime');
+       try{await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));}
+       finally{await admin.query('revoke execute on function app.specialist_repeat_basis(uuid,uuid,bigint,text) from blizhniy_runtime');}
+      };
+      await testHostedSpecialistRepeat({admin,config,load,reconciler:workerDb,refundOperator:operator.db,refundWorker:worker.db,upgrade});
+      await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions);
      });
      await t.test('new hosted response checkouts deliver once and only one executor closes the customer order',async()=>{
       assert.equal(await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,

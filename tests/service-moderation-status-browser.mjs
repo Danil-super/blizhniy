@@ -41,7 +41,7 @@ test('moderation reads and submissions belong to the displayed revision', async 
           Object.assign(window.modules, {
             'next/link': {default: 'a'},
             '@/components/listings/ListingWorkflowProvider': {useSpecialistCheckout: () => true, useServiceCheckout: () => false},
-            '@/components/listings/PrivateListingCheckout': {PrivateListingCheckout: () => 'Оплатить анкету'},
+            '@/components/listings/PrivateListingCheckout': {PrivateListingCheckout: ({repeatSpecialist}) => window.modules.react.createElement('button', null, repeatSpecialist ? 'Разместить повторно' : 'Оплатить анкету')},
             '@/lib/client-service-publications': {serviceModeration: {
               read: (...args) => request('read', ...args), submit: (...args) => request('submit', ...args)
             }},
@@ -82,6 +82,10 @@ test('moderation reads and submissions belong to the displayed revision', async 
         await page.evaluate(revision => window.showRevision(revision, {status: 'expired', paid: true,
           publishedAt: '2026-10-24T12:00:00Z', expiresAt: '2026-11-23T12:00:00Z'}), strict ? '1' : '2');
         await page.getByText('Срок размещения истёк.', {exact: true}).waitFor({timeout: 3000});
+        assert.equal(await page.getByText('Разместить повторно').count(), 0);
+        await page.evaluate(revision => window.showRevision(revision, {status: 'expired', paid: true, canRepeat: true,
+          publishedAt: '2026-10-24T12:00:00Z', expiresAt: '2026-11-23T12:00:00Z'}), strict ? '1' : '2');
+        await page.getByText('Разместить повторно', {exact: true}).waitFor({timeout: 3000});
         assert.equal(await page.getByText('Оплатить анкету').count(), 0);
       } finally { await page.close(); }
     });

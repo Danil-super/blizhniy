@@ -51,3 +51,15 @@ test('service client recognizes the profile name reason on the compatible invali
  const badStatus=createServicePublicationClient(async()=>Response.json({error},{status:500}));
  await assert.rejects(badStatus.update(owner,'specialist',id,'1',snapshot('specialist').form),error=>error.code==='UNKNOWN');
 });
+test('the client requests repeat availability and accepts it only for an expired paid specialist period',async()=>{
+ const expired={...snapshot('specialist'),status:'expired',paid:true,canRepeat:true,publishedAt:stamp,expiresAt:'2026-11-18T00:00:00.123456Z'};
+ const client=createServicePublicationClient(async(_path,init)=>{
+  assert.equal(new Headers(init.headers).get('x-blizhniy-specialist-repeat'),'1');
+  return Response.json(expired);
+ });
+ assert.deepEqual(await client.read(owner,'specialist',id),expired);
+ for(const row of [{...expired,canRepeat:false},{...expired,paid:false},{...expired,status:'published'},{...expired,expiresAt:null},
+  {...snapshot('fair'),status:'expired',paid:true,canRepeat:true,publishedAt:stamp,expiresAt:expired.expiresAt}]){
+  assert.throws(()=>parseServicePublicationSnapshot(row,row.kind,id),ServiceClientError);
+ }
+});

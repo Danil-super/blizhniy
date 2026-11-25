@@ -132,8 +132,9 @@ export class PostgresListingCheckoutStore{
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.creation_key=$2`,[owner,key])).rows[0];
  }
  private async active(tx:PostgresQueries,owner:string,id:string){
+  const fulfilledAreHistory=this.policy.renewals||this.targetType==='specialist'&&this.policy.publicationTestOwner!==undefined;
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='${this.targetType}' and o.target_id=$2 and
-   ${this.policy.renewals?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
+   ${fulfilledAreHistory?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
   if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
