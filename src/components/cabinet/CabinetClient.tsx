@@ -51,6 +51,7 @@ import {
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
+import { BrowserPushSettings } from "./BrowserPushSettings";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
 import { normalizeProfileName, PROFILE_NAME_ISSUE, PROFILE_NAME_MAX_LENGTH, profileNamePattern } from '@/lib/cabinet-field-validation';
@@ -3038,6 +3039,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
               </label>
             ))}
           </div>
+          {cookie?.ownerId === identity.ownerKey && <BrowserPushSettings owner={identity.ownerKey} preference={profile.pushNotifications} />}
         </details>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white disabled:bg-slate-300">
