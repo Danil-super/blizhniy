@@ -41,10 +41,9 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
  const opener=useRef<HTMLButtonElement|null>(null),submittedFrom=useRef<Element|null>(null);
  const feedbackTarget=useRef<HTMLParagraphElement>(null);
  const announceError=useRef<HTMLDivElement>(null),announceNotice=useRef<HTMLDivElement>(null);
- const failure=storageError||error;
+ const failure=storageError||error, message=failure||notice;
 
  useEffect(()=>{
-  const message=failure||notice;
   if(busy||!message)return;
   const source=submittedFrom.current;submittedFrom.current=null;
   if(source&&(document.activeElement===document.body||document.activeElement===source)&&feedbackTarget.current){
@@ -56,7 +55,7 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
   if(!announcement)return;
   announcement.textContent=message;
   return()=>{announcement.textContent='';};
- },[busy,failure,notice]);
+ },[busy,failure,message]);
 
  function clearFeedback(){setError('');setNotice('');}
  function select(next:Selection|null,button:HTMLButtonElement|null=null){
@@ -103,12 +102,12 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
  const feedback=enabled&&<>
   <div ref={announceError} role="alert" className="sr-only"/>
   <div ref={announceNotice} role="status" className="sr-only"/>
-  {(failure||notice)&&<p key={failure||notice} ref={feedbackTarget} tabIndex={-1}
-   className={'mt-3 rounded-lg border p-3 text-sm '+(failure?'border-red-200 bg-red-50 text-red-800':'border-blue-200 bg-blue-50 text-blue-900')}>{failure||notice}</p>}
+  {message&&<p key={message} ref={feedbackTarget} tabIndex={-1}
+   className={'mt-3 rounded-lg border p-3 text-sm '+(failure?'border-red-200 bg-red-50 text-red-800':'border-blue-200 bg-blue-50 text-blue-900')}>{message}</p>}
  </>;
  const panel=enabled&&<>
   {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
   {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy||loading} onCancel={cancel} onSubmit={action=>void perform(action)}/></div>}
  </>;
- return{feedback,panel,busy,disabled:busy||!!pending||!storageReady,select,life,working,clearFeedback};
+ return{feedback,hasFeedback:!!message,panel,busy,disabled:busy||!!pending||!storageReady,select,life,working,clearFeedback};
 }

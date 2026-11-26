@@ -83,7 +83,7 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
   </div>
   {actions.feedback}
   <div aria-busy={!view || actions.busy}>
-  {!view && <p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
+  {!view && !actions.hasFeedback && <p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
   {view?.error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{view.error}</p>}
   {view?.page && actions.panel}
   {view?.page && (view.page.items.length === 0
