@@ -73,11 +73,18 @@ function TariffList({actor,visible,editable,hosted}:{actor:string;visible:boolea
   });
   return()=>{active=false;controller.abort();};
  },[actor,reload]);
+ const closedTariffId=useRef<string|null>(null);
+ useEffect(()=>{
+  if(selected!==null || closedTariffId.current===null)return;
+  const id=closedTariffId.current;
+  closedTariffId.current=null;
+  if(visible)document.getElementById('tariff-'+id)?.focus();
+ },[selected,visible]);
  const current=rows?.find(row=>row.id===selected);
  return <div>{visible&&editable&&<p className="text-sm leading-6 text-slate-600">Изменения применяются к новым оплатам. Суммы и сроки сохранённых заказов остаются прежними.</p>}
   {visible&&error&&<div role="alert" className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><button type="button" className={`${button} mt-3`} onClick={()=>setReload(value=>value+1)}>Повторить загрузку</button></div>}
   {visible&&!rows&&!error&&<p role="status" className="mt-4 text-sm text-slate-600">Загружаем тарифы…</p>}
-  {editable&&current&&<TariffEditor key={`${actor}:${current.id}`} actor={actor} initial={current} visible={visible} hosted={hosted} onChanged={next=>setRows(items=>items?.map(item=>item.id===next.id?next:item)??null)} onRefresh={()=>setReload(value=>value+1)} onClose={()=>{setSelected(null);document.getElementById('tariff-'+current.id)?.focus();}}/>}
+  {editable&&current&&<TariffEditor key={`${actor}:${current.id}`} actor={actor} initial={current} visible={visible} hosted={hosted} onChanged={next=>setRows(items=>items?.map(item=>item.id===next.id?next:item)??null)} onRefresh={()=>setReload(value=>value+1)} onClose={()=>{closedTariffId.current=current.id;setSelected(null);}}/>}
   {visible&&rows?.length===0&&<p role="status" className="mt-4 text-sm text-slate-600">Тарифы пока не настроены.</p>}
   {visible&&<ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">{rows?.map(row=><li key={row.id} className="flex flex-wrap items-start justify-between gap-4 p-4"><div className="min-w-0 flex-1"><h2 className="break-words font-bold text-slate-950">{row.name}</h2><p className="mt-1 text-sm text-slate-700">{row.price} ₽ · {row.durationDays===null?'Разовая оплата':`${row.durationDays} дн.`}</p><p className="mt-1 break-all text-xs text-slate-500">{row.id}</p>{tariffCheckoutNotice(row)&&<p className="mt-2 text-sm text-amber-900">{tariffCheckoutNotice(row)}</p>}</div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-full border px-3 py-1 text-xs font-bold ${row.active?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-slate-200 bg-slate-50 text-slate-600'}`}>{row.active?'Активен':'Отключён'}</span>{editable&&(!hosted||row.action!=='fair_participation')&&<button type="button" id={'tariff-'+row.id} className={button} disabled={selected!==null} onClick={()=>setSelected(row.id)}>Изменить</button>}</div></li>)}</ul>}
  </div>;
