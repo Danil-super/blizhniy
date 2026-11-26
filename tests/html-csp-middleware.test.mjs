@@ -23,7 +23,7 @@ const { middleware, config } = exports;
 // sequential tests, including assertion failures, without touching local .env.
 async function withEnvironment(settings, run) {
   const selected = { NODE_ENV: 'production', BLIZHNIY_AUTH_MODE: 'postgres', BLIZHNIY_CSP_MODE: undefined,
-    NEXT_PUBLIC_SUPABASE_URL: undefined, ...settings };
+    BLIZHNIY_HTML_ISOLATION: undefined, NEXT_PUBLIC_2GIS_API_KEY: undefined, NEXT_PUBLIC_SUPABASE_URL: undefined, ...settings };
   const original = new Map(Object.keys(selected).map(key => [key, process.env[key]]));
   try {
     for (const [key, value] of Object.entries(selected)) {
@@ -99,6 +99,34 @@ test('HTML and Flight responses restrict resource consumption to the same origin
       assert.equal(response.headers.get('cross-origin-opener-policy'), null);
     }
   });
+});
+
+test('the explicit production isolation profile protects documents and Next.js navigation', { concurrency: false }, async () => {
+  await withEnvironment({ BLIZHNIY_CSP_MODE: 'enforce', BLIZHNIY_HTML_ISOLATION: 'enforce' }, () => {
+    for (const headers of [{}, { rsc: '1' }]) {
+      const response = middleware(request('/auth', headers));
+      const { policy } = assertNextPolicy(response, 'content-security-policy');
+      assert.ok(policy.includes('frame-src https://challenges.cloudflare.com'));
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
+      assert.equal(response.headers.get('cross-origin-embedder-policy'), 'require-corp');
+      assert.equal(response.headers.get('cross-origin-opener-policy'), 'same-origin');
+    }
+  });
+});
+
+test('the isolation profile refuses unknown modes and unverified combinations', { concurrency: false }, async () => {
+  const settings = { BLIZHNIY_CSP_MODE: 'enforce', BLIZHNIY_HTML_ISOLATION: 'enforce' };
+  for (const extra of [
+    { BLIZHNIY_HTML_ISOLATION: 'unknown' }, { BLIZHNIY_CSP_MODE: 'report-only' },
+    { NODE_ENV: 'development' }, { BLIZHNIY_AUTH_MODE: 'local' },
+    { NEXT_PUBLIC_2GIS_API_KEY: 'synthetic-map-key' },
+  ]) {
+    await withEnvironment({ ...settings, ...extra }, () => {
+      const response = middleware(request('/auth'));
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    });
+  }
 });
 
 test('SSR, Flight and prefetch requests replace every caller-selected policy and nonce', { concurrency: false }, async () => {
