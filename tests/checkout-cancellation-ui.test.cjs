@@ -6,6 +6,11 @@ function eligibleAccount(application){return {state:'signed-in',userId:owner,...
 function mount(application,{noCancellation=false,hosted=false}={}){const instances=new Map(),effects=[],cache=new Map(),calls=[];let current,dirty=false,tree,auth=hosted?eligibleAccount(application):{state:'signed-in',userId:owner},applied=false,resolveWrite,rejectWrite,statusRead=null;
  const pendingWrite=new Promise((resolve,reject)=>{resolveWrite=resolve;rejectWrite=reject;}),snapshot=()=>({order:{id:payment,status:applied?'failed':'created',amount:'199.00',durationDays:application?null:30},fulfillment:null,deliveredAt:null,targetClosed:false});
  const react={useState(initial){const i=current,n=i.cursor++;if(!Object.hasOwn(i.values,n))i.values[n]=typeof initial==='function'?initial():initial;return[i.values[n],value=>{const next=typeof value==='function'?value(i.values[n]):value;if(!Object.is(next,i.values[n])){i.values[n]=next;dirty=true;}}];},useRef(initial){const i=current,n=i.cursor++;return i.values[n]??={current:initial};},useEffect(work,deps){const i=current,n=i.cursor++,old=i.values[n];if(!old||deps.some((v,j)=>!Object.is(v,old.deps[j]))){i.values[n]={deps};effects.push(()=>{old?.cleanup?.();i.values[n].cleanup=work();});}}};
+ react.useCallback=(callback,deps)=>{
+  const saved=react.useRef(null);
+  if(!saved.current||deps.some((value,index)=>value!==saved.current.deps[index])) saved.current={callback,deps};
+  return saved.current.callback;
+ };
  // Order polling is exercised by the browser suite. Keep this harness on explicit reads.
  const read=async()=>{calls.push('payment.read');await statusRead;return snapshot();};
  function load(name){if(cache.has(name))return cache.get(name);const out={};cache.set(name,out);new Function('require','exports','setTimeout','clearTimeout',ts.transpileModule(fs.readFileSync(path.join(root,'src/components/payments',name+'.tsx'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText)(dep=>{
@@ -17,12 +22,16 @@ function mount(application,{noCancellation=false,hosted=false}={}){const instanc
   if(dep==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
   if(dep==='@/lib/client-application-payment')return{applicationPayment:{read},ApplicationPaymentClientError:ClientError};
   if(dep==='@/lib/client-checkout-cancellation')return{CheckoutCancellationClientError:ClientError,checkoutCancellation:{cancel:async()=>{calls.push('cancel.write');return pendingWrite;},read:async()=>{calls.push('cancel.read');return noCancellation?null:{paymentId:payment,targetType:application?'application':'listing',state:'cancelled'};}}};
+  if(dep==='@/components/cabinet/PrimaryPaymentHistory')return{PrimaryPaymentHistory:()=>jsx('p',{children:'История оплаты'})};
+  if(dep==='./ApplicationPaymentReturnClient')return load('ApplicationPaymentReturnClient');
   if(dep==='./CheckoutCancellation')return load('CheckoutCancellation');if(dep==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};
   if(dep==='./PlacementReturnNotice')return{usePlacementReturnNotice:()=>({rememberReceipt:()=>assert.fail('Cancellation must not create a success receipt')})};
   if(dep==='./TestPaymentLaunch')return{TestPaymentLaunch:({disabled})=>jsx('button',{disabled,children:'Запустить оплату'})};if(dep==='@/components/phone/PhonePaymentNotice')return{PhonePaymentNotice:()=>null};
   throw Error('Unapproved cancellation UI dependency: '+dep);
  },out,()=>0,()=>{});return out;}
- const component=application?load('ApplicationPaymentReturnClient').ApplicationPaymentReturnClient:load('PrimaryPaymentReturnClient').PrimaryPaymentReturnClient;
+ const component=application
+  ? hosted ? load('HostedResponseReturn').HostedResponseReturn : load('ApplicationPaymentReturnClient').ApplicationPaymentReturnClient
+  : load('PrimaryPaymentReturnClient').PrimaryPaymentReturnClient;
  function expand(node,location,used){if(Array.isArray(node))return node.map((v,i)=>expand(v,location+':'+i,used));if(!node||typeof node!=='object')return node;
   if(typeof node.type==='function'){used.add(location);const i=instances.get(location)||{values:[],cursor:0};instances.set(location,i);i.cursor=0;const previous=current;current=i;const child=node.type(node.props);current=previous;return expand(child,location+':render',used);}
   return{...node,props:{...node.props,children:expand(node.props.children,location+':children',used)}};}
@@ -88,4 +97,21 @@ for(const application of [false,true])test(`hosted TEST ${application?'applicati
  await h.settle();
  assert.deepEqual(h.calls,['payment.read','cancel.write','cancel.read','payment.read']);
  assert.ok(walk(h.tree).some(n=>text(n)==='Подготовка оплаты отменена.'));
+});
+
+
+test('hosted application return shows payment history after confirmed loss of TEST admission',async()=>{
+ const h=mount(true,{hosted:true});
+ await h.settle();
+ h.button('Отменить подготовку оплаты').props.onClick();
+ await h.settle();
+ h.auth({state:'loading',userId:null});
+ await h.settle();
+ assert.ok(!walk(h.tree).some(n=>text(n)==='История оплаты'));
+ h.auth({state:'signed-in',userId:owner});
+ await h.settle();
+ assert.ok(walk(h.tree).some(n=>text(n)==='История оплаты'));
+ h.commit();
+ await h.settle();
+ assert.deepEqual(h.calls,['payment.read','cancel.write']);
 });
