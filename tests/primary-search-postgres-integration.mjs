@@ -254,6 +254,19 @@ async function runSearchFixture(suite,benchmark=false){
    const result=await new PostgresPublicSearchStore(changing,{specialistProfileIdentity:true}).search({query:'Согласованный Мастер',page:1});
    assert.equal(mutations,1);assert.match(find(result,row).title,/Согласованный Мастер/);assert.equal(find(await query('Согласованный Мастер'),row),undefined);assert.ok(find(await query('Последующий Мастер'),row));
   });
+  await suite.test('short public search disables JIT for its candidate query without changing the session default',async()=>{
+   await runtime.query('set jit=on');
+   const settings=[];
+   const instrumented={readTransaction:(work,options)=>runtime.readTransaction(tx=>work({query:async(sql,args)=>{
+    if(sql.startsWith('with search_'))settings.push((await tx.query('show jit')).rows[0].jit);
+    return tx.query(sql,args);
+   }}),options)};
+   const result=await new PostgresPublicSearchStore(instrumented,{specialistProfileIdentity:true}).search({query:'СИНТЕТИЧЕСК',page:1});
+   assert.ok(result.items.length>0);
+   assert.ok(settings.length>0);
+   assert.deepEqual([...new Set(settings)],['off']);
+   assert.equal((await runtime.query('show jit')).rows[0].jit,'on');
+  });
   await suite.test('real read scope is repeatable/read-only and its deadline terminates SQL without poisoning the next checkout',async()=>{
    let completed=0;
    const settings=await runtime.readTransaction(async tx=>(await tx.query("select current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0],{timeoutMs:1000,onComplete:()=>completed++});
