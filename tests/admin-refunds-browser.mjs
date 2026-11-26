@@ -53,7 +53,7 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
   await region().getByRole('button',{name:'Вернуть плату',exact:true}).waitFor();
   await region().getByRole('button',{name:'Вернуть плату',exact:true}).click();const form=page.getByRole('form',{name:'Решение о полном возврате',exact:true});
   await form.getByRole('textbox',{name:'Причина',exact:true}).fill('Возврат по обращению владельца.');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'Подтвердить возврат',exact:true}).click();
-  await region().getByRole('alert').waitFor();assert.equal(calls.filter(c=>c.action==='approve').length,1);const original=calls.find(c=>c.action==='approve');await region().getByText(original.input.id,{exact:true}).waitFor();
+  await region().getByText('Результат операции не подтверждён.',{exact:false}).waitFor();assert.equal(calls.filter(c=>c.action==='approve').length,1);const original=calls.find(c=>c.action==='approve');await region().getByText(original.input.id,{exact:true}).waitFor();
   await page.reload({waitUntil:'domcontentloaded'});await region().getByRole('button',{name:'Проверить сохранённое решение',exact:true}).waitFor();assert.equal(calls.filter(c=>c.action==='approve').length,1);
   await region().getByRole('button',{name:'Проверить сохранённое решение',exact:true}).click();await region().getByText('Решение о возврате сохранено. Обработчик выполнит возврат отдельно.',{exact:true}).waitFor();assert.equal(calls.find(c=>c.action==='read').input,original.input.id);
   await region().getByRole('button',{name:'Сверить по номеру ЮKassa',exact:true}).click();const recover=page.getByRole('form',{name:'Сверка возврата',exact:true});
@@ -78,12 +78,12 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
   rows.push(failedClear);await region().getByRole('button',{name:'Обновить журнал',exact:true}).click();await region().getByRole('button',{name:'Вернуть плату',exact:true}).click();
   await page.evaluate(()=>{const original=Storage.prototype.removeItem;Storage.prototype.removeItem=function(key){if(key.startsWith('blizhniy-refund-action:'))throw Error('Synthetic removal failure');return original.call(this,key);};});
   await form.getByRole('textbox',{name:'Причина',exact:true}).fill('Проверка отказа очистки операции.');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'Подтвердить возврат',exact:true}).click();
-  await region().getByText('Браузер не очистил отклонённое решение. Новые решения недоступны.',{exact:true}).waitFor();assert.equal(await region().getByRole('button',{name:'Повторить ту же операцию',exact:true}).isDisabled(),true);
+  await region().locator('p').filter({hasText:'Браузер не очистил отклонённое решение. Новые решения недоступны.'}).waitFor();assert.equal(await region().getByRole('button',{name:'Повторить ту же операцию',exact:true}).isDisabled(),true);
   const retained=calls.at(-1);assert.equal(retained.action,'approve');assert.equal(await page.evaluate(actor=>JSON.parse(sessionStorage.getItem('blizhniy-refund-action:'+actor)).input.id,actor),retained.input.id);
   await page.reload({waitUntil:'domcontentloaded'});await region().getByRole('button',{name:'Повторить ту же операцию',exact:true}).click();await region().getByText('Решение не принято. Сначала верните последнюю покупку и завершите начатую оплату. Обновите журнал.',{exact:true}).waitFor();assert.equal(calls.at(-1).input.id,retained.input.id);assert.equal(await page.evaluate(actor=>sessionStorage.getItem('blizhniy-refund-action:'+actor),actor),null);
   rows.push({...row,id:randomUUID(),targetId:randomUUID(),approvalId:null,reason:null,approvedAt:null});const beforeBlocked=calls.filter(c=>c.action==='approve').length;
   await page.addInitScript(()=>Object.defineProperty(window,'sessionStorage',{get(){throw Error('Synthetic blocked storage');}}));
-  await page.reload({waitUntil:'domcontentloaded'});await region().getByText('Браузер не может прочитать сохранённую операцию. Новые решения о возврате недоступны.',{exact:true}).waitFor();
+  await page.reload({waitUntil:'domcontentloaded'});await region().locator('p').filter({hasText:'Браузер не может прочитать сохранённую операцию. Новые решения о возврате недоступны.'}).waitFor();
   const blockedButton=region().getByRole('button',{name:'Вернуть плату',exact:true});await blockedButton.waitFor();assert.equal(await blockedButton.isDisabled(),true);assert.equal(calls.filter(c=>c.action==='approve').length,beforeBlocked);
   assert.deepEqual(legacy,[]);assert.deepEqual(foreign,[]);assert.deepEqual(errors,[]);await context.close();
  }finally{

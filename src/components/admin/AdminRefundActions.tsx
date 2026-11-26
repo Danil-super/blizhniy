@@ -39,15 +39,23 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
  const [pending,setPending]=useState<Action|null>(null),[selection,setSelection]=useState<Selection|null>(null);
  const life=useRef<{active:boolean;controller:AbortController}|null>(null),working=useRef(false);
  const opener=useRef<HTMLButtonElement|null>(null),submittedFrom=useRef<Element|null>(null);
- const errorFeedback=useRef<HTMLParagraphElement>(null),noticeFeedback=useRef<HTMLParagraphElement>(null);
+ const feedbackTarget=useRef<HTMLParagraphElement>(null);
+ const announceError=useRef<HTMLDivElement>(null),announceNotice=useRef<HTMLDivElement>(null);
  const failure=storageError||error;
 
  useEffect(()=>{
-  if(busy||(!failure&&!notice)||!submittedFrom.current)return;
+  const message=failure||notice;
+  if(busy||!message)return;
   const source=submittedFrom.current;submittedFrom.current=null;
-  if(document.activeElement===document.body||document.activeElement===source){
-   (failure?errorFeedback:noticeFeedback).current?.focus();
+  if(source&&(document.activeElement===document.body||document.activeElement===source)&&feedbackTarget.current){
+   feedbackTarget.current.focus();
+   return;
   }
+  // Let the live region announce results while the operator is using another control.
+  const announcement=(failure?announceError:announceNotice).current;
+  if(!announcement)return;
+  announcement.textContent=message;
+  return()=>{announcement.textContent='';};
  },[busy,failure,notice]);
 
  function clearFeedback(){setError('');setNotice('');}
@@ -93,8 +101,10 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
   finally{if(life.current===scope){working.current=false;if(scope.active)setBusy(false);}}
  }
  const feedback=enabled&&<>
-  <div role="alert">{failure&&<p key={failure} ref={errorFeedback} tabIndex={-1} className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{failure}</p>}</div>
-  <div role="status">{notice&&<p key={notice} ref={noticeFeedback} tabIndex={-1} className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}</div>
+  <div ref={announceError} role="alert" className="sr-only"/>
+  <div ref={announceNotice} role="status" className="sr-only"/>
+  {(failure||notice)&&<p key={failure||notice} ref={feedbackTarget} tabIndex={-1}
+   className={'mt-3 rounded-lg border p-3 text-sm '+(failure?'border-red-200 bg-red-50 text-red-800':'border-blue-200 bg-blue-50 text-blue-900')}>{failure||notice}</p>}
  </>;
  const panel=enabled&&<>
   {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}

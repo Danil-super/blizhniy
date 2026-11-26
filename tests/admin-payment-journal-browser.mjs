@@ -44,7 +44,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
  };
  const app=spawn(process.execPath,['--require','./tests/listing-form-browser-pg.cjs','node_modules/next/dist/bin/next',
   'start','--hostname','127.0.0.1','--port',String(port)],{env,stdio:['ignore','pipe','pipe']});
- let output='',browser,releaseRefresh;
+ let output='',browser,releaseRefresh,releaseRecovery;
  for(const stream of [app.stdout,app.stderr]) stream.on('data',data=>output=(output+data).slice(-6000));
  try {
   const deadline=Date.now()+20000;
@@ -94,7 +94,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    return {actionId:command.input.id,operationId:id(101),providerRefundId:id(102),status:'succeeded',state:'applied'};
   };
   const nextAfter={id:first.at(-1).id,createdAt};
-  let role='admin', refuse=false, lost=false, refreshGate;
+  let role='admin', refuse=false, lost=false, refreshGate, recoveryGate, receivedRecovery;
   const authOrigin=env.BLIZHNIY_AUTH_ORIGIN;
   // Mirror the local ingress's canonical Host on a connection to our loopback fixture.
   const invokeRefund=(value,headers={})=>new Promise((resolve,reject)=>{
@@ -140,6 +140,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
     const body=request.postDataJSON(),response=await invokeRefund(body);
     assert.equal(response.status,200,JSON.stringify(response.body));
     if(body.action==='approve'&&dropApproval){dropApproval=false;return route.abort();}
+    if(body.action==='recover'&&recoveryGate){receivedRecovery();await recoveryGate;}
     return route.fulfill({json:response.body});
    }
    if (url.pathname.startsWith('/api/admin/')) { legacy.push(url.pathname);return route.abort(); }
@@ -167,7 +168,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    await form.getByLabel('Причина').fill('Локальная проверка возврата.');
    await form.getByRole('checkbox').check();
    await form.getByRole('button',{name:'Подтвердить возврат'}).click();
-   const unknown=region.getByRole('alert').getByText('Результат операции не подтверждён.',{exact:false});
+   const unknown=region.getByText('Результат операции не подтверждён.',{exact:false});
    await unknown.waitFor();
    assert.equal(await focused(unknown),true);
    assert.deepEqual(commands.map(command=>command.action),['approve']);
@@ -178,7 +179,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    await read.waitFor();
    refreshGate=new Promise(resolve=>{releaseRefresh=resolve;});
    await read.press('Enter');
-   const recorded=region.getByRole('status').getByText('Решение о возврате сохранено.',{exact:false});
+   const recorded=region.getByText('Решение о возврате сохранено.',{exact:false});
    await recorded.waitFor();
    assert.equal(await focused(recorded),true);
    assert.equal(await cards.count(),0);
@@ -196,9 +197,16 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    assert.equal(await focused(providerNumber),true);
    await providerNumber.fill(id(102));
    await recover.getByLabel('Причина').fill('Проверка исходной операции.');
-   await recover.getByRole('button',{name:'Сверить возврат'}).click();
+   recoveryGate=new Promise(resolve=>{releaseRecovery=resolve;});
+   const recoveryStarted=new Promise(resolve=>{receivedRecovery=resolve;});
+   await recover.getByRole('button',{name:'Сверить возврат'}).press('Enter');
+   await recoveryStarted;
+   const otherControl=page.getByRole('link',{name:'Пользователи',exact:true});
+   await otherControl.focus();
+   releaseRecovery();
    await region.getByText('Применён',{exact:false}).nth(1).waitFor();
-   assert.equal(await focused(region.getByRole('status').getByText('Результат возврата проверен.',{exact:false})),true);
+   await region.getByRole('status').getByText('Результат возврата проверен.',{exact:false}).waitFor();
+   assert.equal(await focused(otherControl),true);
    assert.deepEqual(commands.map(command=>command.action),['approve','read','recover']);
    assert.equal(await page.evaluate(key=>sessionStorage.getItem(key),'blizhniy-refund-action:'+adminId),null);
   }else assert.equal(await region.getByRole('button',{name:'Вернуть плату'}).count(),0);
@@ -237,6 +245,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
   assert.deepEqual(legacy,[]);
  } finally {
   releaseRefresh?.();
+  releaseRecovery?.();
   await browser?.close();
   if (app.exitCode===null) { app.kill();await once(app,'exit'); }
   await operator?.close();
