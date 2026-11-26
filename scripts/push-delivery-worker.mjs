@@ -3,6 +3,7 @@ import { createPostgresDatabase } from "../src/lib/postgres.ts";
 import { productionAuthOrigin } from "../src/lib/production-auth-config.ts";
 import { runPushDeliveryBatch } from "../src/lib/push-delivery-worker.ts";
 import { createWebPushTransport } from "../src/lib/push-web-transport.ts";
+import { matchesHostedPostgresLocation } from "./hosted-postgres-location.mjs";
 
 const controller = new AbortController();
 const stop = () => controller.abort();
@@ -17,7 +18,7 @@ try {
   if (major !== 22 || minor < 18 || process.platform !== "linux" || process.getuid?.() === 0 ||
       args.length !== 1 || (mode !== "--check" && mode !== "--run") ||
       env.BLIZHNIY_PUSH !== "inbox-v1" || env.NODE_ENV !== "production" ||
-      env.BLIZHNIY_DB_HOST !== "17e86f80f26733d39ef4b84d.twc1.net" || env.BLIZHNIY_DB_PORT !== "5432" ||
+      !matchesHostedPostgresLocation(env) ||
       env.BLIZHNIY_DB_NAME !== "blizhniy_prod" || env.BLIZHNIY_DB_USER !== "blizhniy_push_worker" ||
       env.BLIZHNIY_DB_SSL_MODE !== "verify-full" || env.NODE_USE_ENV_PROXY === "1") throw new Error("Push delivery unavailable");
   const send = createWebPushTransport({ subject: productionAuthOrigin,

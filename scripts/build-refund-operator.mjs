@@ -51,7 +51,7 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund operator compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['publication-test-release-plan.mjs','paid-response-schema.mjs','specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','hosted-refund-target.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
+ for(const name of ['publication-test-release-plan.mjs','paid-response-schema.mjs','specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','hosted-refund-target.mjs','hosted-postgres-location.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  if(schema===87)for(const name of ['hosted-refund-operator.mjs','hosted-operator-socket.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));

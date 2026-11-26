@@ -106,3 +106,19 @@ test('hosted TEST worker admits only the pinned database under its own role and 
   assert.deepEqual(await runtime.placement.tick(),{state:'idle'});
  }finally{await runtime.close();}
 });
+
+test('hosted TEST refund worker can use the approved PostgreSQL on the same server', async () => {
+ const {createHostedRefundWorkerRuntime}=await import('../scripts/local-refund-worker-runtime.mjs');
+ const local={...env,BLIZHNIY_REFUND_WORKER:'hosted-test-v1',BLIZHNIY_DB_NAME:'blizhniy_prod',
+  BLIZHNIY_DB_PLACEMENT:'same-host',BLIZHNIY_DB_HOST:'127.0.0.1'};
+ const f=fixture();
+ const configure=f.modules.readPostgresConfig;
+ f.modules.readPostgresConfig=settings=>{
+  assert.equal(settings.BLIZHNIY_DB_HOST,'127.0.0.1');
+  assert.equal(settings.BLIZHNIY_DB_SSL_MODE,'verify-full');
+  return configure(settings);
+ };
+ const runtime=await createHostedRefundWorkerRuntime(local,{loadModules:()=>f.modules});
+ try{ await runtime.preflight(); }
+ finally{ await runtime.close(); }
+});

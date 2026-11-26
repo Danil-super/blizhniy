@@ -2,6 +2,7 @@
 import { createPostgresDatabase } from "../src/lib/postgres.ts";
 import { createTimewebMailer } from "../src/lib/timeweb-mail.ts";
 import { runBusinessEmailBatch } from "../src/lib/business-email-worker.ts";
+import { matchesHostedPostgresLocation } from "./hosted-postgres-location.mjs";
 
 const controller = new AbortController();
 const stop = () => controller.abort();
@@ -15,7 +16,7 @@ try {
   if (major !== 22 || minor < 18 || process.platform !== "linux" || process.getuid?.() === 0 ||
       extra !== undefined || (mode !== "--check" && mode !== "--run") ||
       env.BLIZHNIY_BUSINESS_EMAIL !== "inbox-v1" || env.NODE_ENV !== "production" ||
-      env.BLIZHNIY_DB_HOST !== "17e86f80f26733d39ef4b84d.twc1.net" || env.BLIZHNIY_DB_PORT !== "5432" ||
+      !matchesHostedPostgresLocation(env) ||
       env.BLIZHNIY_DB_NAME !== "blizhniy_prod" || env.BLIZHNIY_DB_USER !== "blizhniy_business_email" ||
       env.BLIZHNIY_DB_SSL_MODE !== "verify-full") throw new Error("Business email unavailable");
   const mailer = createTimewebMailer(env);

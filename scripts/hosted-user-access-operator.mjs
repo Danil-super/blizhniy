@@ -3,6 +3,7 @@ import { readActivatedOperatorSocket } from './hosted-operator-socket.mjs';
 import { verifyUserAccessDatabase } from './user-access-role.mjs';
 import { startLocalUserAccessOperator } from './local-user-access-operator.mjs';
 import { startLocalAdminOperator } from './local-admin-operator.mjs';
+import { matchesHostedPostgresLocation } from './hosted-postgres-location.mjs';
 
 const require = createRequire(import.meta.url);
 const socketPath = '/run/blizhniy-user-access/operator.sock';
@@ -14,7 +15,7 @@ async function main(env=process.env) {
       env.NODE_ENV !== 'production' || env.BLIZHNIY_USER_ACCESS_OPERATOR !== 'hosted-v1' ||
       (env.BLIZHNIY_ADMIN_TARIFFS !== undefined && !tariffs) ||
       env.BLIZHNIY_LOCAL_PRIMARY !== undefined || env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN !== undefined ||
-      env.BLIZHNIY_DB_HOST !== '17e86f80f26733d39ef4b84d.twc1.net' || env.BLIZHNIY_DB_PORT !== '5432' ||
+      !matchesHostedPostgresLocation(env) ||
       env.BLIZHNIY_DB_NAME !== 'blizhniy_prod' || env.BLIZHNIY_DB_USER !== 'blizhniy_user_operator' ||
       env.BLIZHNIY_DB_SSL_MODE !== 'verify-full' || env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
       Object.keys(process.env).some(key => key.startsWith('PG'))) throw unavailable();

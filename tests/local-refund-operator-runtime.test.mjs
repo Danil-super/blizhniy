@@ -138,3 +138,19 @@ test('hosted TEST operator pins its own role and denies approvals when the store
   }
  }finally{await runtime.close();}
 });
+
+test('hosted TEST refund operator can use the approved PostgreSQL on the same server', async () => {
+ const {createHostedRefundOperatorRuntime}=await import('../scripts/local-refund-operator-runtime.mjs');
+ const local={...env,BLIZHNIY_REFUND_OPERATOR:'hosted-test-v1',BLIZHNIY_DB_NAME:'blizhniy_prod',
+  BLIZHNIY_DB_PLACEMENT:'same-host',BLIZHNIY_DB_HOST:'127.0.0.1'};
+ const f=fixture();
+ const configure=f.modules.readPostgresConfig;
+ f.modules.readPostgresConfig=settings=>{
+  assert.equal(settings.BLIZHNIY_DB_HOST,'127.0.0.1');
+  assert.equal(settings.BLIZHNIY_DB_SSL_MODE,'verify-full');
+  return configure(settings);
+ };
+ const runtime=await createHostedRefundOperatorRuntime(local,{loadModules:()=>f.modules});
+ try{ await runtime.preflight(); }
+ finally{ await runtime.close(); }
+});

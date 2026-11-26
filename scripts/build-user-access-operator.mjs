@@ -37,7 +37,7 @@ export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}
  writeFileSync(join(destination,'scripts/local-admin-operator.mjs'),adminServer.replace(adminDependency,"'../compiled/lib/admin-operator-contract.js'"),{flag:'wx',mode:0o600});
  for(const row of migrations){const file=join(destination,'database',row.folder,row.name);writeFileSync(file,row.bytes,{flag:'wx',mode:0o600});
   if(createHash('sha256').update(readFileSync(file)).digest('hex')!==row.sha256)throw Error('User operator copied migration drift');}
- if(hosted)for(const name of ['hosted-user-access-operator.mjs','hosted-operator-socket.mjs'])
+ if(hosted)for(const name of ['hosted-user-access-operator.mjs','hosted-operator-socket.mjs','hosted-postgres-location.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  const verifierFiles=['admin-user-access-schema-v1.json',...(!hosted?['refund-schema-local-primary-0060.json','admin-user-access-schema-v2.json']:[])];
  for(const name of verifierFiles)copyFileSync(join(root,'database',name),join(destination,'database',name));
