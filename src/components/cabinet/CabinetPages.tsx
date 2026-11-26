@@ -14,8 +14,7 @@ export function CabinetPage() {
 
 export function CabinetListingsPage() {
   return (
-    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
-      <PlacementReturnNotice />
+    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление" notice={<PlacementReturnNotice />}>
       <CabinetDraftWorkspace footer={<div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-slate-200 pt-5 text-sm">
         <Link href="/cabinet/moi-dannye" prefetch={false} className="font-semibold text-[#0875d1] underline">Мои персональные данные</Link>
         <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
@@ -26,8 +25,7 @@ export function CabinetListingsPage() {
 
 export function CabinetVacanciesPage() {
   return (
-    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
-      <PlacementReturnNotice />
+    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/rabota/vakansii/sozdat" createLabel="Разместить вакансию" notice={<PlacementReturnNotice />}>
       <CabinetPublicationWorkspace>
         <CabinetPublicationsClient type="vacancy" />
       </CabinetPublicationWorkspace>
@@ -44,8 +42,7 @@ export function CabinetOrganizationPage() {
 
 export function CabinetWorkRequestsPage() {
   return (
-    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/rabota/zakazy/sozdat" createLabel="Разместить заказ">
-      <PlacementReturnNotice />
+    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/rabota/zakazy/sozdat" createLabel="Разместить заказ" notice={<PlacementReturnNotice />}>
       <CabinetPublicationWorkspace>
         <CabinetPublicationsClient type="workRequest" />
       </CabinetPublicationWorkspace>
@@ -55,8 +52,7 @@ export function CabinetWorkRequestsPage() {
 
 export function CabinetSpecialistPage() {
   return (
-    <Shell title="Анкета специалиста" description="Единая анкета исполнителя для платных откликов и публичного каталога." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref={null}>
-      <PlacementReturnNotice />
+    <Shell title="Анкета специалиста" description="Единая анкета исполнителя для платных откликов и публичного каталога." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref={null} notice={<PlacementReturnNotice />}>
       <CabinetPublicationWorkspace><CabinetSpecialistClient /></CabinetPublicationWorkspace>
     </Shell>
   );
