@@ -208,6 +208,11 @@ const reviewedListingArtifacts = [
     "file": "tests/cabinet-offline-browser-cases.mjs",
     "before": "c0d4c3a0b96a7248efadbb8eda3404c55479c1c050295ff6d05deb8f5e0dec3e",
     "after": "e59a10b200571879c333fcd00f46355556136917b5f8fd2615b749f79fa7de12"
+  },
+  {
+    "file": "tests/cookie-notice-ui.test.mjs",
+    "before": "0b215d70b469218c359b9289818716cc2904f729e1c99f0acf136aaa87c90983",
+    "after": "45704c9b6c9123ca99ce4bccd7e2795952a832461e904b6c2786632ed3309ec0"
   }
 ];
 const reviewedArtifactCache = new Map();
