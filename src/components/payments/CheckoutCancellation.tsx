@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {checkoutCancellation,serviceCheckoutCancellation,CheckoutCancellationClientError} from '@/lib/client-checkout-cancellation';
 import type {CheckoutCancellationInput} from '@/lib/checkout-cancellation-contract';
-export function CheckoutCancellation({owner,paymentId,targetType,visible,service=false,editAfter=false,onCancelled,onPendingChange}:{owner:string;paymentId:string;targetType:CheckoutCancellationInput['targetType'];visible:boolean;service?:boolean;editAfter?:boolean;onCancelled:(hadFocus:boolean)=>void;onPendingChange:(pending:boolean)=>void}){
+export function CheckoutCancellation({owner,paymentId,targetType,visible,checkingOrder=false,service=false,editAfter=false,onCancelled,onPendingChange}:{owner:string;paymentId:string;targetType:CheckoutCancellationInput['targetType'];visible:boolean;checkingOrder?:boolean;service?:boolean;editAfter?:boolean;onCancelled:(hadFocus:boolean)=>void;onPendingChange:(pending:boolean)=>void}){
  const [busy,setBusy]=useState(false),[unknown,setUnknown]=useState(false),[message,setMessage]=useState<string|null>(null),pending=useRef(false),scope=useRef<AbortController|null>(null),live=useRef(visible);live.current=visible;
  const buttonRef=useRef<HTMLButtonElement>(null);
  const restoreButtonFocus=useRef(false);
@@ -14,7 +14,7 @@ export function CheckoutCancellation({owner,paymentId,targetType,visible,service
   }
  },[busy]);
  async function perform(read:boolean){
-  const controller=scope.current;if(pending.current||!live.current||!controller||controller.signal.aborted)return;
+  const controller=scope.current;if(checkingOrder||pending.current||!live.current||!controller||controller.signal.aborted)return;
   const startedFocused=buttonRef.current!==null&&buttonRef.current===document.activeElement;
   pending.current=true;setBusy(true);if(!read)setUnknown(true);setMessage(null);onPendingChange(true);
   try{
@@ -25,19 +25,19 @@ export function CheckoutCancellation({owner,paymentId,targetType,visible,service
   finally{if(scope.current===controller){pending.current=false;if(!controller.signal.aborted){restoreButtonFocus.current=startedFocused;setBusy(false);}}}
  }
  return <section hidden={!visible} inert={!visible} aria-label="Отмена подготовки оплаты" className="mt-4 border-t border-slate-200 pt-4">
-  <button ref={buttonRef} type="button" disabled={busy} onClick={()=>void perform(unknown)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60">{busy?'Проверяем подготовку…':unknown?'Проверить отмену':editAfter?'Отменить подготовку и редактировать':'Отменить подготовку оплаты'}</button>
+  <button ref={buttonRef} type="button" disabled={busy} aria-disabled={checkingOrder} onClick={()=>void perform(unknown)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60 aria-disabled:opacity-60">{busy?'Проверяем подготовку…':unknown?'Проверить отмену':editAfter?'Отменить подготовку и редактировать':'Отменить подготовку оплаты'}</button>
   <p className="mt-2 text-xs leading-5 text-slate-600">Отмена доступна, пока оплата не отправлена. Публикация и история сохранятся.</p>
   {message&&<p role="alert" className="mt-2 break-words text-sm text-slate-800">{message}</p>}
  </section>;
 }
 
 export function CheckoutCancellationFeedback({focusOnConfirmation}:{focusOnConfirmation:boolean|null}){
- const result=useRef<HTMLParagraphElement>(null);
+ const result=useRef<HTMLHeadingElement>(null);
  useEffect(()=>{
   if(focusOnConfirmation&&document.activeElement===document.body)result.current?.focus();
  },[focusOnConfirmation]);
- return <p ref={result} tabIndex={-1} aria-live={focusOnConfirmation?'off':'polite'}
-  className={focusOnConfirmation===null?undefined:'mt-3 rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700'}>
-  {focusOnConfirmation!==null&&'Подготовка оплаты отменена.'}
- </p>;
+ const message='Подготовка оплаты отменена.';
+ const className='mt-3 rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700';
+ if(focusOnConfirmation)return <h2 ref={result} tabIndex={-1} className={className}>{message}</h2>;
+ return <p aria-live="polite" className={focusOnConfirmation===null?undefined:className}>{focusOnConfirmation!==null&&message}</p>;
 }
