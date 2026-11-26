@@ -55,6 +55,65 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
     }
   });
   await suite.test('callback state is single-use and bound to the precise authorized session',async()=>{const attempt=await store.start(a.token,a.id,'12345678','/cabinet');await assert.rejects(store.claim(b.token,attempt.state,'12345678'),{code:'INVALID_ATTEMPT'});const claimed=await store.claim(a.token,attempt.state,'12345678');assert.equal(claimed.id,attempt.id);await assert.rejects(store.claim(a.token,attempt.state,'12345678'),{code:'INVALID_ATTEMPT'});await clearAttempts();});
+  await suite.test('a lost callback response cannot bind a phone or repeat the exchange',async()=>{
+    const {createTelegramPhoneHandler}=load('telegram-phone-http');
+    const origin='https://telegram-fixture.invalid';
+    const config={origin,clientId:'12345678',clientSecret:'synthetic-secret',callbackUrl:origin+'/api/account/phone/telegram/callback'};
+    const token=randomBytes(32).toString('hex'),candidatePhone='+79991234597';
+    const {rows:[account]}=await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',
+      ['callback-loss@example.invalid',await hashPassword('Synthetic-password-42!')]);
+    await owner.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hashSessionToken(token),account.id]);
+    let exchanges=0;
+    const handler=createTelegramPhoneHandler({origin},config,async()=>({
+      store,
+      limiter:{allowProduction:async()=>true,allowPhoneVerification:async()=>true},
+      policy:async()=>({available:true,required:false}),
+      oidc:{
+        authorization:attempt=>origin+'/synthetic-provider?state='+attempt.state,
+        exchange:async()=>{
+          exchanges++;
+          return {phone:candidatePhone,subject:'synthetic-callback-loss',tokenHash:randomBytes(32).toString('hex')};
+        },
+      },
+    }));
+    const headers={host:new URL(origin).host,origin,'x-real-ip':'192.0.2.41','x-forwarded-proto':'https',
+      'x-blizhniy-request':'1','sec-fetch-site':'same-origin','content-type':'application/json',
+      cookie:'__Host-blizhniy_session='+token};
+    const post=(action,body)=>handler(new Request(origin+'/api/account/phone/'+action,{
+      method:'POST',headers,body:JSON.stringify({expectedOwnerId:account.id,...body}),
+    }),action);
+    const started=await post('start',{returnTo:'/cabinet'});
+    assert.equal(started.status,200);
+    const {attemptId,authorizationUrl}=await started.json();
+    const state=new URL(authorizationUrl).searchParams.get('state');
+    assert.match(state,/^[0-9a-f]{64}$/);
+    const callback=()=>handler(new Request(config.callbackUrl+'?code=synthetic-code&state='+state,{headers}),'callback');
+    // Process the callback, then discard its redirect as a disconnected client would.
+    assert.equal((await callback()).status,303);
+    const replay=await callback();
+    assert.equal(replay.status,303);
+    assert.equal(replay.headers.get('location'),'/cabinet/phone?error=invalid');
+    assert.equal(exchanges,1);
+    assert.equal((await owner.query('select state from app.telegram_phone_attempts where id=$1',[attemptId])).rows[0].state,'review');
+    assert.equal((await owner.query('select phone from app.telegram_phone_bindings where user_id=$1',[account.id])).rowCount,0);
+    const status=await post('status',{});
+    assert.equal(status.status,200);
+    assert.equal((await status.json()).verified,false);
+
+    const review=await post('review',{attemptId});
+    assert.equal(review.status,200);
+    const pending=await review.json();
+    assert.equal(pending.confirmed,false);
+    assert.equal(pending.phone,candidatePhone);
+    const confirmation={attemptId,expectedRevision:pending.profileRevision,acceptReplacement:false};
+    assert.equal((await post('confirm',confirmation)).status,200);
+    assert.equal((await post('confirm',confirmation)).status,400);
+    const reloaded=await post('status',{});
+    assert.equal(reloaded.status,200);
+    assert.equal((await reloaded.json()).verifiedPhone,candidatePhone);
+    assert.deepEqual((await owner.query('select phone from app.telegram_phone_bindings where user_id=$1',[account.id])).rows,[{phone:candidatePhone}]);
+    assert.equal(exchanges,1);
+  });
   await suite.test('successful attestation preserves email and unrelated fields, returning trusted profile claims',async()=>{const attempt=await stage(a);const review=await store.review(a.token,a.id,attempt.id);assert.equal(review.phone,phone);await store.confirm(a.token,a.id,attempt.id,review.profileRevision,false);const saved=await profiles.read(a.token,a.id);assert.equal(saved.profile.phone,phone);assert.equal(saved.profile.verifiedPhone,phone);assert.equal(saved.profile.phoneVerified,true);assert.equal(saved.profile.name,'Synthetic User');assert.equal(saved.profile.email,'phone0@example.invalid');await assert.rejects(store.confirm(a.token,a.id,attempt.id,review.profileRevision,true),{code:'INVALID_ATTEMPT'});await clearAttempts();});
   await suite.test('simultaneous same phone cannot bind to two accounts and errors reveal no account',async()=>{await store.unlink(a.token,a.id);const attempts=await Promise.all([stage(a,phone,'race-a'),stage(b,phone,'race-b')]);const reviews=await Promise.all(attempts.map((v,i)=>store.review(accounts[i].token,accounts[i].id,v.id)));const results=await Promise.allSettled(attempts.map((v,i)=>store.confirm(accounts[i].token,accounts[i].id,v.id,reviews[i].profileRevision,true)));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const failed=results.find(r=>r.status==='rejected');assert.equal(failed.reason.code,'PHONE_CONFLICT');assert.equal((await owner.query('select * from app.telegram_phone_bindings where phone=$1',[phone])).rowCount,1);await owner.query('delete from app.telegram_phone_bindings');await clearAttempts();});
   await suite.test('same Telegram subject also cannot bind a different phone to a second account',async()=>{let x=await stage(a,phone,'same-telegram');let r=await store.review(a.token,a.id,x.id);await store.confirm(a.token,a.id,x.id,r.profileRevision,true);x=await stage(b,'+79991234568','same-telegram');r=await store.review(b.token,b.id,x.id);await assert.rejects(store.confirm(b.token,b.id,x.id,r.profileRevision,true),{code:'PHONE_CONFLICT'});await clearAttempts();});
