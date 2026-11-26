@@ -38,4 +38,6 @@ for(const application of [false,true])test(`${application?'application':'placeme
  h.commit();await h.settle();assert.equal(h.calls.filter(c=>c==='payment.read').length,1,'Late acknowledgement must not mutate the restored UI');
  h.button('Проверить отмену').props.onClick();await h.settle();assert.equal(h.calls.filter(c=>c==='cancel.read').length,1);assert.equal(h.calls.filter(c=>c==='cancel.write').length,1);
  assert.equal(h.calls.filter(c=>c==='payment.read').length,2);assert.equal(h.button('Проверить статус').props.disabled,false);assert.ok(!walk(h.tree).some(n=>n.type==='button'&&text(n)==='Проверить отмену'));
+ const feedback=walk(h.tree).find(n=>n.type==='p'&&text(n)==='Подготовка оплаты отменена.');
+ assert.equal(feedback?.props['aria-live'],'polite');
 });

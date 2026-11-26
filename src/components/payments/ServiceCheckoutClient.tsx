@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
-import {CheckoutCancellation} from './CheckoutCancellation';
+import {CheckoutCancellation,CheckoutCancellationFeedback} from './CheckoutCancellation';
 import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {serviceCheckout,type ServiceQuote} from '@/lib/client-service-checkout';
@@ -16,6 +16,7 @@ const returnPath=(kind:PaidServiceKind)=>kind==='fair'?'/cabinet/fair-applicatio
 type Props={kind:PaidServiceKind;hosted?:boolean;cancellationEnabled?:boolean;publicationId?:string;revision?:string;paymentId?:string};
 function Workspace({owner,visible,...props}:Props&{owner:string;visible:boolean}){
  const {kind,hosted,cancellationEnabled,publicationId,revision,paymentId}=props,[quote,setQuote]=useState<ServiceQuote|null>(null),[snapshot,setSnapshot]=useState<ServicePaymentSnapshot|null>(null),[busy,setBusy]=useState(false),[pending,setPending]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0),[ready,setReady]=useState(false),[cancelPending,setCancelPending]=useState(false);
+ const [cancellationFocus,setCancellationFocus]=useState<boolean|null>(null);
  const key=useRef<string|null>(null),working=useRef(false),scope=useRef<AbortController|null>(null),live=useRef(visible);live.current=visible;
  useEffect(()=>{try{if(!paymentId&&window.location.hash){if(!/^#checkout=[a-f0-9-]{36}$/.test(window.location.hash))throw Error();key.current=parseListingDraftId(window.location.hash.slice(10));setPending(true);}setReady(true);}catch{setError('Сохранённая попытка повреждена. Проверьте историю оплат в кабинете.');}},[paymentId]);
  useEffect(()=>{const controller=new AbortController();scope.current=controller;working.current=false;setBusy(false);return()=>controller.abort();},[visible]);
@@ -52,7 +53,7 @@ function Workspace({owner,visible,...props}:Props&{owner:string;visible:boolean}
   finally{if(scope.current===controller){working.current=false;if(!controller.signal.aborted)setBusy(false);}}
  }
  const order=snapshot?.order,event=quote?.fairEvent??order?.fairEvent,amount=quote?.tariff.amount??order?.amount;
- return <div hidden={!visible} inert={!visible} aria-busy={busy}>
+ return <div hidden={!visible} inert={!visible} aria-busy={busy&&cancellationFocus===null}>
   {amount&&<p className="text-2xl font-bold text-slate-950">{money(amount)}</p>}
   {event?<p className="mt-3 text-sm leading-6 text-slate-700">Ярмарка {date(event.date+'T12:00:00+03:00')}. Карточка участника действует до конца этого дня.</p>:<p className="mt-3 text-sm leading-6 text-slate-700">Реклама на {quote?.tariff.durationDays??order?.durationDays??'…'} дн. Если все пять мест заняты, заявка будет ждать в очереди. Оплаченный срок начнётся после появления места.</p>}
   {order&&<p role="status" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 font-semibold">{order.status==='refunded'?'Плата возвращена':order.status==='failed'?'Оплата отменена':order.status==='succeeded'?snapshot.fulfillment?'Размещение выполнено':snapshot.eventEnded?'Ярмарка завершилась. Размещение не началось; обратитесь к администратору за возвратом.':'Оплата подтверждена. '+(kind==='marquee'?'Ожидаем место или проверку размещения.':'Проверяем размещение для выбранной ярмарки.'):'Ожидает оплаты'}</p>}
@@ -61,11 +62,12 @@ function Workspace({owner,visible,...props}:Props&{owner:string;visible:boolean}
   {pending&&<p role="status" className="mt-3 text-sm text-slate-700">Сначала проверим начатую оплату. Новый заказ не создаётся.</p>}
   {error&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{error}</p>}
   <p className="mt-4 text-sm text-slate-600">{hosted?'ЮKassa TEST. Настоящие деньги не списываются.':'Локальная симуляция. Настоящие деньги не списываются.'}</p>
+  <CheckoutCancellationFeedback focusOnConfirmation={cancellationFocus}/>
   <div className="mt-5 flex flex-wrap gap-2">
    {pending?<button type="button" className={button} disabled={busy} onClick={()=>void perform('recover')}>Проверить начатую оплату</button>:paymentId?<>{order&&['created','pending'].includes(order.status)&&!(order.status==='created'&&snapshot?.eventEnded)&&<button type="button" className={button} disabled={busy||cancelPending} onClick={()=>void perform('dispatch')}>{hosted?'Перейти в ЮKassa TEST':'Открыть локальный симулятор'}</button>}<button type="button" className={button} disabled={busy} onClick={()=>setRetry(n=>n+1)}>Проверить статус</button></>:quote?<button type="button" className={button} disabled={busy} onClick={()=>void perform('prepare')}>{quote.activePayment?'Открыть начатую оплату':'Перейти к оплате'}</button>:<button type="button" className={button} disabled={busy||!ready} onClick={()=>setRetry(n=>n+1)}>Проверить условия</button>}
    <Link href={returnPath(kind)} className={button}>Мои публикации</Link>
   </div>
-  {cancellationEnabled&&paymentId&&order?.status==='created'&&<CheckoutCancellation service owner={owner} paymentId={paymentId} targetType={kind==='fair'?'fair_application':'ad_marquee'} visible={visible} onCancelled={()=>setRetry(n=>n+1)} onPendingChange={setCancelPending}/>}
+  {cancellationEnabled&&paymentId&&order?.status==='created'&&<CheckoutCancellation service owner={owner} paymentId={paymentId} targetType={kind==='fair'?'fair_application':'ad_marquee'} visible={visible} onCancelled={hadFocus=>{setCancellationFocus(hadFocus);setSnapshot(null);setRetry(n=>n+1);}} onPendingChange={setCancelPending}/>}
  </div>;
 }
 export function ServiceCheckoutClient(props:Props){
