@@ -1,0 +1,208 @@
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+index 5348419b00d39b556cab57d6afc530c28860af0f..4e1864d7aba5235df58b04164b79ec119746642c 100644
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -157,6 +157,8 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path,
+ // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
+ // Content-addressed artifacts, not a blanket permission to remove assertions.
+ const reviewedListingArtifacts = [
++  {"file": "tests/public-work-browser.mjs", "before": "58a7f25622c5d5662f705f45f4d7d1d45004b5dab7f6767bdbc08730a05e9d60", "after": "322b9e2b738a1a62357e6cbe1115bb6478022d71673552a64ef7be187d9d7a2b"},
++  {"file": "tests/service-publication-browser.mjs", "before": "645d8a27a96241cba837aa0b70b0ed6b53e2fbdb67a6eb7da819a513fe9c3c35", "after": "a940da30150d347496dd8897d75ae69900b182bded7f971140f44f8e61640af6"},
+   {"file": "tests/local-primary-refund-composition-cases.mjs", "before": "fa13ec1b3ed85c01d4f8a2c09d15aaa18807d5dd6c8d1e52a2876945cebe9102", "after": "75aec2e99a1d35505843e4f76e5b2df9d2645a70a00efc7f6adbda1f417778ce"},
+   {"file": "tests/local-primary-refund-activation-cases.mjs", "before": "2813fb003ebea562a78c97225c4b938c88fb1b9e4dc2c8566ee5442763f3a312", "after": "74fe6a803134d2aa35f66010b3b561527bca486e109c055ee61218d5a9eb9346"},
+   {"file": "tests/specialist-checkout-refund-activation-cases.mjs", "before": "b924673663f56eec35fc8d0c0cb0a7bd851d639ced5a5192c9c70ae1c755de39", "after": "83f6cab95da8cd6c3691ad68f70f105b914c8436a9b0a6ca87f27ad8d9f09c56"},
+diff --git a/tests/public-work-browser.mjs b/tests/public-work-browser.mjs
+index 7cfd956723483ecf5ecb677cea65fcafc02494dc..2ee7cae3021089ba2ddc4960668b612321e39486 100644
+--- a/tests/public-work-browser.mjs
++++ b/tests/public-work-browser.mjs
+@@ -122,7 +122,13 @@ test('Russian public work catalog and detail render safe fields in HTML/RSC and
+   });
+   await suite.test('message validation focuses its field; a definite stale revision preserves text and requires refresh without automatic write retry',async()=>{
+    const {context,panel,state}=await composer();try{
+-    await panel.getByLabel('Сообщение',{exact:true}).fill('x'.repeat(3001));await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByText('Сообщение должно содержать не более 3000 символов, без управляющих знаков.',{exact:true}).waitFor();assert.equal(state.writes.length,0);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).evaluate(node=>node===document.activeElement),true);
++    const message=panel.getByLabel('Сообщение',{exact:true});
++    assert.equal(await message.getAttribute('maxlength'),'500');
++    await message.fill('x'.repeat(501));assert.equal((await message.inputValue()).length,500);
++    await message.fill('<b>текст</b>');
++    await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();
++    await panel.getByText('Сообщение: до 500 символов, без HTML-разметки и скрытых управляющих знаков.',{exact:true}).waitFor();
++    assert.equal(state.writes.length,0);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).evaluate(node=>node===document.activeElement),true);
+     await panel.getByLabel('Сообщение',{exact:true}).fill('Не терять этот текст');state.rejectCreate=true;await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByRole('button',{name:'Обновить данные отклика',exact:true}).waitFor();assert.equal(await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).isDisabled(),true);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).inputValue(),'Не терять этот текст');assert.equal(state.writes.length,1);
+     state.rejectCreate=false;await panel.getByRole('button',{name:'Обновить данные отклика',exact:true}).click();await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByText('Отклик сохранён. Ожидает оплаты.',{exact:true}).waitFor();assert.equal(state.writes.length,2);assert.notEqual(state.writes[0].creationKey,state.writes[1].creationKey);assert.deepEqual(state.unexpected,[]);assert.deepEqual(state.errors,[]);
+    }finally{await context.close();}
+diff --git a/tests/service-publication-browser.mjs b/tests/service-publication-browser.mjs
+index 1f0c940e2d7d6b9fb5112a7ebe96f515438db0e9..b4176d4bea991ae44d7969e897d73e5d8e77f1ae 100644
+--- a/tests/service-publication-browser.mjs
++++ b/tests/service-publication-browser.mjs
+@@ -5,6 +5,7 @@ import {rootCertificates} from 'node:tls';import {randomBytes} from 'node:crypto
+ import {parseServicePublicationForm} from '../src/lib/service-publication-contract.ts';import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
+ const owner='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000004',id='10000000-0000-4000-8000-000000000002',reviewId='10000000-0000-4000-8000-000000000003',stamp='2026-10-18T00:00:00.123456Z';
+ const paths={specialist:'/cabinet/specialist',fair:'/yarmarka-masterov/zayavka',marquee:'/reklama/begushchaya-stroka'};
++const cabinets={specialist:'/cabinet/specialist',fair:'/cabinet/fair-applications',marquee:'/reklama/begushchaya-stroka?view=list'};
+ const labels={specialist:'Анкета специалиста',fair:'Заявка на ярмарку',marquee:'Рекламный текст'};
+ test('service production pages use Russian cookie forms, preserve unknown results and never call legacy storage',{timeout:120000},async suite=>{
+  const directory=await mkdtemp(join(tmpdir(),'blizhniy-service-browser-'));let app,browser,output='';
+@@ -25,15 +26,24 @@ test('service production pages use Russian cookie forms, preserve unknown result
+    await context.route('**/*',async route=>{
+     const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){state.foreign.push(url.host);return route.abort();}
+     if(!url.pathname.startsWith('/api/'))return route.continue();
++    if(url.pathname==='/api/reference/professions'){
++     assert.equal(request.method(),'GET');
++     assert.equal(request.headers().authorization,undefined);
++     return route.fulfill({json:{items:[{id:reviewId,slug:'plumber',name:'Сантехник',parent:'Строительство',active:true}]}});
++    }
+     assert.equal(request.headers().authorization,undefined,'service forms never send legacy bearer');const body=request.postData()?request.headers()['content-type']==='application/json'?request.postDataJSON():null:null;
+-    if(url.pathname==='/api/account/session')return route.fulfill({json:{user:{id:state.owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});
+-    if(url.pathname==='/api/account/profile')return route.fulfill({json:{exists:false,revision:null,profile:createDefaultCabinetProfile({name:'Техническое имя',email:'fixture@example.invalid'})}});
++    if(url.pathname==='/api/account/session')return route.fulfill({headers:kind==='specialist'?{'X-Blizhniy-Specialist-Test':'1'}:{},json:{user:{id:state.owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});
++    if(url.pathname==='/api/account/profile')return route.fulfill({json:{exists:false,revision:null,profile:createDefaultCabinetProfile({name:state.owner===owner?'Техническое имя':'Второй профиль',email:'fixture@example.invalid'})}});
+     if(url.pathname==='/api/account/media'){state.uploads++;return route.fulfill({json:{id:request.headers()['x-blizhniy-intent'],mimeType:'image/webp',width:40,height:20,size:webp.length}});}
+     if(url.pathname==='/api/account/media/read')return route.fulfill({contentType:'image/webp',body:webp});
+     if(url.pathname==='/api/account/service-publications'){
+      assert.equal(body.expectedOwnerId,state.owner);assert.equal(body.kind,kind);assert.equal(request.headers()['x-blizhniy-request'],'1');
+      if(body.action==='list')return route.fulfill({json:{items:state.row?[{id,kind,title:state.row.form.title,revision:state.row.revision,status:'draft',paid:false,updatedAt:stamp}]:[],nextCursor:null}});
+-     if(body.action==='read'||body.action==='intent'){state.reads++;return route.fulfill({json:state.row});}
++     if(body.action==='read'||body.action==='intent'){
++      state.reads++;
++      if(body.action==='read'&&!state.row)return route.fulfill({status:404,json:{error:{code:'PUBLICATION_NOT_FOUND'}}});
++      return route.fulfill({json:state.row});
++     }
+      state.writes++;assert.equal(request.method(),'PUT');const form=parseServicePublicationForm(kind,body.form);
+      if(body.action==='update')assert.equal(body.expectedRevision,state.row.revision);else assert.equal(body.action,'create');
+      state.row={id,kind,form,photos:(form.kind==='marquee'?[]:form.photoIds).map(id=>({id,mimeType:'image/webp',width:40,height:20,size:webp.length})),revision:state.row?String(BigInt(state.row.revision)+1n):'9007199254740993',status:'draft',paid:false,createdAt:stamp,updatedAt:stamp,publishedAt:null,expiresAt:null};
+@@ -48,41 +58,103 @@ test('service production pages use Russian cookie forms, preserve unknown result
+    });
+    try{
+     await page.goto(origin+paths[kind]);const form=page.getByRole('form',{name:labels[kind],exact:true});await form.waitFor({timeout:3000});
+-    await form.locator('input[name="title"]').fill('Синтетический материал');
++    const initialTitle=kind==='specialist'?'Техническое имя':'Синтетический материал';
++    const updatedTitle=kind==='specialist'?initialTitle:'Исправленный материал';
++    const updatedAbout='Исправленное синтетическое описание специалиста';
++    if(kind==='specialist'){
++     const identity=form.getByRole('region',{name:'Данные из профиля'});
++     await identity.getByText(initialTitle,{exact:true}).waitFor();
++     assert.equal(await identity.getByRole('link',{name:'Изменить в настройках кабинета'}).getAttribute('href'),'/cabinet?settings=1');
++     assert.equal(await form.locator('input[name="title"]').getAttribute('type'),'hidden');
++     await form.getByRole('combobox',{name:'Профессия / специализация'}).fill('сант');
++     await form.getByRole('option',{name:/^Сантехник(?: Строительство)?$/}).click();
++     await form.locator('input[name="price"]').fill('1250,50');
++    }else await form.locator('input[name="title"]').fill(initialTitle);
+     if(kind!=='marquee'){
+-     await form.locator('textarea[name="description"]').fill('Синтетическое описание работ, товаров и условий размещения.');await form.locator('input[name="phone"]').fill('+79990000000');await form.locator('input[name="email"]').fill('fixture@example.invalid');
+-     if(kind==='specialist'){await form.locator('input[name="profession"]').fill('Сантехник');await form.locator('input[name="price"]').fill('1250,50');await form.locator('textarea[name="skills"]').fill('Монтаж и ремонт');}
+-     else await form.locator('select[name="category"]').selectOption('Посуда');
++     await form.locator('textarea[name="description"]').fill('Синтетическое описание работ, товаров и условий размещения.');
++     await form.locator('input[name="phone"]').fill('+79990000000');
++     await form.locator('input[name="email"]').fill('fixture@example.invalid');
++    }
++    if(kind==='fair'){
++     await form.locator('select[name="category"]').selectOption('Посуда');
+      await form.locator('input[name="photos"]').setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:png});
+     }
+     for(const checkbox of await form.locator('input[type="checkbox"]').all())await checkbox.check();
+-    await form.getByRole('button',{name:'Сохранить черновик',exact:true}).click();await form.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).waitFor();assert.equal(state.writes,1);
+-    await form.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.getByText('Материал сохранён.',{exact:true}).waitFor();assert.equal(state.writes,1);assert.ok(state.reads>=1);assert.equal(state.row.form.title,'Синтетический материал');
+-    await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();await page.getByText('На модерации',{exact:true}).waitFor();
+-    const edit=page.getByRole('form',{name:labels[kind],exact:true});await edit.locator('input[name="title"]').fill('Исправленный материал');await edit.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
+-    await page.getByText('Материал сохранён.',{exact:true}).waitFor();assert.equal(state.row.revision,'9007199254740994');assert.equal(state.row.form.title,'Исправленный материал');assert.equal(state.uploads,kind==='marquee'?0:1);
++    await form.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++    await form.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).waitFor();
++    assert.equal(state.writes,1);
++    await form.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();
++    await page.waitForURL(origin+cabinets[kind]);
++    const record=title=>kind==='specialist'
++     ?page.getByRole('region',{name:'Моя анкета',exact:true})
++     :page.getByRole('article').filter({has:page.getByRole('heading',{name:title,exact:true})});
++    await record(initialTitle).getByRole('heading',{name:initialTitle,exact:true}).waitFor();
++    assert.equal(state.writes,1);
++    assert.ok(state.reads>=1);
++    assert.equal(state.row.form.title,initialTitle);
++    if(kind!=='specialist')await record(initialTitle).getByRole('button',{name:'Подробнее: '+initialTitle}).click();
++    const moderation=page.getByRole('region',{name:'Модерация материала',exact:true});
++    await moderation.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
++    await moderation.getByText('На модерации',{exact:true}).waitFor();
++    assert.equal(state.review.revision,state.row.revision);
++    assert.equal(state.row.paid,false);
++    assert.equal(state.row.publishedAt,null);
++    const editorUrl=origin+(kind==='specialist'?'/rabota/specialisty/anketa':paths[kind])+'?draft='+id;
++    await record(initialTitle).getByRole('link',{name:'Редактировать',exact:true}).click();
++    await page.waitForURL(editorUrl);
++    const edit=page.getByRole('form',{name:labels[kind],exact:true});
++    const revised=kind==='specialist'?edit.locator('textarea[name="description"]'):edit.locator('input[name="title"]');
++    await revised.fill(kind==='specialist'?updatedAbout:updatedTitle);
++    await edit.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++    await page.waitForURL(origin+cabinets[kind]);
++    await record(updatedTitle).getByRole('heading',{name:updatedTitle,exact:true}).waitFor();
++    assert.equal(state.row.revision,'9007199254740994');
++    assert.equal(state.row.form.title,updatedTitle);
++    if(kind==='specialist')assert.equal(state.row.form.description,updatedAbout);
++    assert.equal(state.uploads,kind==='fair'?1:0);
++    await record(updatedTitle).getByRole('link',{name:'Редактировать',exact:true}).click();
++    await page.waitForURL(editorUrl);
++    await edit.waitFor();
++    assert.equal(await revised.inputValue(),kind==="specialist"?updatedAbout:updatedTitle);
+     await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+-    for(const width of [320,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+-     const violations=await edit.evaluate(async node=>(await window.axe.run(node,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}})).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>({id:item.id,nodes:item.nodes.map(node=>({target:node.target,summary:node.failureSummary}))})));assert.deepEqual(violations,[]);}
+-    const previous=state.row;await edit.locator('input[name="title"]').fill('Приватные несохранённые правки A');state.owner=other;state.row=null;state.review=null;
++    for(const width of [320,768,1440]){
++     await page.setViewportSize({width,height:1000});
++     assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
++     const violations=await edit.evaluate(async node=>(await window.axe.run(node,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}})).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>({id:item.id,nodes:item.nodes.map(node=>({target:node.target,summary:node.failureSummary}))})));
++     assert.deepEqual(violations,[]);
++    }
++    const previous=state.row;
++    const privateEdit='Приватные несохранённые правки A';
++    await revised.fill(privateEdit);
++    state.owner=other;
++    state.row=null;
++    state.review=null;
++    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
++    await page.waitForFunction(value=>!Array.from(document.querySelectorAll('input[name="title"],textarea[name="description"]')).some(input=>input.value===value),privateEdit);
++    await page.getByRole('alert').filter({hasText:'Материал недоступен.'}).waitFor();
++    await page.getByRole('button',{name:'Повторить загрузку',exact:true}).waitFor();
++    assert.equal(await edit.count(),0);
++    assert.equal(state.writes,2,'owner switch does not automatically save another account');
++    state.owner=owner;
++    state.row=previous;
+     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+-    await page.waitForFunction(()=>!Array.from(document.querySelectorAll('input[name="title"]')).some(input=>input.value==='Приватные несохранённые правки A'));
+-    await page.getByRole('form',{name:labels[kind],exact:true}).waitFor();assert.equal(state.writes,2,'owner switch does not automatically save another account');
+-    state.owner=owner;state.row=previous;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+-    await page.getByRole('form',{name:labels[kind],exact:true}).waitFor();assert.notEqual(await page.getByRole('form',{name:labels[kind],exact:true}).locator('input[name="title"]').inputValue(),'Приватные несохранённые правки A');
++    await edit.waitFor();
++    assert.notEqual(await revised.inputValue(),privateEdit);
+     assert.deepEqual(state.legacy,[]);assert.deepEqual(state.foreign,[]);assert.deepEqual(state.errors,[]);
+    }finally{await context.close();}
+   });
+   await suite.test('a definite validation refusal unlocks the captured form without losing its text',{timeout:20000},async()=>{
+-   const context=await browser.newContext(),page=await context.newPage();let writes=0;const unexpected=[];page.setDefaultTimeout(5000);
++   const context=await browser.newContext(),page=await context.newPage();let writes=0,saved=null;const unexpected=[];page.setDefaultTimeout(5000);
+    await context.route('**/*',async route=>{
+     const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();if(!url.pathname.startsWith('/api/'))return route.continue();
+     if(url.pathname==='/api/account/session')return route.fulfill({json:{user:{id:owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});
+     if(url.pathname==='/api/account/profile')return route.fulfill({json:{exists:false,revision:null,profile:createDefaultCabinetProfile({email:'fixture@example.invalid'})}});
+     if(url.pathname==='/api/account/service-publications'){
+-     const body=request.postDataJSON();if(body.action==='list')return route.fulfill({json:{items:[],nextCursor:null}});
++     const body=request.postDataJSON();if(body.action==='list')return route.fulfill({json:{items:saved?[{id,kind:'marquee',title:saved.form.title,revision:saved.revision,status:'draft',paid:false,updatedAt:stamp}]:[],nextCursor:null}});
++     if(body.action==='read')return route.fulfill({json:saved});
+      assert.equal(body.action,'create');writes++;if(writes===1)return route.fulfill({status:422,json:{error:{code:'INVALID_INPUT'}}});
+-     return route.fulfill({json:{id,kind:'marquee',form:parseServicePublicationForm('marquee',body.form),photos:[],revision:'1',status:'draft',paid:false,createdAt:stamp,updatedAt:stamp,publishedAt:null,expiresAt:null}});
++     saved={id,kind:'marquee',form:parseServicePublicationForm('marquee',body.form),photos:[],revision:'1',status:'draft',paid:false,createdAt:stamp,updatedAt:stamp,publishedAt:null,expiresAt:null};
++     return route.fulfill({json:saved});
+     }
+     if(url.pathname==='/api/account/service-moderation')return route.fulfill({json:{id:reviewId,revision:'1',state:'rejected',note:'Исправьте синтетическую ссылку'}});
+     unexpected.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+@@ -96,7 +168,12 @@ test('service production pages use Russian cookie forms, preserve unknown result
+     assert.equal(writes,1);assert.deepEqual(unexpected,[]);
+     for(const checkbox of await form.locator('input[type="checkbox"]').all())await checkbox.check();
+     await form.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
++    await page.waitForURL(origin+cabinets.marquee);
++    const record=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Исправленная синтетическая версия',exact:true})});
++    await record.getByRole('button',{name:'Подробнее: Исправленная синтетическая версия'}).click();
+     await page.getByRole('region',{name:'Модерация материала',exact:true}).getByText('Нужны исправления',{exact:true}).waitFor();
++    await record.getByRole('link',{name:'Редактировать',exact:true}).click();
++    await page.waitForURL(origin+paths.marquee+'?draft='+id);
+     const corrected=page.getByRole('form',{name:labels.marquee,exact:true}).locator('input[name="title"]');
+     assert.equal(await corrected.isDisabled(),false,'a concurrent rejection must return the saved editable form rather than freeze the initial submission');
+     assert.equal(await corrected.inputValue(),'Исправленная синтетическая версия');assert.equal(writes,2);
