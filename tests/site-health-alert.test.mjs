@@ -219,3 +219,103 @@ test('worker and backup failures notify independently and distinguish operators 
   assert.equal(messages.length,4);
   assert.ok(messages[3].subject.endsWith('работа восстановлена'));
 });
+
+test('a public 5xx sends and recovers independently while another public page stays unavailable', async t => {
+  const { createServer } = await import('node:http');
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const { checkPublicPageSignals } = await import('../scripts/check-site-health.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-public-alerts-'));
+  const pages = new Map();
+  let changeOnConfirm = () => {};
+  const originServer = createServer((req, res) => {
+    const path = new URL(req.url, 'http://127.0.0.1').pathname;
+    res.writeHead(pages.get(path) ?? 200, { 'content-type': 'text/html' });
+    res.end('<h1>Synthetic public route</h1>');
+  });
+  t.after(async () => {
+    await new Promise((resolve, reject) => originServer.close(error => error ? reject(error) : resolve()));
+    await rm(directory, { recursive: true });
+  });
+  await new Promise((resolve, reject) => {
+    originServer.once('error', reject);
+    originServer.listen(0, '127.0.0.1', resolve);
+  });
+  const origin = 'http://127.0.0.1:' + originServer.address().port;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => messages.push(message),
+    site: async () => 'healthy', certificate: async () => 'healthy',
+    publicPages: () => checkPublicPageSignals(origin), waitForConfirm: async () => changeOnConfirm(),
+  });
+
+  pages.set('/obyavleniya', 404);
+  await run();
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /не смог открыть/);
+
+  pages.set('/poisk', 503);
+  await run();
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].text, /ошибку сервера/);
+  await run();
+  assert.equal(messages.length, 2);
+
+  pages.delete('/poisk');
+  await run();
+  assert.equal(messages.length, 3);
+  assert.match(messages[2].text, /снова отвечают без ошибки сервера/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'site-public-pages.json'), 'utf8')).result, 'public-page-unavailable');
+
+  pages.delete('/obyavleniya');
+  await run();
+  assert.equal(messages.length, 4);
+  assert.match(messages[3].text, /снова открываются/);
+  assert.equal(new Set(messages.map(message => message.id)).size, 4);
+
+  pages.set('/obyavleniya', 404);
+  changeOnConfirm = () => {
+    pages.delete('/obyavleniya');
+    pages.set('/poisk', 503);
+  };
+  await run();
+  assert.equal(messages.length, 4);
+  await run();
+  assert.equal(messages.length, 5);
+  assert.match(messages[4].text, /ошибку сервера/);
+});
+
+test('an accepted 5xx under the old state file moves without reissuing the incident', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-public-alert-state-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const legacy = join(directory, 'site-public-pages.json');
+  const serverErrors = join(directory, 'site-public-5xx.json');
+  const previous = {
+    id: 'e86e68ae-6afb-456a-8552-2d1430e9db39', attempts: 1,
+    delivery: 'accepted', result: 'public-page-5xx',
+  };
+  await writeFile(legacy, JSON.stringify(previous), { mode: 0o600 });
+
+  let serverError = true;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => messages.push(message),
+    site: async () => 'healthy', certificate: async () => 'healthy',
+    publicPages: async () => ({ serverError, unavailable: true }), waitForConfirm: async () => {},
+  });
+
+  await run();
+  assert.deepEqual(JSON.parse(await readFile(serverErrors, 'utf8')), previous);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /не смог открыть/);
+  assert.equal(JSON.parse(await readFile(legacy, 'utf8')).result, 'public-page-unavailable');
+
+  serverError = false;
+  await run();
+  assert.equal(JSON.parse(await readFile(serverErrors, 'utf8')), null);
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].text, /снова отвечают без ошибки сервера/);
+  assert.equal(JSON.parse(await readFile(legacy, 'utf8')).result, 'public-page-unavailable');
+});

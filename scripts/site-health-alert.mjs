@@ -3,7 +3,7 @@ import { open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
-import { checkBackupReceipt, checkPublicPages, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
+import { checkBackupReceipt, checkPublicPageSignals, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
 
 const reasons = {
   'site-unavailable': 'Сайт не прошёл внешнюю проверку доступности.',
@@ -122,6 +122,29 @@ export function alertStateFile(file, incidentReasons) {
   };
 }
 
+async function confirmPublicPages(probe, waitForConfirm) {
+  if (!probe) return [null, null];
+  const first = await probe();
+  if (!first.serverError && !first.unavailable) return ['healthy', 'healthy'];
+  await waitForConfirm();
+  const second = await probe();
+  const confirmed = (signal, reason) => {
+    if (!second[signal]) return 'healthy';
+    // A fault seen only on the second request needs another confirmation.
+    return first[signal] ? reason : null;
+  };
+  return [confirmed('unavailable', 'public-page-unavailable'), confirmed('serverError', 'public-page-5xx')];
+}
+
+async function migratePublicPageState(directory) {
+  const previous = alertStateFile(join(directory, 'site-public-pages.json'), reasons);
+  const state = await previous.load();
+  if (state?.result !== 'public-page-5xx') return;
+  const serverError = alertStateFile(join(directory, 'site-public-5xx.json'), reasons);
+  if (!await serverError.load()) await serverError.save(state);
+  await previous.save(null);
+}
+
 export async function runSiteHealthAlert({
   directory, recipient, notify, site = checkSiteHealth, certificate = checkSiteCertificate,
   storage, backup, publicPages, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
@@ -133,10 +156,11 @@ export async function runSiteHealthAlert({
     await waitForConfirm();
     return probe();
   };
-  const [availability, tls, disk, backupResult, publicResult, ...workerResults] = await Promise.all([
-    confirm(site), confirm(certificate), confirm(storage), confirm(backup), confirm(publicPages),
+  const [availability, tls, disk, backupResult, [publicResult, publicServerError], ...workerResults] = await Promise.all([
+    confirm(site), confirm(certificate), confirm(storage), confirm(backup), confirmPublicPages(publicPages, waitForConfirm),
     ...workerTimers.map(unit => confirm(() => worker(unit))),
   ]);
+  const publicStateReady = !publicPages || await migratePublicPageState(directory).then(() => true, () => false);
   const checks = [
     ['site-health', availability === 'site-slow' ? 'healthy' : availability],
     ['site-latency', ['healthy', 'site-slow'].includes(availability) ? availability : null],
@@ -144,10 +168,12 @@ export async function runSiteHealthAlert({
     ['site-disk', disk],
     ['site-backup', backupResult],
     ['site-public-pages', publicResult],
+    ['site-public-5xx', publicServerError],
     ...workerTimers.map((unit, index) => [unit, workerResults[index]]),
   ];
   return Promise.all(checks.filter(([, result]) => result !== null).map(async ([probe, result]) => {
     try {
+      if (!publicStateReady && (probe === 'site-public-pages' || probe === 'site-public-5xx')) return { probe, result, delivery: 'unavailable' };
       const workerName = workerTimers.includes(probe) ? '\nСлужба ' + probe : '';
       const delivery = await deliverSiteAlert(result, {
         ...alertStateFile(join(directory, probe + '.json'), reasons),
@@ -181,7 +207,7 @@ async function main(runId) {
   }
 
   const results = await runSiteHealthAlert({
-    directory, recipient, notify: mailer.send, publicPages: checkPublicPages,
+    directory, recipient, notify: mailer.send, publicPages: checkPublicPageSignals,
     storage: diskPath ? () => checkSiteDisk(diskPath) : undefined,
     backup: backupPath ? () => checkBackupReceipt(backupPath) : undefined,
     workerTimers,

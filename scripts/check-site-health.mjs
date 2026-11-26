@@ -49,7 +49,7 @@ export async function checkSiteHealth(origin = productionOrigin, transport = fet
   return 'healthy';
 }
 
-export async function checkPublicPages(origin = productionOrigin, transport = fetch) {
+export async function checkPublicPageSignals(origin = productionOrigin, transport = fetch) {
   const paths = ['/', '/obyavleniya', '/poisk?q=' + encodeURIComponent('ремонт')];
   const outcomes = await Promise.all(paths.map(async path => {
     try {
@@ -64,8 +64,16 @@ export async function checkPublicPages(origin = productionOrigin, transport = fe
       return 'public-page-unavailable';
     }
   }));
-  if (outcomes.includes('public-page-5xx')) return 'public-page-5xx';
-  return outcomes.every(result => result === 'healthy') ? 'healthy' : 'public-page-unavailable';
+  return {
+    serverError: outcomes.includes('public-page-5xx'),
+    unavailable: outcomes.includes('public-page-unavailable'),
+  };
+}
+
+export async function checkPublicPages(origin = productionOrigin, transport = fetch) {
+  const { serverError, unavailable } = await checkPublicPageSignals(origin, transport);
+  if (serverError) return 'public-page-5xx';
+  return unavailable ? 'public-page-unavailable' : 'healthy';
 }
 
 export async function checkSiteCertificate(origin = productionOrigin, open = connect, now = Date.now) {
