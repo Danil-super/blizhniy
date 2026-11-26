@@ -17,11 +17,11 @@ test('cabinet navigation starts with create, ends with logout and keeps only one
  assert.equal(cabinetNav.at(-1).label,'Ярмарка');assert.equal((html.match(/aria-current="page"/g)??[]).length,1);
  assert.equal((html.match(/data-cabinet-action="create"/g)??[]).length,1);assert.equal((html.match(/data-cabinet-action="logout"/g)??[]).length,1);
 });
-test('cabinet shell renders the payment notice above the workspace',()=>{
+test('cabinet shell renders the payment notice above navigation and workspace',()=>{
  const {Shell,cabinetNav}=load('src/components/DashboardShell.tsx',deps);
  const notice=React.createElement('h2',{tabIndex:-1},'Размещение выполнено');
  const html=renderToStaticMarkup(React.createElement(Shell,{title:'Кабинет',description:'Описание',eyebrow:'Кабинет',nav:cabinetNav,notice},'Содержимое раздела'));
- assert.match(html,/<\/nav>[\s\S]*<h2 tabindex="-1">Размещение выполнено<\/h2>Содержимое раздела<\/div>/i);
+ assert.match(html,/<h2 tabindex="-1">Размещение выполнено<\/h2><nav\b[^>]*aria-label="Разделы"[^>]*>[\s\S]*?<\/nav>[\s\S]*?Содержимое раздела<\/div>/i);
 });
 test('cabinet entry displays the same listings section without dropping the settings URL',()=>{
  const widget=()=>null;
