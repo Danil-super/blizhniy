@@ -10,10 +10,12 @@ function TariffEditor({actor,initial,onChanged,onRefresh,onClose,visible=true,ho
  const [row,setRow]=useState(initial),[name,setName]=useState(initial.name),[price,setPrice]=useState(initial.price),[days,setDays]=useState(initial.durationDays===null?'':String(initial.durationDays)),[active,setActive]=useState(initial.active);
  const [reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),[pending,setPending]=useState<TariffChange|null>(null),[history,setHistory]=useState<TariffReceipt[]>([]);
  const [phase,setPhase]=useState<'ready'|'unknown'|'stale'|'denied'>('ready'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const result=useRef<HTMLParagraphElement|null>(null);
  const shown=useRef(visible);shown.current=visible;
  const alive=useRef(false),working=useRef(false),flight=useRef<AbortController|null>(null),section=useRef<HTMLElement|null>(null);
  useEffect(()=>{alive.current=true;section.current?.focus();return()=>{alive.current=false;flight.current?.abort();};},[]);
  useEffect(()=>{if(!visible){flight.current?.abort();if(pending)setPhase(value=>value==='denied'||value==='stale'?value:'unknown');}},[visible,pending]);
+ useEffect(()=>{if(notice)result.current?.focus();},[notice]);
  const unchanged=name===row.name&&price===row.price&&days===(row.durationDays===null?'':String(row.durationDays))&&active===row.active;
  async function run(command:AdminTariffCommand){
   if(working.current||!shown.current)return;working.current=true;setBusy(true);setError('');const controller=new AbortController();flight.current=controller;
@@ -41,7 +43,7 @@ function TariffEditor({actor,initial,onChanged,onRefresh,onClose,visible=true,ho
  if(!visible)return null;
  return <section ref={section} tabIndex={-1} aria-label="Изменение тарифа" className="my-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:p-5">
   <div className="flex flex-wrap items-start justify-between gap-3"><h2 className="min-w-0 break-words text-lg font-bold text-slate-950">{row.name}</h2><button className={button} type="button" disabled={busy||!!pending} onClick={onClose}>Закрыть</button></div>
-  <p role="status" aria-atomic="true" className={notice?"mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900":"sr-only"}>{notice}</p>
+  <p ref={result} tabIndex={-1} role="status" aria-atomic="true" className={notice?"mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600":"sr-only"}>{notice}</p>
   {error&&<p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
   {phase==='stale'&&<button type="button" className={`${button} mt-3`} onClick={onRefresh}>Загрузить актуальный тариф</button>}
   {phase!=='denied'&&<form aria-busy={busy} className="mt-4" onSubmit={event=>{event.preventDefault();submit();}}><fieldset disabled={busy||!!pending||phase!=='ready'} className="grid gap-4 sm:grid-cols-2">
