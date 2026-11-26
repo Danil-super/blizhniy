@@ -101,7 +101,8 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
  }
  const feedback=enabled&&<>
   <div ref={announceError} role="alert" className="sr-only"/>
-  <div ref={announceNotice} role="status" className="sr-only"/>
+  {/* Orca treats role=status as an application status bar before checking live updates. */}
+  <div ref={announceNotice} aria-live="polite" aria-atomic="true" className="sr-only"/>
   {message&&<p key={message} ref={feedbackTarget} tabIndex={-1}
    className={'mt-3 rounded-lg border p-3 text-sm '+(failure?'border-red-200 bg-red-50 text-red-800':'border-blue-200 bg-blue-50 text-blue-900')}>{message}</p>}
  </>;

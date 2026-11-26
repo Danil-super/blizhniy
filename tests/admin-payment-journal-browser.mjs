@@ -205,7 +205,7 @@ for(const refunds of [false,true])test(`the built TEST journal paginates and cle
    await otherControl.focus();
    releaseRecovery();
    await region.getByText('Применён',{exact:false}).nth(1).waitFor();
-   await region.getByRole('status').filter({hasText:'Результат возврата проверен.'}).waitFor();
+   await region.locator('[aria-live="polite"]').filter({hasText:'Результат возврата проверен.'}).waitFor();
    assert.equal(await focused(otherControl),true);
    assert.deepEqual(commands.map(command=>command.action),['approve','read','recover']);
    assert.equal(await page.evaluate(key=>sessionStorage.getItem(key),'blizhniy-refund-action:'+adminId),null);
