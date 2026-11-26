@@ -59,7 +59,7 @@ const notice=page=>page.getByRole('region',{name:'Файлы cookie',exact:true}
 const events=page=>page.evaluate(()=>window.__metricaEvents??[]);
 const count=(page,method)=>page.evaluate(method=>(window.__metricaEvents??[]).filter(row=>row[1]===method).length,method);
 const settings=async page=>{await page.getByRole('button',{name:'Настройки cookie',exact:true}).click();await notice(page).waitFor();await until(()=>notice(page).evaluate(element=>document.activeElement===element),'settings focus');};
-const ready=async page=>{await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).waitFor();await until(()=>page.getByRole('button',{name:'Разрешить аналитику',exact:true}).isEnabled(),'hydrated consent');};
+const ready=async page=>{await page.getByRole('button',{name:'Принять все',exact:true}).waitFor();await until(()=>page.getByRole('button',{name:'Принять все',exact:true}).isEnabled(),'hydrated consent');};
 async function clean(f,pages){
  assert.deepEqual(f.errors,[]);assert.deepEqual(f.unexpected,[]);
  for(const page of pages)assert.deepEqual(await page.evaluate(()=>window.__cspViolations),[]);
@@ -114,7 +114,7 @@ try{
   assert.deepEqual(await page.evaluate(()=>window.__cspViolations),[]);
   await page.reload();await page.waitForLoadState('networkidle');assert.equal(f.requests.length,0);assert.equal(await notice(page).count(),0);
   await settings(page);assert.equal(await notice(page).evaluate(element=>document.activeElement===element),true);
-  await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();await until(async()=>await count(page,'hit')===1,'first public view');
+  await page.getByRole('button',{name:'Принять все',exact:true}).click();await until(async()=>await count(page,'hit')===1,'first public view');
   assert.equal(f.requests.length,1);assert.equal(f.requests[0].headers.referer,undefined);
   assert.deepEqual((await events(page)).map(row=>row[1]),['init','hit']);
   const options=(await events(page))[0][2];for(const field of ['webvisor','clickmap','trackLinks','trackHash','ecommerce','sendTitle'])assert.equal(options[field],false);
@@ -137,7 +137,7 @@ try{
  }
  for(const action of ['withdraw','private']){
   const f=await context({transport:'delay'}),page=await f.ctx.newPage();await page.goto(fixture.origin+'/o-proekte');await ready(page);
-  await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();await until(()=>f.requests.length===1,'pending tag');
+  await page.getByRole('button',{name:'Принять все',exact:true}).click();await until(()=>f.requests.length===1,'pending tag');
   if(action==='withdraw'){await settings(page);await page.getByRole('button',{name:'Отключить аналитику',exact:true}).click();}
   else{await page.getByRole('navigation',{name:'Мобильная навигация',exact:true}).getByRole('link',{name:'Вход',exact:true}).click();await page.waitForURL('**/auth');}
   await f.release();await page.waitForLoadState('networkidle');assert.deepEqual(await events(page),[]);await clean(f,[page]);checks.push('late tag after '+action);
@@ -145,7 +145,7 @@ try{
  {
   const f=await context(),page=await f.ctx.newPage();
   await page.addInitScript(()=>{Object.defineProperty(Document.prototype,'cookie',{configurable:true,get(){throw new Error('Synthetic blocked storage');},set(){throw new Error('Synthetic blocked storage');}});});
-  await page.goto(fixture.origin+'/o-proekte');await ready(page);await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();
+  await page.goto(fixture.origin+'/o-proekte');await ready(page);await page.getByRole('button',{name:'Принять все',exact:true}).click();
   await notice(page).getByRole('alert').waitFor();assert.match(await notice(page).getByRole('alert').innerText(),/Аналитика не включена/);assert.equal(f.requests.length,0);
   await page.getByRole('button',{name:'Закрыть настройки',exact:true}).click();
   await page.getByRole('navigation',{name:'Нижняя навигация',exact:true}).getByRole('link',{name:'Как работает',exact:true}).click();await page.waitForURL('**/kak-rabotaet');
@@ -153,7 +153,7 @@ try{
  }
  {
   const f=await context({transport:'block'}),page=await f.ctx.newPage();await page.goto(fixture.origin+'/o-proekte');await ready(page);
-  await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();await until(()=>f.requests.length===1,'blocked tag');
+  await page.getByRole('button',{name:'Принять все',exact:true}).click();await until(()=>f.requests.length===1,'blocked tag');
   await page.getByRole('navigation',{name:'Нижняя навигация',exact:true}).getByRole('link',{name:'Как работает',exact:true}).click();await page.waitForURL('**/kak-rabotaet');
   await page.waitForLoadState('networkidle');assert.equal(f.requests.length,1);assert.deepEqual(await events(page),[]);await clean(f,[page]);checks.push('blocked provider leaves navigation working without retry loop');
  }

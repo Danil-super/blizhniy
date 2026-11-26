@@ -31,13 +31,13 @@ const render=(component,props)=>renderToStaticMarkup(React.createElement(compone
 test('without analytics the existing acknowledgement text, button and hidden SSR state are preserved',()=>{
  const html=render(CookieNotice,{initiallyAcknowledged:false});
  assert.match(html,/Используем cookie для входа и защиты аккаунта/);assert.match(html,/Понятно<\/button>/);
- assert.match(html,/href="\/legal\/privacy#cookies"/);assert.doesNotMatch(html,/Яндекс|Разрешить аналитику|Только необходимые/);
+ assert.match(html,/href="\/legal\/privacy#cookies"/);assert.doesNotMatch(html,/Яндекс|Принять все|Только необходимые/);
  assert.equal(render(CookieNotice,{initiallyAcknowledged:true}),'');
  assert.match(render(CookieNoticeButton),/О файлах cookie<\/button>/);
 });
 test('optional analytics offers explicit accept and reject, never SSR tracking or an enabled pre-hydration action',()=>{
  const html=render(CookieNotice,{initiallyAcknowledged:false,analyticsAvailable:true});
- assert.match(html,/Яндекс.Метрика/);assert.match(html,/Разрешить аналитику<\/button>/);assert.match(html,/Только необходимые<\/button>/);
+ assert.match(html,/Используем cookie для работы сайта и, с вашего согласия, для анализа посещаемости\./);assert.match(html,/Принять все<\/button>/);assert.match(html,/Только необходимые<\/button>/);
  assert.equal((html.match(/<button[^>]*disabled=""/g)??[]).length,2);
  assert.doesNotMatch(html,/<script|<iframe|<img|rel="(?:preconnect|dns-prefetch)"|mc\.yandex|googletagmanager/);
  assert.doesNotMatch(html,/Понятно<\/button>|checked=/);
