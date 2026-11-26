@@ -100,6 +100,9 @@ export default async function Page() {
                 {tariff.active && tariff.action === "specialist_publication" ? (
                   <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistNotice ?? "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
                 ) : null}
+                {tariff.active && tariff.action === "fair_participation" ? (
+                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Оплата участия в ярмарке пока недоступна.</p>
+                ) : null}
                 {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#087f2b] text-sm font-bold text-white">
                   {cta.label}
                 </Link> : <p role="status" className="mt-5 text-sm font-semibold leading-6 text-slate-700">Тариф временно недоступен</p>}
