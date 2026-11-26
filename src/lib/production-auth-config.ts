@@ -24,8 +24,11 @@ export function readProductionAuthConfig(env: NodeJS.ProcessEnv = process.env): 
   assertServer();
   if (!env.BLIZHNIY_AUTH_MODE || env.BLIZHNIY_AUTH_MODE === "local") return null;
   try {
+    const placement = env.BLIZHNIY_DB_PLACEMENT;
+    const databaseHost = placement === "same-host" ? "127.0.0.1" : "17e86f80f26733d39ef4b84d.twc1.net";
     if (env.BLIZHNIY_AUTH_MODE !== "postgres" || env.NODE_ENV !== "production" ||
-        env.BLIZHNIY_AUTH_ORIGIN !== productionAuthOrigin || env.BLIZHNIY_DB_HOST !== "17e86f80f26733d39ef4b84d.twc1.net" ||
+        env.BLIZHNIY_AUTH_ORIGIN !== productionAuthOrigin || (placement !== undefined && placement !== "same-host") ||
+        env.BLIZHNIY_DB_HOST !== databaseHost ||
         env.BLIZHNIY_DB_PORT !== "5432" || env.BLIZHNIY_DB_NAME !== "blizhniy_prod" || env.BLIZHNIY_DB_USER !== "blizhniy_runtime" ||
         !env.BLIZHNIY_DB_PASSWORD || env.BLIZHNIY_DB_SSL_MODE !== "verify-full" ||
         !env.BLIZHNIY_DB_CA_FILE || !isAbsolute(env.BLIZHNIY_DB_CA_FILE) ||

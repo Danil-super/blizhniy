@@ -24,6 +24,30 @@ test('TEST worker rejects disabled, LIVE, wrong role/host/database, ambient PG a
  }assert.equal(loads,0);
 });
 
+test('TEST worker uses the opted-in loopback endpoint and keeps its role and TLS checks',async()=>{
+ const {createPaymentWorkerRuntime}=await import('../scripts/payment-worker-runtime.mjs');
+ const directory=mkdtempSync(join(tmpdir(),'blizhniy-payment-colocation-'));
+ try {
+  const ca=join(directory,'root.crt');
+  writeFileSync(ca,rootCertificates[0],{mode:0o644});
+  const local={...valid,BLIZHNIY_DB_PLACEMENT:'same-host',BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_CA_FILE:ca};
+  let poolConfig;
+  const modules={readPostgresConfig,Pool:class{constructor(config){poolConfig=config;}},
+   PostgresDatabase:class{async close(){}},createPaymentReconciliationWorker:()=>({})};
+  const runtime=await createPaymentWorkerRuntime(local,{loadModules:()=>modules});
+  assert.equal(poolConfig.host,'127.0.0.1');
+  assert.equal(poolConfig.user,'blizhniy_payment_reconciler');
+  assert.equal(poolConfig.ssl.rejectUnauthorized,true);
+  await runtime.close();
+  for(const change of [{BLIZHNIY_DB_PLACEMENT:'unknown'},{BLIZHNIY_DB_HOST:valid.BLIZHNIY_DB_HOST},
+   {BLIZHNIY_DB_PLACEMENT:'unknown',BLIZHNIY_DB_HOST:valid.BLIZHNIY_DB_HOST},
+   {BLIZHNIY_DB_HOST:'192.0.2.1'},{BLIZHNIY_DB_SSL_MODE:'disable'},{BLIZHNIY_DB_USER:'gen_user'},{BLIZHNIY_PAYMENT_MODE:'live'}]){
+   await assert.rejects(createPaymentWorkerRuntime({...local,...change},{loadModules:()=>assert.fail('Invalid target was opened')}),
+    {message:'Payment worker configuration unavailable'});
+  }
+ } finally {rmSync(directory,{recursive:true,force:true});}
+});
+
 test('factory uses verified canonical DB config, private max-two pool, immutable TEST merchant, read-only preflight and owned shutdown',async()=>{
  const {createPaymentWorkerRuntime}=await import('../scripts/payment-worker-runtime.mjs');
  const owned=mkdtempSync(join(tmpdir(),'blizhniy-payment-runtime-'));
