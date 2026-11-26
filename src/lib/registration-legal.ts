@@ -1,5 +1,5 @@
-// Keep these dates in sync with the editions shown in legal-documents.ts and the audit migration.
+// Current editions for new registration acknowledgements. Historical audit records/migrations retain their original versions.
 export const REGISTRATION_LEGAL_VERSIONS = {
   agreement: "2026-06-18",
-  privacy: "2026-06-18",
+  privacy: "2026-11-26",
 } as const;

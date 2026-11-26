@@ -54,3 +54,18 @@ test('documents use only same-origin styles unless development or the map SDK ne
   assert.deepEqual(styles,[options.development||options.mapEnabled?"style-src 'self' 'unsafe-inline'":"style-src 'self'"]);
  }
 });
+
+test('Metrica adds only its exact HTTPS origin to script, image and connection permissions',()=>{
+ const nonce=createCspNonce(),origin='https://mc.yandex.ru';
+ const tokens=policy=>policy.split(';').map(part=>part.trim().split(/\s+/));
+ for(const options of [{},{mapEnabled:true},{legacyOrigin:'https://legacy.example.invalid'},{development:true}]){
+  const baseline=tokens(createHtmlCsp(nonce,options));
+  assert.deepEqual(tokens(createHtmlCsp(nonce,{...options,metricaEnabled:false})),baseline);
+  const expected=baseline.map(([name,...sources])=>[name,...sources,...(['script-src','img-src','connect-src'].includes(name)?[origin]:[])]);
+  const actual=tokens(createHtmlCsp(nonce,{...options,metricaEnabled:true}));
+  const normalize=entries=>entries.map(([name,...sources])=>[name,...sources.sort()]);
+  assert.deepEqual(normalize(actual),normalize(expected));
+  assert.equal(actual.filter(([, ...sources])=>new Set(sources).has(origin)).length,3);
+  assert.ok(baseline.every(([, ...sources])=>!new Set(sources).has(origin)));
+ }
+});
