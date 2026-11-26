@@ -15,6 +15,21 @@ example.com {
     request_header @document_not_rsc -Next-Router-Prefetch
     request_header @document_not_rsc -Next-Router-Segment-Prefetch
 
+    @public_images {
+        method GET HEAD
+        path /_next/image /images/*
+    }
+    header @public_images {
+        Cross-Origin-Resource-Policy same-origin
+        match status 2xx 304
+    }
+
+    header /sitemap.xml {
+        Cross-Origin-Embedder-Policy require-corp
+        Cross-Origin-Opener-Policy same-origin
+        match status 2xx 304
+    }
+
     @versioned_assets {
         method GET HEAD
         path_regexp versioned ^/_next/static/(chunks/.+[-.][a-f0-9]{16}\.js|css/[a-f0-9]{16}\.css|media/[^/]+\.[a-f0-9]{8}\.webp|[a-f0-9]{40}/_(buildManifest|ssgManifest)\.js)$
