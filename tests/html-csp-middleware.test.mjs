@@ -23,7 +23,7 @@ const { middleware, config } = exports;
 // sequential tests, including assertion failures, without touching local .env.
 async function withEnvironment(settings, run) {
   const selected = { NODE_ENV: 'production', BLIZHNIY_AUTH_MODE: 'postgres', BLIZHNIY_CSP_MODE: undefined,
-    NEXT_PUBLIC_SUPABASE_URL: undefined, ...settings };
+    NEXT_PUBLIC_SUPABASE_URL: undefined, BLIZHNIY_YANDEX_METRICA_ID: undefined, ...settings };
   const original = new Map(Object.keys(selected).map(key => [key, process.env[key]]));
   try {
     for (const [key, value] of Object.entries(selected)) {
@@ -88,6 +88,37 @@ test('explicit enforce uses the same nonce and policy for renderer and browser',
     assertNextPolicy(response, 'content-security-policy');
     assert.equal(response.headers.get('content-security-policy-report-only'), null);
   });
+});
+
+test('valid runtime Metrica IDs enable only exact analytics origins without changing nonce or CSP mode', { concurrency: false }, async () => {
+  for (const mode of ['report-only', 'enforce']) {
+    await withEnvironment({ BLIZHNIY_CSP_MODE: mode, BLIZHNIY_YANDEX_METRICA_ID: ' 135790246 ' }, () => {
+      const header = mode === 'enforce' ? 'content-security-policy' : 'content-security-policy-report-only';
+      const response = middleware(request('/katalog', { 'x-nonce': 'client-selected' }));
+      const { policy } = assertNextPolicy(response, header);
+      const opposite = mode === 'enforce' ? 'content-security-policy-report-only' : 'content-security-policy';
+      assert.equal(response.headers.get(opposite), null);
+      const directives = policy.split(';').map(value => value.trim().split(/\s+/));
+      for (const [name, ...sources] of directives) {
+        assert.equal(sources.includes('https://mc.yandex.ru'), ['script-src', 'img-src', 'connect-src'].includes(name));
+        assert.ok(!sources.includes('https:'));
+        assert.ok(!sources.includes('https://*.yandex.ru'));
+        assert.ok(!sources.includes("'unsafe-eval'"));
+      }
+      assert.doesNotMatch(policy, /client-selected|webvisor|yastatic|135790246/);
+      assert.ok(policy.includes("frame-ancestors 'self'"));
+      assert.ok(policy.includes("script-src-attr 'none'"));
+    });
+  }
+});
+
+test('missing or malformed Metrica IDs leave HTML working with no analytics permissions', { concurrency: false }, async () => {
+  for (const id of [undefined, '', '0', '-1', '1.5', '9007199254740992', 'https://mc.yandex.ru', '135790246;script-src *']) {
+    await withEnvironment({ BLIZHNIY_CSP_MODE: 'enforce', BLIZHNIY_YANDEX_METRICA_ID: id }, () => {
+      const { policy } = assertNextPolicy(middleware(request('/auth')), 'content-security-policy');
+      assert.doesNotMatch(policy, /yandex|webvisor|yastatic/);
+    });
+  }
 });
 
 test('SSR, Flight and prefetch requests replace every caller-selected policy and nonce', { concurrency: false }, async () => {
