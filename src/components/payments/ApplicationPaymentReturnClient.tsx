@@ -94,6 +94,7 @@ export function ApplicationPaymentReturnClient({paymentId,cancellationEnabled=fa
   <h1 className="mb-4 text-2xl font-bold text-slate-950">Оплата отклика</h1>
   {!simulation&&!hosted&&<p role="status" className="text-sm text-slate-700">TEST-оплата откликов на этом сайте пока не включена.</p>}
   {!visible&&<div role="status" className="text-sm text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли TEST-заказ.</p><Link className={`${button} mt-3`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}?type=application`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-3`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
-  {scope&&(simulation||hosted&&auth?.applicationTest===true)&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible} hosted={hosted} onCheckoutClosed={onCheckoutClosed} cancellationEnabled={cancellationEnabled}/>}
+  {/* Keep this owner’s hidden reader until the session check returns. */}
+  {scope&&(simulation||hosted&&(!visible||auth?.applicationTest===true))&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible} hosted={hosted} onCheckoutClosed={onCheckoutClosed} cancellationEnabled={cancellationEnabled}/>}
  </section></main>;
 }
