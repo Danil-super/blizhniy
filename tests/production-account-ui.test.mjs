@@ -94,8 +94,10 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   const environment = { BLIZHNIY_DB_PASSWORD: "synthetic-root-password", TURNSTILE_SECRET_KEY: "synthetic-root-captcha",
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-before-request-key", NEXT_PUBLIC_SUPABASE_URL: "https://synthetic-legacy.invalid",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-legacy-anon", SUPABASE_SERVICE_ROLE_KEY: "synthetic-private-service-key",
-    NEXT_PUBLIC_2GIS_API_KEY: 'synthetic-map-"<key>' };
+    NEXT_PUBLIC_2GIS_API_KEY: 'synthetic-map-"<key>', BLIZHNIY_YANDEX_METRICA_ID: "246801357" };
   const backends = [];
+  const analytics = [];
+  const publicRuntime = load("src/lib/public-runtime-config.ts", {}, { process: { env: environment } });
   const { default: Root } = load("src/app/layout.tsx", {
     "next/server": { connection: () => connected },
     'next/headers': { headers: async () => new Headers() },
@@ -115,7 +117,9 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     }),
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
-    "@/lib/public-runtime-config": load("src/lib/public-runtime-config.ts", {}, { process: { env: environment } }),
+    "@/lib/public-runtime-config": publicRuntime,
+    "@/lib/metrica-config": load("src/lib/metrica-config.ts", { "./public-runtime-config": publicRuntime }),
+    "@/components/YandexMetrica": { YandexMetrica: props => { analytics.push(props); return null; } },
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
     "@/components/CookieNotice": { CookieNotice: () => null },
@@ -126,11 +130,16 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   }, { process: { env: environment }, URL });
   const pending = Root({ children: React.createElement("main", null, "Synthetic page") });
   environment.BLIZHNIY_AUTH_MODE = "postgres";
+  environment.BLIZHNIY_YANDEX_METRICA_ID = " 135790246 ";
   environment.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "synthetic-root-site-key"; release();
   const html = renderToStaticMarkup(await pending);
   assert.match(html, /name="blizhniy-auth-backend" content="postgres"/);
   assert.match(html, /name="blizhniy-turnstile-site-key" content="synthetic-root-site-key"/);
   assert.equal(html.includes("synthetic-before-request-key"), false);
+  assert.match(html, /name="blizhniy-metrica-id" content="135790246"/);
+  assert.equal(html.includes("246801357"), false);
+  assert.equal(analytics.at(-1).counterId, 135790246);
+  assert.equal(analytics.at(-1).siteUrl, "https://example.invalid");
   assert.deepEqual(backends, ["postgres"]);
   assert.match(html, /name="blizhniy-legacy-url" content=""/);
   assert.match(html, /name="blizhniy-legacy-anon-key" content=""/);
@@ -145,6 +154,20 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   assert.match(legacy, /name="blizhniy-legacy-url" content="https:\/\/synthetic-legacy.invalid"/);
   assert.match(legacy, /name="blizhniy-legacy-anon-key" content="synthetic-legacy-anon"/);
   assert.equal(legacy.includes(environment.SUPABASE_SERVICE_ROLE_KEY), false);
+  environment.BLIZHNIY_YANDEX_METRICA_ID = "357912468";
+  const changed = renderToStaticMarkup(await Root({ children: null }));
+  assert.match(changed, /name="blizhniy-metrica-id" content="357912468"/);
+  assert.equal(changed.includes("135790246"), false);
+  assert.equal(analytics.at(-1).counterId, 357912468);
+  for (const id of [undefined, "", "0", "9007199254740992", 'synthetic-invalid-metrica\"><script>']) {
+    if (id === undefined) delete environment.BLIZHNIY_YANDEX_METRICA_ID;
+    else environment.BLIZHNIY_YANDEX_METRICA_ID = id;
+    const disabled = renderToStaticMarkup(await Root({ children: null }));
+    assert.doesNotMatch(disabled, /blizhniy-metrica-id|synthetic-invalid-metrica/);
+    assert.equal(analytics.at(-1).counterId, null);
+    assert.equal(disabled.includes(environment.SUPABASE_SERVICE_ROLE_KEY), false);
+    for (const secret of [environment.BLIZHNIY_DB_PASSWORD, environment.TURNSTILE_SECRET_KEY]) assert.equal(disabled.includes(secret), false);
+  }
 });
 
 test("primary administrator UI state never queries legacy roles and errors stay fail-closed", () => {

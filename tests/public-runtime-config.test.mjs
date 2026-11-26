@@ -3,10 +3,10 @@ import { test } from "node:test";
 import { getPublicRuntimeSetting } from "../src/lib/public-runtime-config.ts";
 
 test("only allowlisted public settings are read at call time on the server", () => {
-  const names = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "NEXT_PUBLIC_2GIS_API_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+  const names = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "NEXT_PUBLIC_2GIS_API_KEY", "BLIZHNIY_YANDEX_METRICA_ID", "SUPABASE_SERVICE_ROLE_KEY"];
   const before = names.map(name => process.env[name]);
   try {
-    for (const [setting, name] of [["legacy-url", names[0]], ["legacy-anon-key", names[1]], ["dgis-key", names[2]]]) {
+    for (const [setting, name] of [["legacy-url", names[0]], ["legacy-anon-key", names[1]], ["dgis-key", names[2]], ["metrica-id", names[3]]]) {
       process.env[name] = "  synthetic-runtime-A  ";
       assert.equal(getPublicRuntimeSetting(setting), "synthetic-runtime-A");
       process.env[name] = "synthetic-runtime-B";

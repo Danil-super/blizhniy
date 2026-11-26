@@ -16,7 +16,7 @@ const documentLinks = [
   { href: "/legal/privacy", label: "Политика обработки персональных данных" },
 ];
 
-export function SiteFooter() {
+export function SiteFooter({analyticsAvailable=false}:{analyticsAvailable?:boolean}={}) {
   return (
     <footer className="border-t border-slate-200 bg-white">
       <div className="site-footer-inner page-container grid gap-6 py-8 md:grid-cols-[1.1fr_2fr] md:items-start">
@@ -48,7 +48,7 @@ export function SiteFooter() {
                 {link.label}
               </Link>
             ))}
-            <CookieNoticeButton />
+            <CookieNoticeButton analyticsAvailable={analyticsAvailable} />
           </nav>
         </div>
       </div>

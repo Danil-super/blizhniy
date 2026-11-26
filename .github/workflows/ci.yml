@@ -145,6 +145,15 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
         run: npm run build
 
+      - name: Check Yandex Metrica browser lifecycle
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # Reuses the Playwright Chromium prepared for the isolated integration gate.
+          # The installer is idempotent and verifies that the browser still launches.
+          bash scripts/prepare-ci-browser.sh
+          node scripts/check-yandex-metrica.mjs
+
       - name: Package and check the production artifact
         id: package
         run: |

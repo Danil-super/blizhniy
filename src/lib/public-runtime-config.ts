@@ -1,9 +1,10 @@
-// Public compatibility settings only. Never pass an environment object to the client.
+// Explicit public settings only. Never pass an environment object to the client.
 // Dynamic lookup avoids Next's build-time NEXT_PUBLIC_* inlining.
 const publicSettings = {
   "legacy-url": "NEXT_PUBLIC_SUPABASE_URL",
   "legacy-anon-key": "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "dgis-key": "NEXT_PUBLIC_2GIS_API_KEY",
+  "metrica-id": "BLIZHNIY_YANDEX_METRICA_ID",
 } as const;
 
 export function getPublicRuntimeSetting(setting: keyof typeof publicSettings): string | undefined {
