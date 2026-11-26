@@ -137,11 +137,14 @@ export class AuthRateLimiter {
     return await this.consume('production:push:ip:'+ip,300) && await this.consume('production:push:all',2000);
   }
 
-  /** Bound provider traffic before CAPTCHA, without spending the account's email budget. */
+  /** Rate-limit the source before either verifying CAPTCHA or using a remembered proof. */
   async allowProductionAttempt(action: CredentialAction, ip: string): Promise<boolean> {
     if (!credentialActions.includes(action) || !isIP(ip)) throw new Error("Invalid production rate limit key");
-    return await this.consume(`production:credential:${action}:ip:${ip}`, 20) &&
-      await this.consume("production:credential:all", 600);
+    return this.consume(`production:credential:${action}:ip:${ip}`, 20);
+  }
+
+  async allowProductionCaptchaCheck(): Promise<boolean> {
+    return this.consume("production:captcha:all", 600);
   }
 
   /** Charge only verified human attempts; login cannot lock the recovery channel. */
@@ -150,6 +153,12 @@ export class AuthRateLimiter {
       throw new Error("Invalid production rate limit key");
     }
     return this.consume(`production:credential:${action}:email:${email}`, 5);
+  }
+
+  /** A denied email must leave the shared budget available to other accounts. */
+  async allowProductionVerifiedCredential(action: CredentialAction, email?: string): Promise<boolean> {
+    if (email !== undefined && !await this.allowProductionEmail(action, email)) return false;
+    return this.consume("production:credential:all", 600);
   }
 
   async allowListingView(ip: string): Promise<boolean> {

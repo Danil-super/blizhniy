@@ -28,7 +28,8 @@ function fixture({ successfulLogin = true, captcha = true, limited = false } = {
       resolveSession: async () => secondUser,
       revokeSession: async token => { revoked.push(token); },
     },
-    limiter: { allowProduction: async () => !limited, allowProductionAttempt: async () => !limited, allowProductionEmail: async () => !limited },
+    limiter: { allowProduction: async () => !limited, allowProductionAttempt: async () => !limited,
+      allowProductionCaptchaCheck: async () => !limited, allowProductionVerifiedCredential: async () => !limited },
     verifyCaptcha: async () => captcha,
   };
   const handler = createProductionAccountHandler({ origin, rateSecret: 'local_only_test_rate_secret_1234567890',

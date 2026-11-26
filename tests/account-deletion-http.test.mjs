@@ -29,7 +29,7 @@ function request(body = {}, { method = 'POST', headers = {}, path = '/api/accoun
 }
 
 function fixture({ runtimePatch = {}, storePatch = {}, identityPatch = {}, limiterPatch = {}, remembered = true } = {}) {
-  const calls = [], events = [];
+  const calls = [], events = [], captchaChecks = [];
   let lazy = 0;
   const record = (name, result) => async (...args) => { calls.push([name, ...args]); return result; };
   const runtime = {
@@ -44,12 +44,13 @@ function fixture({ runtimePatch = {}, storePatch = {}, identityPatch = {}, limit
       revokeSession: record('revokeSession', undefined), ...identityPatch,
     },
     limiter: { allowProduction: record('allowProduction', true), allowProductionAttempt: record('allowProductionAttempt', true),
-      allowProductionEmail: record('allowProductionEmail', true), ...limiterPatch },
+      allowProductionCaptchaCheck: async () => { captchaChecks.push(calls.length); return true; },
+      allowProductionVerifiedCredential: record('allowProductionVerifiedCredential', true), ...limiterPatch },
     verifyCaptcha: record('verifyCaptcha', true), ...runtimePatch,
   };
   const handler = createAccountDeletionHandler({ ...config, ...(remembered ? {} : { rememberedCaptcha: undefined }) },
     async () => { lazy++; return runtime; }, event => events.push(event));
-  return { handler, calls, events, get lazy() { return lazy; } };
+  return { handler, calls, events, captchaChecks, get lazy() { return lazy; } };
 }
 
 test('deletion boundary rejects malformed origins, ingress and bodies before creating its runtime', async () => {
@@ -147,11 +148,12 @@ test('rights login uses the ordinary login budgets for each CAPTCHA configuratio
     assert.equal(response.status, 200);
     assert.deepEqual(f.calls, remembered ? [
       ['allowProductionAttempt', 'login', '192.0.2.31'], ['verifyCaptcha', 'provider-proof', '192.0.2.31'],
-      ['allowProductionEmail', 'login', email], ['loginForDataSubject', email, password],
+      ['allowProductionVerifiedCredential', 'login', email], ['loginForDataSubject', email, password],
     ] : [
       ['allowProduction', 'credential', '192.0.2.31', email], ['verifyCaptcha', 'provider-proof', '192.0.2.31'],
       ['loginForDataSubject', email, password],
     ]);
+    assert.deepEqual(f.captchaChecks, remembered ? [1] : []);
     const data = await response.json();
     assert.deepEqual(data.user, principal);
     const cookies = response.headers.getSetCookie();
@@ -181,6 +183,7 @@ test('invalid CAPTCHA cannot consume email capacity or reach authentication', as
   const response = await f.handler(request({ email, password, captchaToken: 'invalid-proof' }), 'login');
   assert.equal(response.status, 403);
   assert.deepEqual(f.calls, [['allowProductionAttempt', 'login', '192.0.2.31']]);
+  assert.deepEqual(f.captchaChecks, [1]);
 });
 
 test('only a boolean CAPTCHA success is trusted, unexpected truthy provider values fail closed', async () => {
@@ -189,14 +192,24 @@ test('only a boolean CAPTCHA success is trusted, unexpected truthy provider valu
     const response = await f.handler(request({ email, password, captchaToken: 'provider-result-invalid' }), 'login');
     assert.equal(response.status, 403);
     assert.deepEqual(f.calls, [['allowProductionAttempt', 'login', '192.0.2.31']]);
+    assert.deepEqual(f.captchaChecks, [1]);
   }
 });
 
 test('email rate denial after CAPTCHA cannot run the password verifier', async () => {
-  const f = fixture({ limiterPatch: { allowProductionEmail: async () => false } });
+  const f = fixture({ limiterPatch: { allowProductionVerifiedCredential: async () => false } });
   const response = await f.handler(request({ email, password, captchaToken: 'proof' }), 'login');
   assert.equal(response.status, 429);
   assert.deepEqual(f.calls, [['allowProductionAttempt', 'login', '192.0.2.31'], ['verifyCaptcha', 'proof', '192.0.2.31']]);
+  assert.deepEqual(f.captchaChecks, [1]);
+});
+
+test('an exhausted CAPTCHA budget blocks provider work without charging verified credentials', async () => {
+  const f = fixture({ limiterPatch: { allowProductionCaptchaCheck: async () => false } });
+  const response = await f.handler(request({ email, password, captchaToken: 'provider-proof' }), 'login');
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '900');
+  assert.deepEqual(f.calls, [['allowProductionAttempt', 'login', '192.0.2.31']]);
 });
 
 test('forged browser proof hints cannot bypass CAPTCHA, valid signed proof can', async () => {
@@ -210,8 +223,9 @@ test('forged browser proof hints cannot bypass CAPTCHA, valid signed proof can',
   const response = await valid.handler(request({ email, password, captchaToken: '' }, { headers: { cookie: proofCookie } }), 'login');
   assert.equal(response.status, 200);
   assert.deepEqual(valid.calls, [
-    ['allowProductionAttempt', 'login', '192.0.2.31'], ['allowProductionEmail', 'login', email], ['loginForDataSubject', email, password],
+    ['allowProductionAttempt', 'login', '192.0.2.31'], ['allowProductionVerifiedCredential', 'login', email], ['loginForDataSubject', email, password],
   ]);
+  assert.deepEqual(valid.captchaChecks, []);
 });
 
 test('invalid credentials and unexpected issued scopes never establish restricted access', async () => {

@@ -22,7 +22,7 @@ export type ProductionAccountRuntime = {
   store: Pick<RegistrationStore, "register" | "resendConfirmation" | "confirmEmail">;
   recovery: Pick<PasswordRecoveryStore, "requestRecovery" | "resetPassword">;
   identity: Pick<IdentityStore, "login" | "resolveSession" | "revokeSession">;
-  limiter: Pick<AuthRateLimiter, "allowProduction" | "allowProductionAttempt" | "allowProductionEmail">;
+  limiter: Pick<AuthRateLimiter, "allowProduction" | "allowProductionAttempt" | "allowProductionCaptchaCheck" | "allowProductionVerifiedCredential">;
   verifyCaptcha: (token: unknown, ip: string) => Promise<boolean>;
 };
 type AuthEvent = { event: "account_request"; requestId: string; operation: string; status: number; durationMs: number; code?: string };
@@ -120,22 +120,20 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       const allowed = proofBoundary
         ? await state.limiter.allowProductionAttempt(action as CredentialAction, ip)
         : await state.limiter.allowProduction(action === "session" ? "session" : "credential", ip, email);
-      if (!allowed) {
-        code = "RATE_LIMITED";
-        return respond({ error: { code } }, 429, { "Retry-After": "900" });
-      }
+      if (!allowed) throw new AuthRequestError(429, "RATE_LIMITED");
       if (credential) {
         proofExpiry = proofBoundary ? readBrowserProof(request.headers, config.rateSecret, ip) || undefined : undefined;
         if (!proofExpiry) {
-          if (!input.captchaToken || await state.verifyCaptcha(input.captchaToken, ip) !== true) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+          if (!input.captchaToken) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+          if (proofBoundary && !await state.limiter.allowProductionCaptchaCheck()) throw new AuthRequestError(429, "RATE_LIMITED");
+          if (await state.verifyCaptcha(input.captchaToken, ip) !== true) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
           if (proofBoundary) {
             const issued = issueBrowserProof(config.rateSecret, ip, request.headers.get("user-agent") ?? "");
             proofCookie = issued.cookie; proofExpiry = issued.expiresAt;
           }
         }
-        if (proofBoundary && email && !await state.limiter.allowProductionEmail(action as CredentialAction, email)) {
-          code = "RATE_LIMITED";
-          return respond({ error: { code } }, 429, { "Retry-After": "900" });
+        if (proofBoundary && !await state.limiter.allowProductionVerifiedCredential(action as CredentialAction, email)) {
+          throw new AuthRequestError(429, "RATE_LIMITED");
         }
       }
       if (action === "session") {
@@ -183,7 +181,10 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       }
       return respond({ status: "accepted" }, 202);
     } catch (error) {
-      if (error instanceof AuthRequestError) { code = error.code; return respond({ error: { code } }, error.status); }
+      if (error instanceof AuthRequestError) {
+        code = error.code;
+        return respond({ error: { code } }, error.status, error.status === 429 ? { "Retry-After": "900" } : undefined);
+      }
       if (error instanceof RegistrationInputError || error instanceof RecoveryInputError || (error instanceof Error && error.message === "Invalid password")) {
         code = "INVALID_INPUT";
         return respond({ error: { code } }, 422);
