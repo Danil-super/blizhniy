@@ -57,6 +57,7 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
  function navigate(next:AdminPaymentJournalQuery) {
   if (actions.working.current) return;
   actions.select(null);
+  actions.clearFeedback();
   setQuery(next);
  }
  useEffect(() => {
@@ -68,7 +69,7 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
   });
   return () => controller.abort();
  }, [query]);
- return <section aria-label="Журнал TEST-платежей" aria-busy={!view || actions.busy}>
+ return <section aria-label="Журнал TEST-платежей">
   <div className="flex flex-wrap gap-3">
    <label className="grid gap-1 text-sm font-semibold text-slate-700">Тип платежа<select className={control} value={query.kind ?? ''} disabled={actions.busy}
     onChange={event => navigate({ ...query, kind:(event.target.value || null) as AdminPaymentJournalQuery['kind'], after:null })}>
@@ -80,6 +81,8 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
    </select></label>
    <button type="button" className={control + ' self-end'} disabled={actions.busy} onClick={() => navigate({ ...query, after:null })}>Обновить журнал</button>
   </div>
+  {actions.feedback}
+  <div aria-busy={!view || actions.busy}>
   {!view && <p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
   {view?.error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{view.error}</p>}
   {view?.page && actions.panel}
@@ -87,15 +90,16 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
    ? <p className="mt-4 text-sm text-slate-600">По выбранным условиям платежей нет.</p>
    : <ul className="mt-4 grid gap-3">{view.page.items.map(row => {
     const action = refundActions ? row.refundAction : null;
-    const button = action && <button type="button" className={refundButton} disabled={actions.disabled} onClick={() => {
+    const button = action && <button type="button" className={refundButton} disabled={actions.disabled} onClick={event => {
      const recovery = action.kind === 'recover' ? action : null;
      actions.select({kind:action.kind,row:{id:row.id,amount:row.amount,operationId:recovery?.operationId??null,
-      providerRefundId:recovery?.providerRefundId??null}});
+      providerRefundId:recovery?.providerRefundId??null}},event.currentTarget);
     }}>{action.kind === 'approve' ? 'Вернуть плату' : action.providerRefundId ? 'Сверить возврат' : 'Сверить по номеру ЮKassa'}</button>;
     return <JournalEntry key={row.id} row={row} actions={button}/>;
    })}</ul>)}
   {view?.page?.nextAfter && <button type="button" className={control + ' mt-4'} disabled={actions.busy}
    onClick={() => navigate({ ...query, after:view.page!.nextAfter })}>Следующие платежи</button>}
+  </div>
  </section>;
 }
 export function PrimaryAdminPaymentJournal({refundActions=false}:{refundActions?:boolean}) {

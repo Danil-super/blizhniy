@@ -14,8 +14,9 @@ const money=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minim
 
 function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:RefundPayment;kind:'approve'|'recover';busy:boolean;onCancel:()=>void;onSubmit:(action:Action)=>void}){
  const [providerId,setProviderId]=useState(row.providerRefundId??'');
- const [reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),[error,setError]=useState('');const focus=useRef<HTMLTextAreaElement>(null);
- useEffect(()=>{focus.current?.focus();},[]);
+ const [reason,setReason]=useState(''),[confirmed,setConfirmed]=useState(false),[error,setError]=useState('');
+ const providerNumber=useRef<HTMLInputElement>(null), reasonField=useRef<HTMLTextAreaElement>(null);
+ useEffect(()=>{(providerNumber.current??reasonField.current)?.focus();},[]);
  return <form aria-label={kind==='approve'?'Решение о полном возврате':'Сверка возврата'} className="rounded-lg border border-blue-200 bg-blue-50 p-4" onSubmit={event=>{
   event.preventDefault();setError('');try{
    if(kind==='approve'&&!confirmed)throw Error();
@@ -24,8 +25,8 @@ function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:Re
  }}>
   <h3 className="font-bold text-slate-950">{kind==='approve'?'Полный возврат платы за размещение':'Сверка существующего возврата'} · {money.format(Number(row.amount))}</h3>
   <p className="mt-1 text-sm leading-6 text-slate-700">{kind==='approve'?'Возврат отменит срок этой покупки. Прежний оплаченный остаток сохранится.':'Проверим результат уже созданного возврата без повторной отправки денег.'}</p>
-  {kind==='recover'&&!row.providerRefundId&&<label className="mt-3 block text-sm font-bold text-slate-700">Номер возврата в ЮKassa<input value={providerId} onChange={e=>setProviderId(e.target.value)} required maxLength={36} disabled={busy} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal"/><span className="mt-1 block text-xs font-normal text-slate-600">Возьмите номер созданного возврата в кабинете ЮKassa.</span></label>}
-  <label className="mt-3 block text-sm font-bold text-slate-700">Причина<textarea ref={focus} value={reason} onChange={e=>setReason(e.target.value)} required maxLength={500} rows={3} disabled={busy} className="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white p-3 font-normal text-slate-950"/></label>
+  {kind==='recover'&&!row.providerRefundId&&<label className="mt-3 block text-sm font-bold text-slate-700">Номер возврата в ЮKassa<input ref={providerNumber} value={providerId} onChange={e=>setProviderId(e.target.value)} required maxLength={36} disabled={busy} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal"/><span className="mt-1 block text-xs font-normal text-slate-600">Возьмите номер созданного возврата в кабинете ЮKassa.</span></label>}
+  <label className="mt-3 block text-sm font-bold text-slate-700">Причина<textarea ref={reasonField} value={reason} onChange={e=>setReason(e.target.value)} required maxLength={500} rows={3} disabled={busy} className="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white p-3 font-normal text-slate-950"/></label>
   <p className="mt-1 text-right text-xs text-slate-600">{reason.length}/500</p>
   {kind==='approve'&&<label className="mt-2 flex items-start gap-2 text-sm text-slate-800"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} required disabled={busy} className="mt-1"/>Вернуть полную сумму этой покупки.</label>}
   {error&&<p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
@@ -37,6 +38,26 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
  const [storageError,setStorageError]=useState(''),[storageReady,setStorageReady]=useState(false);
  const [pending,setPending]=useState<Action|null>(null),[selection,setSelection]=useState<Selection|null>(null);
  const life=useRef<{active:boolean;controller:AbortController}|null>(null),working=useRef(false);
+ const opener=useRef<HTMLButtonElement|null>(null),submittedFrom=useRef<Element|null>(null);
+ const errorFeedback=useRef<HTMLParagraphElement>(null),noticeFeedback=useRef<HTMLParagraphElement>(null);
+ const failure=storageError||error;
+
+ useEffect(()=>{
+  if(busy||(!failure&&!notice)||!submittedFrom.current)return;
+  const source=submittedFrom.current;submittedFrom.current=null;
+  if(document.activeElement===document.body||document.activeElement===source){
+   (failure?errorFeedback:noticeFeedback).current?.focus();
+  }
+ },[busy,failure,notice]);
+
+ function select(next:Selection|null,button:HTMLButtonElement|null=null){
+  opener.current=button;setSelection(next);
+ }
+ function cancel(){
+  const button=opener.current;
+  select(null);
+  if(button?.isConnected)button.focus();
+ }
 
  useEffect(()=>{
   if(!enabled)return;
@@ -48,6 +69,7 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
 
  async function perform(action:Action,readback=false){
   const scope=life.current;if(!scope?.active||working.current||!storageReady)return;
+  submittedFrom.current=document.activeElement;
   working.current=true;setBusy(true);setError('');setNotice('');
   try{
    const command={...action,expectedAdminId:actor} as Action;
@@ -68,12 +90,13 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
   }}
   finally{if(life.current===scope){working.current=false;if(scope.active)setBusy(false);}}
  }
- const panel=enabled&&<>
-  {storageError&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{storageError}</p>}
-  {notice&&<p role="status" className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
-  {error&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
-  {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy||loading} onCancel={()=>setSelection(null)} onSubmit={action=>void perform(action)}/></div>}
+ const feedback=enabled&&<>
+  <p ref={errorFeedback} role="alert" tabIndex={-1} className={failure?'mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800':undefined}>{failure}</p>
+  <p ref={noticeFeedback} role="status" tabIndex={-1} className={notice?'mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900':undefined}>{notice}</p>
  </>;
- return{panel,busy,disabled:busy||!!pending||!storageReady,select:setSelection,life,working,clearFeedback:()=>{setError('');setNotice('');}};
+ const panel=enabled&&<>
+  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
+  {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy||loading} onCancel={cancel} onSubmit={action=>void perform(action)}/></div>}
+ </>;
+ return{feedback,panel,busy,disabled:busy||!!pending||!storageReady,select,life,working,clearFeedback:()=>{setError('');setNotice('');}};
 }

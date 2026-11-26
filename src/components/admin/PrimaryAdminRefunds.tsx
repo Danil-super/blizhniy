@@ -36,6 +36,7 @@ function RefundWorkspace({actor}:{actor:string}){
  return <section aria-label="Локальный журнал возвратов" aria-busy={busy}>
   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-950">Платежи и возвраты</h2><p className="mt-1 text-sm text-slate-600">Локальный TEST-контур · реальные деньги не списываются.</p></div><button type="button" className={button} disabled={busy} onClick={()=>{actions.clearFeedback();void load();}}>Обновить журнал</button></div>
   {loadError&&<p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{loadError}</p>}
+  {actions.feedback}
   {actions.panel}
   {busy&&!page&&<p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
   {page&&<><div ref={scroll} tabIndex={0} aria-label="Прокрутка платежей" className="mt-4 max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"><ul className="grid gap-2">
@@ -43,8 +44,8 @@ function RefundWorkspace({actor}:{actor:string}){
     {row.reason&&<p className="mt-2 text-sm text-slate-700">Причина возврата: {row.reason}</p>}
     <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer py-2">Идентификаторы платежа и размещения</summary><p className="break-all">Платёж: {row.id}</p><p className="mt-1 break-all">Размещение: {row.targetId}</p></details>
     {row.canRefund===false&&['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&!row.approvalId&&<p className="mt-2 text-sm text-slate-600">Для возврата начните с последней покупки и завершите начатую оплату.</p>}
-    <div className="mt-2 flex flex-wrap gap-2">{(['listing','vacancy','workRequest'].includes(row.targetType)||serviceCheckout&&['fair_application','ad_marquee'].includes(row.targetType))&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={()=>actions.select({row,kind:'approve'})}>Вернуть плату</button>}
-    {row.operationId&&row.attempted&&!row.appliedAt&&row.refundStatus!=='canceled'&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={()=>actions.select({row,kind:'recover'})}>{row.providerRefundId?'Сверить возврат':'Сверить по номеру ЮKassa'}</button>}</div>
+    <div className="mt-2 flex flex-wrap gap-2">{(['listing','vacancy','workRequest'].includes(row.targetType)||serviceCheckout&&['fair_application','ad_marquee'].includes(row.targetType))&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={event=>actions.select({row,kind:'approve'},event.currentTarget)}>Вернуть плату</button>}
+    {row.operationId&&row.attempted&&!row.appliedAt&&row.refundStatus!=='canceled'&&<button type="button" className={button} disabled={busy||actions.disabled} onClick={event=>actions.select({row,kind:'recover'},event.currentTarget)}>{row.providerRefundId?'Сверить возврат':'Сверить по номеру ЮKassa'}</button>}</div>
    </li>)}
   </ul>{page.items.length===0&&<p className="p-6 text-center text-sm text-slate-600">В этом TEST-магазине платежей пока нет.</p>}</div>{page.nextAfter&&<button type="button" className={button+' mt-3'} disabled={busy} onClick={()=>{actions.clearFeedback();void load(page.nextAfter);}}>Следующие платежи</button>}</>}
  </section>;
