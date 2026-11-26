@@ -114,7 +114,7 @@ try{
   const f=await context(),page=await f.ctx.newPage();
   await page.addInitScript(()=>{Object.defineProperty(Document.prototype,'cookie',{configurable:true,get(){throw new Error('Synthetic blocked storage');},set(){throw new Error('Synthetic blocked storage');}});});
   await page.goto(fixture.origin+'/o-proekte');await ready(page);await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();
-  await page.getByRole('alert').waitFor();assert.match(await page.getByRole('alert').innerText(),/Аналитика не включена/);assert.equal(f.requests.length,0);
+  await notice(page).getByRole('alert').waitFor();assert.match(await notice(page).getByRole('alert').innerText(),/Аналитика не включена/);assert.equal(f.requests.length,0);
   await page.getByRole('button',{name:'Закрыть настройки',exact:true}).click();
   await page.getByRole('navigation',{name:'Нижняя навигация',exact:true}).getByRole('link',{name:'Как работает',exact:true}).click();await page.waitForURL('**/kak-rabotaet');
   await clean(f,[page]);checks.push('blocked cookie storage fails closed without breaking navigation');

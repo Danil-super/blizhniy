@@ -100,7 +100,7 @@ test('valid runtime Metrica IDs enable only exact analytics origins without chan
       assert.equal(response.headers.get(opposite), null);
       const directives = policy.split(';').map(value => value.trim().split(/\s+/));
       for (const [name, ...sources] of directives) {
-        assert.equal(sources.includes('https://mc.yandex.ru'), ['script-src', 'img-src', 'connect-src'].includes(name));
+        assert.equal(new Set(sources).has('https://mc.yandex.ru'), ['script-src', 'img-src', 'connect-src'].includes(name));
         assert.ok(!sources.includes('https:'));
         assert.ok(!sources.includes('https://*.yandex.ru'));
         assert.ok(!sources.includes("'unsafe-eval'"));

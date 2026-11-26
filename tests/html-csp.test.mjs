@@ -65,7 +65,7 @@ test('Metrica adds only its exact HTTPS origin to script, image and connection p
   const actual=tokens(createHtmlCsp(nonce,{...options,metricaEnabled:true}));
   const normalize=entries=>entries.map(([name,...sources])=>[name,...sources.sort()]);
   assert.deepEqual(normalize(actual),normalize(expected));
-  assert.equal(actual.filter(([, ...sources])=>sources.includes(origin)).length,3);
-  assert.ok(baseline.every(([, ...sources])=>!sources.includes(origin)));
+  assert.equal(actual.filter(([, ...sources])=>new Set(sources).has(origin)).length,3);
+  assert.ok(baseline.every(([, ...sources])=>!new Set(sources).has(origin)));
  }
 });
