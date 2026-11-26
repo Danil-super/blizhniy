@@ -39,12 +39,12 @@ function TariffEditor({actor,initial,onChanged,onRefresh,onClose,visible=true,ho
   }catch{setError('Проверьте название, цену с точностью до копеек, срок от 1 до 3650 дней и причину от 3 до 500 символов. Пустой срок означает разовую оплату.');}
  }
  if(!visible)return null;
- return <section ref={section} tabIndex={-1} aria-label="Изменение тарифа" aria-busy={busy} className="my-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:p-5">
+ return <section ref={section} tabIndex={-1} aria-label="Изменение тарифа" className="my-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:p-5">
   <div className="flex flex-wrap items-start justify-between gap-3"><h2 className="min-w-0 break-words text-lg font-bold text-slate-950">{row.name}</h2><button className={button} type="button" disabled={busy||!!pending} onClick={onClose}>Закрыть</button></div>
-  {notice&&<p role="status" className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
+  <p role="status" aria-atomic="true" className={notice?"mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900":"sr-only"}>{notice}</p>
   {error&&<p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
   {phase==='stale'&&<button type="button" className={`${button} mt-3`} onClick={onRefresh}>Загрузить актуальный тариф</button>}
-  {phase!=='denied'&&<form className="mt-4" onSubmit={event=>{event.preventDefault();submit();}}><fieldset disabled={busy||!!pending||phase!=='ready'} className="grid gap-4 sm:grid-cols-2">
+  {phase!=='denied'&&<form aria-busy={busy} className="mt-4" onSubmit={event=>{event.preventDefault();submit();}}><fieldset disabled={busy||!!pending||phase!=='ready'} className="grid gap-4 sm:grid-cols-2">
    <label className="text-sm font-bold text-slate-700 sm:col-span-2">Название<input name="name" readOnly={hosted} required maxLength={200} value={name} onChange={event=>setName(event.target.value)} className={field}/></label>
    <label className="text-sm font-bold text-slate-700">Цена, ₽<input name="price" type="text" inputMode="decimal" required maxLength={13} value={price} onChange={event=>setPrice(event.target.value)} className={field}/></label>
    <label className="text-sm font-bold text-slate-700">Срок, дней<input name="days" type="text" inputMode="numeric" maxLength={4} placeholder="Разовая оплата" value={days} onChange={event=>setDays(event.target.value)} className={field}/></label>

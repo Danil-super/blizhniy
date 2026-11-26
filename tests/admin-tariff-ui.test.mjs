@@ -73,6 +73,17 @@ test('tariff editor validates values/reason/confirmation and fences duplicate su
  const request=h.requests[0];assert.equal(request.command.input.price,'249.51');assert.equal(request.command.input.reason,'Изменение стоимости');assert.equal(request.command.input.expectedRevision,row.revision);
  request.resolve(applied(request));await flush();tree=h.render();assert.equal(h.changed(),1);assert.ok(text(tree).includes('Сохранение подтверждено'));assert.ok(text(tree).includes('249.51'));h.stop();
 });
+test('the tariff result live region exists before submission and stays outside the busy form', () => {
+ const h = harness();
+ const tree = h.render();
+ const status = nodes(tree).find(node => node.props?.role === 'status');
+ assert.ok(status);
+ assert.equal(text(status), '');
+ assert.equal(tree.props['aria-busy'], undefined);
+ assert.equal(nodes(tree).find(node => node.type === 'form').props['aria-busy'], false);
+ h.stop();
+});
+
 test('changed tariff requires explicit confirmation and a valid reason before dispatch',()=>{
  for(const missing of['confirmed','reason']){const h=harness();let tree=decision(h);find(tree,missing).props.onChange({target:missing==='confirmed'?{checked:false}:{value:''}});tree=h.render();submit(tree);assert.equal(h.requests.length,0);h.stop();}
 });
