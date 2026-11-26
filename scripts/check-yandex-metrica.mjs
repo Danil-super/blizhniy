@@ -165,7 +165,7 @@ try{
   assert.equal((await response.allHeaders())['cross-origin-embedder-policy'],'require-corp');
   assert.equal((await response.allHeaders())['cross-origin-opener-policy'],'same-origin');
   assert.equal(f.requests.length,0);
-  await page.getByRole('button',{name:'Разрешить аналитику',exact:true}).click();
+  await page.getByRole('button',{name:'Принять все',exact:true}).click();
   await until(()=>f.requests.length===1,'tag request under strict isolation');
   assert.equal(f.requests[0].headers.referer,undefined);
   await until(async()=>await count(page,'hit')===1,'CORS-only tag under strict isolation',7000);
