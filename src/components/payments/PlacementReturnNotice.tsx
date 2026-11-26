@@ -40,5 +40,5 @@ export function PlacementReturnNotice(){
  const message=result?receiptMessages[result]:null;
  useEffect(()=>{if(message)heading.current?.focus();},[message]);
  if(!message)return null;
- return <h2 ref={heading} tabIndex={-1} className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{message}</h2>;
+ return <h2 ref={heading} tabIndex={-1} className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{message}</h2>;
 }

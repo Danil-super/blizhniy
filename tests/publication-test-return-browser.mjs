@@ -87,6 +87,25 @@ test('TEST return waits for publication, keeps its saved TEST label and returns 
    const receiptHeading = await receipt.elementHandle();
    await page.waitForFunction(heading=>heading===document.activeElement,receiptHeading);
   }
+  await page.setViewportSize({width:411,height:789});
+  endpoint='/api/account/listing-checkout';
+  snapshot={order:{...order,status:'succeeded'},fulfillment:{publishedAt:order.createdAt,expiresAt:'2026-11-18T12:00:00.123456Z'},testPublication:true,testOnly:true};
+  await page.goto(origin+`/oplata/${id}`,{waitUntil:'domcontentloaded'});
+  await page.waitForURL(origin+'/cabinet/obyavleniya');
+  const mobileReceipt = page.getByRole('heading',{name:'Размещение выполнено',exact:true});
+  const mobileHeading = await mobileReceipt.elementHandle();
+  await page.waitForFunction(heading=>heading===document.activeElement,mobileHeading);
+  await page.getByRole('region',{name:'Файлы cookie',exact:true}).waitFor();
+  const visibleAboveNavigation = await mobileReceipt.evaluate(heading=>{
+   const navigation=document.querySelector('nav[aria-label="Разделы"]');
+   const bounds=heading.getBoundingClientRect();
+   const point=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
+   return !!navigation&&!!(heading.compareDocumentPosition(navigation)&Node.DOCUMENT_POSITION_FOLLOWING)
+    &&heading.contains(point);
+  });
+  assert.equal(visibleAboveNavigation,true,'the focused payment receipt stays visible above mobile cabinet navigation');
+
+  await page.setViewportSize({width:1280,height:720});
   endpoint='/api/account/listing-checkout';snapshot={order:{...order,status:'succeeded'},fulfillment:null,testOnly:true};
   await page.goto(origin+`/oplata/${id}`,{waitUntil:'domcontentloaded'});
   await page.getByText('TEST-платёж успешно проверен. Реальные деньги не списывались. Объявление не публикуется за тестовую оплату.',{exact:true}).waitFor();

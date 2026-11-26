@@ -71,9 +71,10 @@ export function Shell({
             ) : null}
           </div>}
         </div>
+        {notice}
         {nav ? <NavPills items={nav} activeHref={activeHref} /> : null}
         {nav === cabinetNav ? <CabinetProfileBar /> : null}
-        <div className="mt-5 sm:mt-7">{notice}{children}</div>
+        <div className="mt-5 sm:mt-7">{children}</div>
       </main>
     </>
   );
