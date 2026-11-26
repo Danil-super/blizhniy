@@ -39,6 +39,24 @@ test('primary booking form validates, previews, submits and recovers exactly one
     await choose(panel);await panel.getByRole('button',{name:'Рассчитать стоимость',exact:true}).click();await panel.getByRole('button',{name:'Отправить заявку владельцу',exact:true}).click();await panel.getByText('Заявка отправлена владельцу.',{exact:true}).waitFor();assert.equal(state.writes.length,1);assert.deepEqual(state.errors,[]);assert.deepEqual(state.foreign,[]);
    }finally{await context.close();}
   });
+  await suite.test('keyboard focus reaches the server quote, then moves to confirmation',async()=>{
+   const {context,page,panel,state}=await setup();
+   try{
+    await choose(panel);
+    await panel.getByRole('button',{name:'Рассчитать стоимость',exact:true}).focus();
+    await page.keyboard.press('Enter');
+    const quote=panel.getByText(/^Сумма заявки: /);
+    await quote.waitFor();
+    assert.equal(await quote.evaluate(async element=>{
+     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+     return document.activeElement===element;
+    }),true,'Focus reaches the price after the calculate button disappears');
+    await page.keyboard.press('Tab');
+    const confirm=panel.getByRole('button',{name:'Отправить заявку владельцу',exact:true});
+    assert.equal(await confirm.evaluate(element=>document.activeElement===element),true);
+    assert.equal(state.writes.length,0);
+   }finally{await context.close();}
+  });
   await suite.test('shared calendar allows exclusive checkout beside an occupied date and clears a quote when the user changes the selection',async()=>{
    const {context,panel,state}=await setup();try{await panel.getByLabel('Дата заезда',{exact:true}).fill('2026-10-20');await panel.getByRole('button',{name:/23 октября 2026.*дата выезда/}).click();assert.equal(await panel.getByLabel('Дата выезда',{exact:true}).inputValue(),'2026-10-23');await panel.getByRole('button',{name:'Рассчитать стоимость',exact:true}).click();await panel.getByRole('button',{name:'Отправить заявку владельцу',exact:true}).waitFor();
     await panel.getByLabel('Количество гостей',{exact:true}).fill('2');assert.equal(await panel.getByRole('button',{name:'Отправить заявку владельцу',exact:true}).count(),0);assert.equal(state.writes.length,0);
