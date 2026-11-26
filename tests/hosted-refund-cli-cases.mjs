@@ -12,7 +12,7 @@ const run=promisify(execFile);
 const host='17e86f80f26733d39ef4b84d.twc1.net',database='blizhniy_prod';
 const fixture=new URL('./fixtures/hosted-refund-cli-preload.mjs',import.meta.url).href;
 
-export async function testHostedRefundCli({admin,config,load,docker,container,directory,artifacts}){
+export async function testHostedRefundCli({admin,config,load,docker,container,directory,artifacts,paymentArtifact,paymentPassword}){
  assert.equal(config.host,'127.0.0.1');
  assert.equal(config.database,'blizhniy_test');
  assert.match(container,/^[0-9a-f]{64}$/);
@@ -85,7 +85,43 @@ export async function testHostedRefundCli({admin,config,load,docker,container,di
   assert.deepEqual(restarted.providerSteps,['merchant']);
   assert.equal((await owner.query('select count(*)::int as count from app.payment_refund_effects where operation_id=$1',[approvalId])).rows[0].count,1);
   assert.equal((await owner.query('select count(*)::int as count from app.notifications where event_key=$1',['placement_refund:'+item.id])).rows[0].count,1);
+  await checkPaymentStartup({owner,port:config.port,directory,cert,paymentArtifact,paymentPassword});
  }finally{
   await operatorDb.close();await owner.end();
  }
+}
+
+async function checkPaymentStartup({owner,port,directory,cert,paymentArtifact,paymentPassword}){
+ const providerLog=join(directory,'payment-preflight-provider-requests.log');
+ const preload=new URL('./fixtures/payment-worker-preflight.mjs',import.meta.url).href;
+ await writeFile(providerLog,'',{mode:0o600});
+ const env={PATH:process.env.PATH,NODE_ENV:'production',BLIZHNIY_PAYMENT_MODE:'test',
+  BLIZHNIY_PAYMENT_WORKER:'account-publication-test',BLIZHNIY_SPECIALIST_PAYMENT:'account-publication-test',
+  BLIZHNIY_PAYMENT_TEST_USER_ID:randomUUID(),BLIZHNIY_PAYMENT_SHOP_ID:'900000159',
+  BLIZHNIY_PAYMENT_SECRET_KEY:'test_payment_cli_fixture',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',
+  BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',
+  BLIZHNIY_DB_PLACEMENT:'same-host',BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_PORT:'5432',
+  BLIZHNIY_DB_NAME:database,BLIZHNIY_DB_USER:'blizhniy_payment_reconciler',BLIZHNIY_DB_PASSWORD:paymentPassword,
+  BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:cert,
+  BLIZHNIY_FIXTURE_PORT:String(port),BLIZHNIY_FIXTURE_PROVIDER_LOG:providerLog};
+ async function check(mode,expected){
+  const result=await run(process.execPath,['--import',preload,join(paymentArtifact,'scripts/payment-worker.mjs'),`--${mode}`],
+   {cwd:paymentArtifact,env,timeout:15000,maxBuffer:16384}).then(output=>({...output,code:0}),error=>error);
+  const healthy=expected==='checked';
+  assert.equal(result.code,healthy?0:1,JSON.stringify({stdout:result.stdout,stderr:result.stderr}));
+  const events=result.stdout.trim().split('\n').map(line=>JSON.parse(line));
+  assert.deepEqual(events.map(event=>[event.event,event.mode,event.status,event.failureStage,event.outcomes]),
+   [['payment_reconciliation_service',mode,expected,healthy?undefined:'preflight',{}]]);
+  assert.equal(await readFile(providerLog,'utf8'),'');
+ }
+ await check('check','checked');
+ const entry='0087-push-delivery.sql';
+ const {rows:[{sha256}]}=await owner.query('select sha256 from blizhniy_meta.migrations where name=$1',[entry]);
+ await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[entry,'0'.repeat(64)]);
+ try{await check('check','unavailable');await check('run','unavailable');}
+ finally{await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[entry,sha256]);}
+ await owner.query('revoke update(id) on app.users from blizhniy_payment_reconciler');
+ try{await check('check','unavailable');await check('run','unavailable');}
+ finally{await owner.query('grant update(id) on app.users to blizhniy_payment_reconciler');}
+ await check('check','checked');
 }

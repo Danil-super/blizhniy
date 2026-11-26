@@ -978,10 +978,11 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        try{await verify(connection,{...refundOptions,database});}
        finally{await connection.close();}
       }
-      await notifications.test('packaged hosted refund commands check TLS and merchant before sending one complete refund',async()=>{
+      await notifications.test('packaged finance commands check preflight before processing and send one complete refund',async()=>{
        const {testHostedRefundCli}=await import('./hosted-refund-cli-cases.mjs');
        await admin.query('alter database hosted_notifications_restored rename to blizhniy_prod');
-       try{await testHostedRefundCli({admin,config,load,docker,container,directory:artifactDirectory,artifacts:refundArtifacts});}
+       try{await testHostedRefundCli({admin,config,load,docker,container,directory:artifactDirectory,artifacts:refundArtifacts,
+        paymentArtifact:artifact,paymentPassword:workerPassword});}
        finally{await admin.query('alter database blizhniy_prod rename to hosted_notifications_restored');}
       });
      });
