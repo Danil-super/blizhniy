@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { BriefcaseBusiness, ChevronRight, ClipboardList, Clock3, MapPin, UserRound } from "lucide-react";
 import { BrandName } from "@/components/BrandName";
+import { categoryDescriptionClassName, categoryTitleClassName } from "@/components/listings/category-typography";
 import { VacancyCardMedia } from "@/components/VacancyMedia";
 import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
 import { formatPublicationDateTime } from "@/lib/publication-time";
@@ -151,8 +152,8 @@ export function CanonicalWorkPage({
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Работа</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">
+          <h1 className={`${categoryTitleClassName} text-[#060b27]`}>Работа</h1>
+          <p className={`${categoryDescriptionClassName} max-w-3xl text-slate-600`}>
             <Link className="text-blue-700 underline" href="/rabota/vakansii">Вакансии</Link>,{" "}
             <Link className="text-blue-700 underline" href="/rabota/zakazy">заказы</Link> и{" "}
             <Link className="text-blue-700 underline" href="/rabota/specialisty">анкеты специалистов</Link> на платформе <BrandName />.

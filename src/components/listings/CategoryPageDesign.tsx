@@ -2,6 +2,7 @@ import { getImageProps } from "next/image";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, ClipboardList } from "lucide-react";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
+import { categoryDescriptionClassName, categoryTitleClassName } from "@/components/listings/category-typography";
 
 function optimizedCategoryPhoto(src: string, width = 1672, height = 941) {
   const { props } = getImageProps({ src, width, height, alt: "", sizes: "100vw" });
@@ -335,7 +336,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       >
         <div className="min-w-0">
           <h1
-            className={`${isDishesCategory ? "text-[22px] lg:text-4xl" : "text-[22px] sm:text-3xl lg:text-4xl"} font-bold leading-tight text-[var(--category-title)] [overflow-wrap:anywhere] ${
+            className={`${categoryTitleClassName} text-[var(--category-title)] ${
                 isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-2xl" : hasCompactHero ? "max-w-full" : isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory ? "max-w-[14rem] sm:max-w-[58%] lg:max-w-2xl" : isAnimalsCategory ? "max-w-[72%] sm:max-w-[58%] lg:max-w-2xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-2xl" : "max-w-4xl"
             }`}
           >
@@ -343,7 +344,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           </h1>
           {description ? (
             <p
-              className={`${isDishesCategory ? "mt-2.5 text-[13px] leading-5 lg:mt-3 lg:text-base lg:leading-7" : "mt-2.5 text-[13px] leading-5 sm:mt-3 sm:text-base sm:leading-7"} font-semibold text-slate-700 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
+              className={`${categoryDescriptionClassName} text-slate-700 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
                 isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : hasCompactHero ? "max-w-full md:max-w-xl" : isBeautyCategory || isTransportCategory || isDishesCategory ? "max-w-[14rem] sm:max-w-[19rem] lg:max-w-xl" : isBusinessCategory ? "max-w-[15rem] sm:max-w-[19rem] lg:max-w-xl" : isRitualCategory ? "max-w-[28rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
               }`}
             >
