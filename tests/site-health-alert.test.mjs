@@ -319,3 +319,41 @@ test('an accepted 5xx under the old state file moves without reissuing the incid
   assert.match(messages[1].text, /снова отвечают без ошибки сервера/);
   assert.equal(JSON.parse(await readFile(legacy, 'utf8')).result, 'public-page-unavailable');
 });
+
+test('Caddy traffic alerts at three errors and 0.5%, with one recovery after a valid observation', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-caddy-traffic-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const messages = [];
+  let clock = 1795699900000;
+  const run = async (requests, errors, loadedAt = 1795699817, minutes = 5) => {
+    clock += minutes * 60000;
+    const results = await runSiteHealthAlert({
+      directory, recipient: 'monitor@example.invalid',
+      notify: async message => messages.push(message),
+      site: async () => 'healthy', certificate: async () => 'healthy',
+      publicPages: async () => ({ serverError: false, unavailable: false }),
+      traffic: async () => requests === null ? null : { requests, errors, loadedAt },
+      now: () => clock,
+    });
+    return results.find(probe => probe.probe === 'site-traffic-5xx');
+  };
+  assert.equal((await run(10, 3)).result, 'traffic-waiting');
+  assert.equal((await run(110, 5)).result, 'healthy');
+  assert.equal((await run(711, 8)).result, 'healthy');
+  assert.equal(messages.length, 0);
+  assert.equal((await run(1311, 11)).delivery, 'accepted');
+  assert.equal((await run(1314, 14)).delivery, 'accepted');
+  assert.equal(messages.length, 1);
+  assert.equal((await run(null)).delivery, 'unavailable');
+  assert.equal((await run(1314, 14)).result, 'traffic-waiting');
+  assert.equal((await run(1600, 15, 1795700000)).result, 'traffic-waiting');
+  assert.equal((await run(2, 0, 1795700000)).result, 'traffic-waiting');
+  assert.equal((await run(3, 0, 1795700000, 13)).result, 'traffic-waiting');
+  assert.equal(messages.length, 1);
+  assert.equal((await run(4, 0, 1795700000)).result, 'healthy');
+  assert.equal((await run(5, 0, 1795700000)).result, 'healthy');
+  assert.equal(messages.length, 2);
+  assert.match(messages[0].text, /5xx/);
+  assert.match(messages[1].subject, /работа восстановлена/);
+});

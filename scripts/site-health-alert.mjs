@@ -3,7 +3,7 @@ import { open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
-import { checkBackupReceipt, checkPublicPageSignals, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers } from './check-site-health.mjs';
+import { checkBackupReceipt, checkPublicPageSignals, checkSiteCertificate, checkSiteDisk, checkSiteHealth, checkWorkerTimer, parseWorkerTimers, readCaddyTraffic } from './check-site-health.mjs';
 
 const reasons = {
   'site-unavailable': 'Сайт не прошёл внешнюю проверку доступности.',
@@ -11,6 +11,7 @@ const reasons = {
   'site-slow': 'Проверка доступности или готовности отвечает дольше двух секунд.',
   'public-page-5xx': 'Главная, объявления или поиск возвращают ошибку сервера.',
   'public-page-unavailable': 'Монитор не смог открыть одну из проверяемых публичных страниц.',
+  'traffic-5xx': 'Caddy зарегистрировал не менее трёх ответов HTTP 5xx и не менее 0,5% ошибок в трафике сайта между проверками.',
   'tls-expiring': 'Сертификат сайта истекает в течение 14 дней.',
   'tls-unavailable': 'Проверка TLS-соединения с сайтом не прошла.',
   'disk-low': 'На диске приложения осталось не больше 15% доступных блоков или inode.',
@@ -28,6 +29,7 @@ const recoveryMessages = {
   'site-slow': 'Время ответа проверок снова укладывается в две секунды.',
   'public-page-5xx': 'Главная, объявления и поиск снова отвечают без ошибки сервера.',
   'public-page-unavailable': 'Все проверяемые публичные страницы снова открываются.',
+  'traffic-5xx': 'В последнем замере трафика сайта количество или доля HTTP 5xx опустились ниже порога.',
   'tls-expiring': 'Сертификат сайта обновлён. До истечения больше 14 дней.',
   'tls-unavailable': 'TLS-соединение с сайтом снова проходит проверку.',
   'disk-low': 'На диске приложения снова больше 15% доступных блоков и inode.',
@@ -100,9 +102,7 @@ function validAttempt(state) {
 export function alertStateFile(file, incidentReasons) {
   return {
     async load() {
-      let state;
-      try { state = JSON.parse(await readFile(file, 'utf8')); }
-      catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+      const state = await readJsonState(file);
       if (state === null) return null;
       if (!validAttempt(state) || !Object.hasOwn(incidentReasons, state.result) ||
         (Object.hasOwn(state, 'resolution') && (state.delivery !== 'accepted' ||
@@ -111,15 +111,54 @@ export function alertStateFile(file, incidentReasons) {
       }
       return state;
     },
-    async save(state) {
-      const temporary = join(dirname(file), randomUUID() + '.tmp');
-      await writeFile(temporary, JSON.stringify(state) + '\n', { flag: 'wx', mode: 0o600, flush: true });
-      await rename(temporary, file);
-      const directory = await open(dirname(file), 'r');
-      try { await directory.sync(); }
-      finally { await directory.close(); }
-    }
+    save: state => saveJsonState(file, state),
   };
+}
+
+async function readJsonState(file) {
+  try { return JSON.parse(await readFile(file, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+}
+
+async function saveJsonState(file, state) {
+  const temporary = join(dirname(file), randomUUID() + '.tmp');
+  await writeFile(temporary, JSON.stringify(state) + '\n', { flag: 'wx', mode: 0o600, flush: true });
+  await rename(temporary, file);
+  const directory = await open(dirname(file), 'r');
+  try { await directory.sync(); }
+  finally { await directory.close(); }
+}
+
+function validTraffic(sample) {
+  return sample && Number.isFinite(sample.loadedAt) && sample.loadedAt > 0 &&
+    Number.isSafeInteger(sample.requests) && Number.isSafeInteger(sample.errors) &&
+    sample.errors >= 0 && sample.requests >= sample.errors;
+}
+
+async function checkTrafficWindow(directory, traffic, now, deliver) {
+  const probe = 'site-traffic-5xx';
+  const file = join(directory, 'site-traffic-sample.json');
+  const unavailable = { probe, result: 'traffic-unavailable', delivery: 'unavailable' };
+  try {
+    const sample = await traffic();
+    if (!validTraffic(sample)) return unavailable;
+    const observedAt = now();
+    const previous = await readJsonState(file);
+    if (previous !== null && (!validTraffic(previous) || !Number.isSafeInteger(previous.observedAt))) return unavailable;
+    let outcome = { probe, result: 'traffic-waiting', delivery: 'healthy' };
+    if (previous && previous.loadedAt === sample.loadedAt &&
+      observedAt > previous.observedAt && observedAt - previous.observedAt <= 12 * 60 * 1000) {
+      const requests = sample.requests - previous.requests;
+      const errors = sample.errors - previous.errors;
+      if (requests > 0 && errors >= 0 && errors <= requests) {
+        outcome = await deliver(probe, errors >= 3 && BigInt(errors) * 200n >= BigInt(requests) ? 'traffic-5xx' : 'healthy');
+      }
+    }
+    if (outcome.delivery !== 'unavailable') await saveJsonState(file, { ...sample, observedAt });
+    return outcome;
+  } catch {
+    return unavailable;
+  }
 }
 
 async function confirmPublicPages(probe, waitForConfirm) {
@@ -147,7 +186,7 @@ async function migratePublicPageState(directory) {
 
 export async function runSiteHealthAlert({
   directory, recipient, notify, site = checkSiteHealth, certificate = checkSiteCertificate,
-  storage, backup, publicPages, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
+  storage, backup, publicPages, traffic, now = Date.now, workerTimers = [], worker = checkWorkerTimer, waitForConfirm = () => wait(10000),
 }) {
   const confirm = async probe => {
     if (!probe) return null;
@@ -171,7 +210,7 @@ export async function runSiteHealthAlert({
     ['site-public-5xx', publicServerError],
     ...workerTimers.map((unit, index) => [unit, workerResults[index]]),
   ];
-  return Promise.all(checks.filter(([, result]) => result !== null).map(async ([probe, result]) => {
+  const deliver = async (probe, result) => {
     try {
       if (!publicStateReady && (probe === 'site-public-pages' || probe === 'site-public-5xx')) return { probe, result, delivery: 'unavailable' };
       const workerName = workerTimers.includes(probe) ? '\nСлужба ' + probe : '';
@@ -189,12 +228,16 @@ export async function runSiteHealthAlert({
     } catch {
       return { probe, result, delivery: 'unavailable' };
     }
-  }));
+  };
+  const outcomes = checks.filter(([, result]) => result !== null).map(([probe, result]) => deliver(probe, result));
+  if (traffic) outcomes.push(checkTrafficWindow(directory, traffic, now, deliver));
+  return Promise.all(outcomes);
 }
 
 async function main(runId) {
   const { createTimewebMailer, normalizeMailAddress } = await import('../src/lib/timeweb-mail.ts');
   const directory = process.env.STATE_DIRECTORY;
+  const trafficMode = process.env.BLIZHNIY_SITE_ALERT_CADDY_TRAFFIC;
   const diskPath = process.env.BLIZHNIY_SITE_ALERT_DISK_PATH;
   const backupPath = process.env.BLIZHNIY_SITE_ALERT_BACKUP_RECEIPT;
   const workerTimers = parseWorkerTimers(process.env.BLIZHNIY_SITE_ALERT_WORKER_TIMERS);
@@ -202,12 +245,14 @@ async function main(runId) {
   const mailer = createTimewebMailer();
   if (process.argv.length !== 2 || process.env.NODE_ENV !== 'production' || process.getuid?.() === 0 ||
     !directory || !isAbsolute(directory) || directory.includes(':') || !recipient || !mailer ||
+    (trafficMode !== undefined && trafficMode !== 'enabled') ||
     [diskPath, backupPath].some(path => path !== undefined && !isAbsolute(path))) {
     throw new Error('Invalid alert configuration');
   }
 
   const results = await runSiteHealthAlert({
     directory, recipient, notify: mailer.send, publicPages: checkPublicPageSignals,
+    traffic: trafficMode === 'enabled' ? readCaddyTraffic : undefined,
     storage: diskPath ? () => checkSiteDisk(diskPath) : undefined,
     backup: backupPath ? () => checkBackupReceipt(backupPath) : undefined,
     workerTimers,

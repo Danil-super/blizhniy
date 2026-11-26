@@ -76,6 +76,55 @@ export async function checkPublicPages(origin = productionOrigin, transport = fe
   return unavailable ? 'public-page-unavailable' : 'healthy';
 }
 
+export async function readCaddyTraffic(transport = fetch) {
+  const limit = 1024 * 1024;
+  try {
+    const response = await transport(new URL('http://127.0.0.1:2018/metrics'), {
+      redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(4000),
+      headers: { accept: 'text/plain; version=0.0.4' },
+    });
+    if (!response.body) return null;
+    if (response.status !== 200 || response.redirected) {
+      await response.body.cancel();
+      return null;
+    }
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.byteLength;
+      if (size > limit) return null;
+      chunks.push(chunk);
+    }
+
+    const series = new Set();
+    const loadMetric = 'caddy_config_last_reload_success_timestamp_seconds ';
+    let loadedAt;
+    let requests = 0;
+    let errors = 0;
+    for (const line of Buffer.concat(chunks).toString('utf8').split('\n')) {
+      if (line.startsWith(loadMetric)) {
+        if (loadedAt !== undefined) return null;
+        loadedAt = Number(line.slice(loadMetric.length));
+        continue;
+      }
+      // The outer Caddyfile subroute observes the full response chain once.
+      const match = /^caddy_http_request_duration_seconds_count\{code="([1-5][0-9]{2})",handler="subroute",method="([A-Za-z_-]+)",server="blizhniy-public"\} (\S+)$/.exec(line);
+      if (!match) continue;
+      const [, code, method, count] = match;
+      const key = code + ':' + method;
+      const value = Number(count);
+      if (!Number.isSafeInteger(value) || value < 0 || series.has(key)) return null;
+      series.add(key);
+      requests += value;
+      if (code.startsWith('5')) errors += value;
+    }
+    return Number.isFinite(loadedAt) && loadedAt > 0 && series.size > 0 && Number.isSafeInteger(requests)
+      ? { loadedAt, requests, errors } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkSiteCertificate(origin = productionOrigin, open = connect, now = Date.now) {
   try {
     const { protocol, hostname, port } = new URL(origin);

@@ -194,3 +194,29 @@ test('public page probes report application 5xx separately from unexpected 4xx a
   assert.equal(await probe('/',200),'healthy');
   assert.equal(await checkPublicPages(origin,async()=>{throw new Error('local transport error');}),'public-page-unavailable');
 });
+
+test('Caddy traffic counts one completed response on the dedicated listener and rejects unreadable samples', async () => {
+  const { readCaddyTraffic } = await import('../scripts/check-site-health.mjs');
+  const series = (code, method, count, server = 'blizhniy-public', handler = 'subroute') =>
+    'caddy_http_request_duration_seconds_count{code="' + code + '",handler="' + handler +
+    '",method="' + method + '",server="' + server + '"} ' + count;
+  const start = 'caddy_config_last_reload_success_timestamp_seconds 1.79569981716e+09';
+  const scrape = body => readCaddyTraffic(async (url, options) => {
+    assert.equal(String(url), 'http://127.0.0.1:2018/metrics');
+    assert.equal(options.redirect, 'error');
+    assert.ok(options.signal instanceof AbortSignal);
+    return new Response(body);
+  });
+  const main = series(200, 'GET', 580);
+  assert.deepEqual(await scrape([
+    start, main, series(404, 'GET', 17), series(502, 'POST', 2), series(503, 'GET', 1),
+    series(502, 'POST', 2, 'blizhniy-public', 'reverse_proxy'), series(500, 'GET', 25, 'unrelated'),
+  ].join('\n')), { loadedAt: 1795699817.16, requests: 600, errors: 3 });
+  for (const invalid of [
+    main, start, start + '\n' + series(200, 'GET', 1, 'unrelated'),
+    start + '\n' + main + '\n' + main,
+    start + '\n' + main + '\n' + series(503, 'GET', 'NaN'),
+    start + '\n' + main + '\n' + 'a'.repeat(2 * 1024 * 1024),
+  ]) assert.equal(await scrape(invalid), null);
+  assert.equal(await readCaddyTraffic(async () => new Response('unavailable', { status: 503 })), null);
+});
