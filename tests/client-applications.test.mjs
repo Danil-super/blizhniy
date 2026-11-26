@@ -42,3 +42,13 @@ test('a decision acknowledgement must match the requested application, recipient
 test('pending response payment remains a known conflict in the client',async()=>{
  await assert.rejects(createApplicationsClient(async()=>Response.json({error:{code:'RESPONSE_PAYMENT_PENDING'}},{status:409})).decide(owner,id,'1','selected'),error=>error.code==='RESPONSE_PAYMENT_PENDING'&&error.message.includes('Оплата отклика'));
 });
+
+test('application detail preserves previously sent messages up to the historical 3000-character limit', async () => {
+ const sent = {...detail, view: 'recipient', status: 'sent', paid: true, sentAt: stamp};
+ const historicalMessage = 'Я'.repeat(2999) + '\n';
+ const readMessage = message => createApplicationsClient(async () =>
+  Response.json({...sent, message})).read(owner, id);
+
+ assert.equal((await readMessage(historicalMessage)).message, historicalMessage);
+ await assert.rejects(readMessage(historicalMessage + 'Я'), ApplicationClientError);
+});
