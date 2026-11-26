@@ -7,6 +7,18 @@ import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 import {testCachedCabinetScreen} from './cabinet-history-cache-browser-cases.mjs';
 import {testAccountCheckoutBrowser} from './account-test-checkout-browser-cases.mjs';
+
+async function answerLeave(page,action,{type='confirm',leave=false}={}){
+ const opening=page.waitForEvent('dialog',{timeout:3500});
+ const navigating=action();
+ navigating.catch(()=>{});
+ const dialog=await opening;
+ const actualType=dialog.type();
+ if(leave)await dialog.accept();else await dialog.dismiss();
+ await navigating;
+ assert.equal(actualType,type);
+}
+
 test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async t=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-form-browser-'));let app,browser;
  try{
@@ -15,7 +27,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   const origin=`http://127.0.0.1:${port}`,owner='12345678-1234-4321-8765-123456789abc',id='22345678-1234-4321-8765-123456789abc';
   const fixture=join(directory,'draft.json');await writeFile(fixture,JSON.stringify({owner,active:owner,snapshot:null}),{mode:0o600});
   const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',
-   BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture',BLIZHNIY_PAYMENT_RECEIPT_VAT:'none',
+   BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture',BLIZHNIY_PAYMENT_RECEIPT_VAT:'none',BLIZHNIY_DRAFT_REMOVALS:'enabled',
    BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_PAYMENT:'account-test',BLIZHNIY_LISTING_CONTACT_METHOD:'enabled',BLIZHNIY_BROWSER_DRAFT_FIXTURE:fixture,BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
    BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-ui-only-rate-secret-not-used-by-api',
    BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-smtp-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',NEXT_PUBLIC_TURNSTILE_SITE_KEY:''};
@@ -28,6 +40,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner,creates=0,rejectWrite=false;
   const persist=()=>writeFile(fixture,JSON.stringify({owner,active,snapshot:saved}),{mode:0o600});
   let moderation={id:null,revision:null,state:'not_submitted',note:null},loseSubmission=false,submissions=0;
+  const removalCalls=[];let removedRevision=null;
   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
   const webPixels=await sharp(pixels).webp().toBuffer();
   await context.route('**/*',async route=>{
@@ -43,6 +56,12 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
    const body=request.postDataJSON();assert.equal(body.expectedOwnerId,owner);
+   if(url.pathname==='/api/account/listing-removal'){
+    assert.equal(body.target,'listing');assert.equal(body.listingId,id);
+    removalCalls.push(body);
+    if(body.action==='remove'){removedRevision=saved.revision;saved=null;await persist();return route.abort('connectionreset');}
+    return route.fulfill({json:{id,revision:removedRevision,removed:true}});
+   }
    if(url.pathname==='/api/account/listing-moderation'){
     assert.deepEqual(Object.keys(body).sort(),['expectedOwnerId','expectedRevision','listingId']);assert.equal(body.expectedRevision,saved.revision);
     if(request.method()==='PUT'){submissions++;moderation={id:'42345678-1234-4321-8765-123456789abc',revision:saved.revision,state:'pending',note:null};if(loseSubmission){loseSubmission=false;return route.abort();}}
@@ -65,6 +84,71 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    }
    return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
   });
+  await t.test('first text, checkbox and photo edits each protect the listing before save',async()=>{
+   const editor=await context.newPage(),target=origin+'/razmestit/obyavlenie';
+   const title=editor.locator('input[name="title"]'),back=editor.getByRole('link',{name:'Назад',exact:true});
+   try{
+    await editor.goto(target);
+    await back.click();
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+    await editor.goto(target);
+    await title.fill('Несохранённое объявление');
+    await answerLeave(editor,()=>back.click());
+    assert.equal(editor.url(),target);
+    assert.equal(await title.inputValue(),'Несохранённое объявление');
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    await editor.locator('.listing-kind-field').getByRole('button').click();
+    await editor.getByRole('option',{name:'Куплю',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await editor.locator('input[name="kind"]').inputValue(),'kuplyu');
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    const checkbox=editor.locator('input[name="placementRightsAccepted"]');
+    await checkbox.check();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await checkbox.isChecked(),true);
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    const photo=editor.locator('input[name="photos"]');
+    await photo.setInputFiles({name:'draft-guard.png',mimeType:'image/png',buffer:pixels});
+    await editor.getByRole('img',{name:'draft-guard.png',exact:true}).waitFor();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await photo.evaluate(input=>input.files.length),1);
+    assert.equal(creates,0);
+   }finally{await editor.close();}
+  });
+  await t.test('same-document browser Back and native tab close can keep unpublished input',async()=>{
+   const editor=await context.newPage(),target=origin+'/razmestit/obyavlenie';
+   try{
+    await editor.goto(target);
+    await editor.evaluate(()=>history.pushState(history.state,'',location.pathname+'?from=leave-test'));
+    const title=editor.locator('input[name="title"]');
+    await title.click();
+    await title.fill('Сохранить поле после отмены');
+    await answerLeave(editor,async()=>{await editor.goBack({timeout:3000}).catch(()=>null);});
+    assert.equal(editor.url(),target+'?from=leave-test');
+    assert.equal(await title.inputValue(),'Сохранить поле после отмены');
+    await title.click();
+    await answerLeave(editor,()=>editor.close({runBeforeUnload:true}),{type:'beforeunload'});
+    assert.equal(editor.isClosed(),false);
+    assert.equal(await title.inputValue(),'Сохранить поле после отмены');
+    await title.click();
+    await answerLeave(editor,()=>editor.goBack(),{leave:true});
+    await editor.waitForURL(target);
+    await title.click();
+    await title.fill('Эту правку можно закрыть');
+    const closed=editor.waitForEvent('close');
+    await answerLeave(editor,()=>editor.close({runBeforeUnload:true}),{type:'beforeunload',leave:true});
+    await closed;
+   }finally{await editor.close();}
+  });
   const response=await page.goto(origin+'/razmestit/obyavlenie',{waitUntil:'domcontentloaded'});assert.equal(response.status(),200,output);
   await page.getByRole('heading',{name:'Создать объявление',exact:true}).waitFor();
   assert.equal(await page.getByRole('heading',{name:'Создать объявление',exact:true}).count(),1);
@@ -85,7 +169,11 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   // Keep the test on the form so all source fields and error-state layout remain inspectable.
   for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);}
   await page.screenshot({path:'/tmp/blizhniy-full-form-browser.png',fullPage:true});
+  const savePrompts=[],onSavePrompt=async dialog=>{savePrompts.push(dialog.type());await dialog.accept();};
+  page.on('dialog',onSavePrompt);
   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
+  page.off('dialog',onSavePrompt);
+  assert.deepEqual(savePrompts,[],'confirmed save redirects without a leave warning');
   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   // The cabinet offers cards and status only: editing always reopens the original complete form.
   const firstCard=page.getByRole('link',{name:'Полная форма',exact:true}).locator('xpath=ancestor::li[1]');
@@ -133,6 +221,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   rejectWrite=true;await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
   await page.getByRole('button',{name:'Вернуться к исправлению полей',exact:true}).click();
   await page.getByText('Поля доступны для исправления. Изменения ещё не сохранены.',{exact:true}).waitFor();
+  await answerLeave(page,()=>page.getByRole('link',{name:'Назад',exact:true}).click());
   assert.equal(await page.locator('input[name="title"]').isDisabled(),false);assert.equal(writes.length,2);assert.equal(intents.length,2);
   await page.locator('input[name="title"]').fill('Исправленное объявление');lose=true;
   await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
@@ -143,6 +232,24 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.equal(saved.form.price,'199.99');assert.equal(saved.form.contactMethod,'messenger');assert.equal(saved.form.district,'Мой район');
   assert.equal(saved.form.address,'Улица 1');assert.equal(saved.form.latitude,43.6);assert.equal(saved.form.longitude,39.7);assert.equal(saved.form.showExactAddress,false);
   assert.equal(saved.form.title,'Исправленное объявление');assert.equal(saved.form.photoIds.length,2);assert.equal(saved.form.photoIds[0],firstPhoto);
+  await t.test('changing a saved photo cover or removing a saved photo arms the guard independently',async()=>{
+   const editor=await context.newPage(),back=editor.getByRole('link',{name:'Назад',exact:true});
+   const photoIds=()=>editor.locator('form.listing-create-form').evaluate(form=>new FormData(form).getAll('savedPhotoIds'));
+   const original=saved.form.photoIds;
+   try{
+    await editor.goto(origin+editHref);
+    await editor.getByRole('button',{name:'Сделать обложкой Фото 2',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.deepEqual(await photoIds(),[original[1],original[0]]);
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+    await editor.goto(origin+editHref);
+    await editor.getByRole('button',{name:'Убрать Фото 1',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.deepEqual(await photoIds(),[original[1]]);
+    assert.deepEqual(saved.form.photoIds,original);
+   }finally{await editor.close();}
+  });
   await page.getByRole('link',{name:'Исправленное объявление',exact:true}).click();
   await page.locator('input[name="title"]').fill('Моя полная правка');await page.locator('input[name="placementRightsAccepted"]').check();
   saved={...saved,revision:'9007199254740993',form:{...saved.form,title:'Другая вкладка',district:'Серверный район',photoIds:[]},photos:[]};await persist();
@@ -255,6 +362,25 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   moderation={...moderation,state:'approved'};
   await testAccountCheckoutBrowser({context,page,origin,owner,id,revision:saved.revision,title:saved.form.title});
+  await t.test('a lost removal response keeps the draft until readback, with no write retry',async()=>{
+   const editor=await context.newPage();
+   try{
+    const title=saved.form.title,revision=saved.revision;
+    await editor.goto(origin+'/cabinet/obyavleniya');
+    const remove=editor.getByRole('button',{name:'Удалить черновик',exact:true});
+    await answerLeave(editor,()=>remove.click());
+    assert.equal(removalCalls.length,0);
+    await answerLeave(editor,()=>remove.click(),{leave:true});
+    await editor.getByText('Результат пока неизвестен. Сначала проверьте удаление.',{exact:true}).waitFor();
+    assert.ok(await remove.isDisabled());
+    assert.ok(await editor.getByRole('link',{name:title,exact:true}).isVisible());
+    await editor.getByRole('button',{name:'Проверить удаление',exact:true}).click();
+    await editor.getByText('Вы ещё не создали объявлений.',{exact:true}).waitFor();
+    assert.deepEqual(removalCalls.map(call=>[call.action,call.expectedRevision]),[['remove',revision],['read',revision]]);
+    const staleUrl=await editor.goto(origin+`/razmestit/obyavlenie?draft=${id}`);
+    assert.equal(staleUrl.status(),404);
+   }finally{await editor.close();}
+  });
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });

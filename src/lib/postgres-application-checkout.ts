@@ -2,7 +2,7 @@ import {hashSessionToken} from './identity';
 import {randomUUID} from 'node:crypto';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {PostgresApplicationStore,ApplicationAccessError} from './postgres-applications';
-import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
+import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseApplicationCheckout,ApplicationCheckoutConflictError,ApplicationCheckoutUnavailableError,type ApplicationPaymentOrder,type ApplicationQuote} from './application-checkout-contract.ts';
 import {readApplicationAccountTest} from './application-test-config';
@@ -72,16 +72,19 @@ export class PostgresApplicationCheckoutStore{
   }
   const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ApplicationCheckoutUnavailableError();return display(saved);
  });}
- authorizeDispatch(token:string,owner:string,value:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>{
+ authorizeDispatch(token:string,owner:string,value:unknown,requireCurrent?:boolean):Promise<PaymentIntentBinding>;
+ authorizeDispatch(token:string,owner:string,value:unknown,requireCurrent:true,attempt:PaymentDispatchAttempt):Promise<PaymentDispatch>;
+ authorizeDispatch(token:string,owner:string,value:unknown,requireCurrent=false,attempt?:PaymentDispatchAttempt){const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>{
+  const permitted=await attempt?.(tx);
   const row=(await tx.query<PaymentIntent&{status:string}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",i.target_revision::text as "targetRevision",i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id and i.owner_id=o.owner_id and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision where o.id=$1 and o.owner_id=$2 and o.target_type='application' and i.merchant_shop_id=$3 and i.is_test${this.admissionFilter}`,[id,actor,this.shopId])).rows[0];
   if(!row)throw new ApplicationAccessError();const {status,...stored}=row,intent=parsePaymentIntent(stored);
-  if(requireCurrent&&!(await tx.query('select intent_id from app.payment_provider_links where intent_id=$1',[id])).rowCount){
+  if((requireCurrent||attempt)&&!(await tx.query('select intent_id from app.payment_provider_links where intent_id=$1',[id])).rowCount){
    if(this.admittedOwner!==null){
     const current=await tx.query<{allowed:boolean}>('select app_response.authorized_for_dispatch($1,$2) as allowed',[id,hashSessionToken(token)]);
     if(current.rows[0]?.allowed!==true)throw new ApplicationCheckoutUnavailableError();
    }
    if(status!=='created')throw new ApplicationCheckoutUnavailableError();await this.apps.inspectCheckoutInTransaction(tx,actor,intent.targetId,intent.targetRevision);const offer=await this.offer(tx);if(offer.id!==intent.tariffId||offer.amount!==intent.amount||intent.durationDays!==null)throw new ApplicationCheckoutConflictError();
   }
-  const {requestBody,...binding}=intent;void requestBody;return binding;
+  const {requestBody,...binding}=intent;void requestBody;return permitted??binding;
  });}
 }

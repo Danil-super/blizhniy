@@ -18,17 +18,21 @@ export class PostgresListingOwnerActions {
    if(payments.length!==1)throw new ListingDraftAccessError();
    const payment=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1',[payments[0].id])).rows[0];
    if(!payment||(action==='restore'&&payment.status!=='succeeded'))throw new ListingDraftAccessError();
+   const locked=await tx.query('select id from app.listings where id=$1 and author_id=$2 for update',[id,owner]);
+   if(locked.rowCount!==1)throw new ListingDraftAccessError();
+   // Read the term and moderation state after the wait, including on an idempotent request.
    const row=(await tx.query<{id:string;revision:string;status:string;live:boolean;blocked:boolean}>(`select id,revision::text,status,
-    (is_paid and published_at<=clock_timestamp() and expires_at>clock_timestamp()) as live,
+    (is_paid and published_at<=statement_timestamp() and expires_at>statement_timestamp()) as live,
     exists(select 1 from app.listing_blocks b where b.listing_id=l.id) as blocked
-    from app.listings l where id=$1 and author_id=$2 for update`,[id,owner])).rows[0];
+    from app.listings l where id=$1 and author_id=$2`,[id,owner])).rows[0];
    if(!row||row.blocked||!row.live||!['published','archived'].includes(row.status))throw new ListingDraftAccessError();
    if(row.revision!==revision||revision==='9223372036854775807')throw new ListingDraftConflictError();
    const status=action==='withdraw'?'archived':'published';
    if(row.status===status)return{id,revision,status};
    const result=await tx.query<{id:string;revision:string;status:string}>(`update app.listings set status=$4,revision=revision+1,updated_at=clock_timestamp()
-    where id=$1 and author_id=$2 and revision=$3::bigint returning id,revision::text,status`,[id,owner,revision,status]);
-   if(result.rowCount!==1)throw new ListingDraftConflictError();
+    where id=$1 and author_id=$2 and revision=$3::bigint and expires_at>clock_timestamp()
+    returning id,revision::text,status`,[id,owner,revision,status]);
+   if(result.rowCount!==1)throw new ListingDraftAccessError();
    return result.rows[0];
   });
  }

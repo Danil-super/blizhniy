@@ -1,7 +1,7 @@
 import {CalendarDays, Gift, ShoppingBag, Tags} from 'lucide-react';
 
 export type ListingKind = 'prodam' | 'kuplyu' | 'otdam-darom' | 'arenda';
-export type ListingStatus = 'draft' | 'pending_payment' | 'paid' | 'published' | 'sold' | 'archived' | 'expired' | 'rejected' | 'blocked' | 'assigned';
+export type ListingStatus = 'draft' | 'pending_payment' | 'paid' | 'published' | 'sold' | 'archived' | 'expired' | 'rejected' | 'blocked' | 'assigned' | 'removed';
 
 const kindLabels: Record<ListingKind, string> = {prodam: 'Продам', kuplyu: 'Куплю', 'otdam-darom': 'Отдам даром', arenda: 'Аренда'};
 export const listingKindIcons = {prodam: ShoppingBag, kuplyu: Tags, 'otdam-darom': Gift, arenda: CalendarDays};
@@ -16,7 +16,7 @@ export function ListingKindBadge({kind}: {kind: ListingKind}) {
 
 export function StatusBadge({status}: {status: ListingStatus}) {
   const labels: Record<ListingStatus, string> = {draft: 'Черновик', pending_payment: 'Ожидает оплату', paid: 'Оплачено', published: 'Опубликовано',
-    sold: 'Продано', archived: 'Архив', expired: 'Истек срок', rejected: 'Отклонено', blocked: 'Заблокировано', assigned: 'Исполнитель выбран'};
+    sold: 'Продано', archived: 'Архив', expired: 'Истек срок', rejected: 'Отклонено', blocked: 'Заблокировано', assigned: 'Исполнитель выбран', removed: 'Удалено владельцем'};
   const tones: Record<ListingStatus, string> = {
     draft: 'border-slate-200 bg-slate-50 text-slate-700',
     pending_payment: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -24,6 +24,7 @@ export function StatusBadge({status}: {status: ListingStatus}) {
     published: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     sold: 'border-blue-200 bg-blue-50 text-blue-800',
     archived: 'border-slate-300 bg-slate-100 text-slate-700',
+    removed: 'border-slate-300 bg-slate-100 text-slate-700',
     expired: 'border-orange-200 bg-orange-50 text-orange-800',
     rejected: 'border-rose-200 bg-rose-50 text-rose-800',
     blocked: 'border-rose-200 bg-rose-50 text-rose-800',

@@ -1,9 +1,9 @@
 'use client';
 import {parseListingDraftId} from './listing-draft-contract.ts';
-import {parseCheckoutCancellation,type CheckoutCancellationInput,type CheckoutCancellationResult} from './checkout-cancellation-contract.ts';
+import {parseCheckoutCancellation,type CheckoutCancellationInput,type CheckoutCancellationResult,type CheckoutCancellationTargets} from './checkout-cancellation-contract.ts';
 const messages={UNAUTHENTICATED:'Войдите в аккаунт повторно.',CHECKOUT_NOT_FOUND:'Подготовка оплаты недоступна.',CHECKOUT_STARTED:'Отправка оплаты уже могла начаться. Проверьте статус исходного заказа.',CHECKOUT_BUSY:'Состояние оплаты сейчас обновляется. Повторите проверку.',INVALID_INPUT:'Проверьте данные оплаты.',RATE_LIMITED:'Слишком много запросов. Попробуйте позже.',UNKNOWN:'Результат отмены пока неизвестен. Проверьте эту же подготовку.'};
 export class CheckoutCancellationClientError extends Error{constructor(readonly code:keyof typeof messages){super(messages[code]);this.name='CheckoutCancellationClientError';}}
-export function createCheckoutCancellationClient(transport:typeof fetch,policy:{services?:boolean}={}){
+export function createCheckoutCancellationClient(transport:typeof fetch,policy:CheckoutCancellationTargets={}){
  async function request(owner:string,input:CheckoutCancellationInput,write:boolean,options?:{signal?:AbortSignal}):Promise<CheckoutCancellationResult|null>{
   let value:CheckoutCancellationInput,expectedOwnerId:string;try{value=parseCheckoutCancellation(input,policy);expectedOwnerId=parseListingDraftId(owner);}catch{throw new CheckoutCancellationClientError('INVALID_INPUT');}
   try{
@@ -21,6 +21,6 @@ export function createCheckoutCancellationClient(transport:typeof fetch,policy:{
  }
  return{read:(owner:string,input:CheckoutCancellationInput,options?:{signal?:AbortSignal})=>request(owner,input,false,options),cancel:(owner:string,input:CheckoutCancellationInput,options?:{signal?:AbortSignal})=>request(owner,input,true,options)};
 }
-export const checkoutCancellation=createCheckoutCancellationClient((...args)=>fetch(...args));
+export const checkoutCancellation=createCheckoutCancellationClient((...args)=>fetch(...args),{specialist:true});
 
 export const serviceCheckoutCancellation=createCheckoutCancellationClient((...args)=>fetch(...args),{services:true});

@@ -59,3 +59,18 @@ test('work client rejects malformed authority and cancelled requests before tran
 test('pending response payment remains a known conflict in the client',async()=>{
  await assert.rejects(createWorkPublicationClient(async()=>Response.json({error:{code:'RESPONSE_PAYMENT_PENDING'}},{status:409})).update(owner,'workRequest',id,'1',form),error=>error.code==='RESPONSE_PAYMENT_PENDING'&&error.message.includes('Оплата отклика'));
 });
+
+test('the owner editor opts in to a bounded active checkout without changing older reads',async()=>{
+ const calls=[],activeCheckout={paymentId:key,status:'created'};
+ const client=createWorkPublicationClient(async(_path,init)=>{
+  calls.push(init.headers);
+  return Response.json(init.headers['X-Blizhniy-Active-Checkout']==='1'?{...snapshot,activeCheckout}:snapshot);
+ });
+ assert.deepEqual(await client.read(owner,'workRequest',id),snapshot);
+ assert.deepEqual(await client.read(owner,'workRequest',id,{includeCheckout:true}),{...snapshot,activeCheckout});
+ assert.equal(calls[0]['X-Blizhniy-Active-Checkout'],undefined);
+ assert.equal(calls[1]['X-Blizhniy-Active-Checkout'],'1');
+ for(const value of [{...activeCheckout,status:'failed'},{...activeCheckout,paymentId:'bad'},{...activeCheckout,providerId:key}]){
+  assert.throws(()=>parseWorkPublicationSnapshot({...snapshot,activeCheckout:value},'workRequest',id));
+ }
+});

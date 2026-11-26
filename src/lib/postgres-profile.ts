@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createDefaultCabinetProfile, type CabinetProfile } from "./cabinet-profile";
 import { withAppSessionTransaction } from "./app-session-transaction";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
-import {PROFILE_NAME_MAX_LENGTH,validPlainText,validProfileName,validWebUrl} from './cabinet-field-validation.ts';
+import {normalizeProfileName,validPlainText,validWebUrl} from './cabinet-field-validation.ts';
 import {normalizeProfilePhone} from './phone-verification-contract.ts';
 
 export class ProfileInputError extends Error {
@@ -15,7 +15,7 @@ export class ProfileConflictError extends Error {
   constructor() { super("Profile content changed"); this.name = "ProfileConflictError"; }
 }
 export type StoredCabinetProfile = Omit<CabinetProfile, "email" | "phoneVerified" | "verifiedPhone">;
-const textLimits = { name: PROFILE_NAME_MAX_LENGTH, phone: 40, city: 80, organizationName: 120, organizationInn: 12,
+const textLimits = { phone: 40, city: 80, organizationName: 120, organizationInn: 12,
   organizationOgrn: 15, organizationAddress: 160, organizationWebsite: 120, organizationDescription: 500 } as const;
 const ranges = { avatarZoom: [1, 5], avatarPositionX: [0, 100], avatarPositionY: [0, 100] } as const;
 const booleans = ["notifyBookings", "notifyMessages", "notifyPayments", "notifyPublicationStatus", "notifySystem",
@@ -25,11 +25,16 @@ const booleans = ["notifyBookings", "notifyMessages", "notifyPayments", "notifyP
 export function parseProductionProfile(value: unknown): StoredCabinetProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value))) throw new ProfileInputError();
   const input = value as Record<string, unknown>;
-  const allowed = new Set([...Object.keys(textLimits), ...Object.keys(ranges), ...booleans,
+  const allowed = new Set(["name", ...Object.keys(textLimits), ...Object.keys(ranges), ...booleans,
     "avatarDataUrl", "email", "phoneVerified", "verifiedPhone"]);
   if (Reflect.ownKeys(input).some(key => typeof key!=='string'||!allowed.has(key))) throw new ProfileInputError();
   const defaults = createDefaultCabinetProfile({ name: "Пользователь", email: "" });
   const result = Object.fromEntries(Object.entries(defaults).filter(([key]) => !["email", "phoneVerified", "verifiedPhone"].includes(key))) as StoredCabinetProfile;
+  if (Object.hasOwn(input, "name")) {
+    const name = normalizeProfileName(input.name);
+    if (name === null) throw new ProfileInputError();
+    result.name = name;
+  }
   for (const [key, limit] of Object.entries(textLimits)) {
     const field = key as keyof typeof textLimits;
     if (!Object.hasOwn(input, key)) continue;
@@ -38,8 +43,7 @@ export function parseProductionProfile(value: unknown): StoredCabinetProfile {
     if (typeof text !== "string" || !validPlainText(text,field==='organizationDescription') || controls.test(text) || text.length > limit) throw new ProfileInputError();
     result[field] = text.trim();
   }
-  result.name ||= defaults.name;
-  if(!validProfileName(result.name)||(result.phone&&!normalizeProfilePhone(result.phone))||!validWebUrl(result.organizationWebsite))throw new ProfileInputError();
+  if((result.phone&&!normalizeProfilePhone(result.phone))||!validWebUrl(result.organizationWebsite))throw new ProfileInputError();
   for (const field of booleans) {
     if (!Object.hasOwn(input, field)) continue;
     if (typeof input[field] !== "boolean") throw new ProfileInputError();

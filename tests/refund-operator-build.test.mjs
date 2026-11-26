@@ -47,3 +47,19 @@ test('operator build refuses altered copied55 bytes before creating the destinat
   assert.equal(result.status,0,result.stderr);assert.equal(existsSync(destination),false);
  }finally{rmSync(owned,{recursive:true,force:true});}
 });
+
+test('schema 0087 operator archive ships a socket-activated TEST command and rejects unactivated startup',()=>{
+ const owned=mkdtempSync(join(tmpdir(),'blizhniy-hosted-refund-operator-'));
+ try{
+  const artifact=join(owned,'artifact');buildRefundOperator(artifact,{schema:87});
+  const cli=join(artifact,'scripts/hosted-refund-operator.mjs');
+  const env={PATH:process.env.PATH,NODE_ENV:'production',BLIZHNIY_REFUND_OPERATOR:'hosted-test-v1',BLIZHNIY_DB_PASSWORD:'private-synthetic'};
+  const imported=spawnSync(process.execPath,['--input-type=module','-e',`await import(process.argv[1])`,cli],{cwd:artifact,env,encoding:'utf8',timeout:10000});
+  assert.equal(imported.status,0,imported.stderr);
+  assert.equal(imported.stdout,'');assert.equal(imported.stderr,'');
+  const started=spawnSync(process.execPath,[cli],{cwd:artifact,env,encoding:'utf8',timeout:10000});
+  assert.equal(started.status,1);
+  assert.equal(started.stdout,'');
+  assert.deepEqual(JSON.parse(started.stderr),{event:'hosted_refund_operator',status:'unavailable'});
+ }finally{rmSync(owned,{recursive:true,force:true});}
+});

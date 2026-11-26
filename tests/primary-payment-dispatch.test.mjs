@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createHash} from 'node:crypto';
-import {createPrimaryPaymentDispatcher} from '../src/lib/primary-payment-dispatch.ts';
+import {createPrimaryPaymentDispatcher as createDispatcher} from '../src/lib/primary-payment-dispatch.ts';
+
+function createPrimaryPaymentDispatcher(db,merchant,fetcher){
+ const dispatcher=createDispatcher(db,merchant,fetcher);
+ return {dispatch(binding,check){
+  return dispatcher.dispatch(binding,check&& (attempt=>db.transaction(async tx=>{
+   const permitted=await attempt(tx);
+   await check();
+   return permitted;
+  })));
+ }};
+}
 
 const binding={id:'10000000-0000-4000-8000-000000000001',ownerId:'10000000-0000-4000-8000-000000000002',targetType:'listing',targetId:'10000000-0000-4000-8000-000000000003',targetRevision:'9007199254740993',tariffId:'listing-publication',amount:'199.99',durationDays:30,shopId:'fixture-shop',isTest:true};
 const providerId='20000000-0000-4000-8000-000000000001';
@@ -9,13 +20,16 @@ const merchant={shopId:binding.shopId,isTest:true,secretKey:'test_synthetic_fixt
 const requestBody=` ${JSON.stringify({amount:{value:binding.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://site.example.invalid/return'},metadata:{localPaymentId:binding.id,targetId:binding.targetId,targetType:binding.targetType,tariffId:binding.tariffId}})}\n`;
 const payload=()=>({id:providerId,status:'pending',paid:false,test:true,recipient:{account_id:merchant.shopId},amount:{value:binding.amount,currency:'RUB'},metadata:{localPaymentId:binding.id,targetId:binding.targetId,targetType:binding.targetType,tariffId:binding.tariffId},confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout'}});
 function fixture(){
- const state={provider:null,anchor:false,remaining:3600000,transactions:0,inside:false,failCommit:0,afterCommit:()=>{},hash:createHash('sha256').update(requestBody).digest('hex')};
+ const state={provider:null,anchor:false,remaining:3600000,transactions:0,inside:false,failCommit:0,afterCommit:()=>{},afterIntentLock:()=>{},hash:createHash('sha256').update(requestBody).digest('hex')};
  const db={transaction:async work=>{
   const number=++state.transactions;state.inside=true;
   try{
    const result=await work({query:async(sql,args)=>{
     let rows=[];
-    if(sql.includes('from app.payment_checkout_intents'))rows=[{...binding,requestBody,sha256:state.hash}];
+    if(sql.includes('from app.payment_checkout_intents')){
+     state.afterIntentLock(number);
+     rows=[{...binding,requestBody,sha256:state.hash}];
+    }
     else if(sql.startsWith('insert into app.payment_provider_links'))state.provider??=args[1];
     else if(sql.includes('from app.payment_provider_links'))rows=state.provider?[{id:state.provider}]:[];
     else if(sql.startsWith('insert into app.payment_dispatch_anchors'))state.anchor=true;
@@ -125,7 +139,7 @@ test('owner admission is rechecked before each POST attempt, and known-ID GET re
 });
 test('a session revoked while final intent authorization waits cannot issue a POST after its stale admission',async()=>{
  const {db,state}=fixture();let valid=true,calls=0;
- state.afterCommit=number=>{if(number===2)valid=false;};
+ state.afterIntentLock=number=>{if(number===2)valid=false;};
  await assert.rejects(createPrimaryPaymentDispatcher(db,merchant,async()=>{calls++;return Response.json(payload());}).dispatch(binding,async()=>{if(!valid)throw Error('Revoked admission');}));
  assert.equal(calls,0);assert.equal(state.provider,null);
 });

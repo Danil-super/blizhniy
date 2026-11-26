@@ -16,6 +16,7 @@ function Workspace({owner,listingId,visible,renderCalendar}:{owner:string;listin
  const [inventory,setInventory]=useState<BookingInventory|null>(null),[fresh,setFresh]=useState(false),[startDate,setStartDate]=useState(''),[endDate,setEndDate]=useState(''),[guests,setGuests]=useState('1');
  const [confirmation,setConfirmation]=useState<Confirmation|null>(null),[saved,setSaved]=useState<BookingSnapshot|null>(null),[issues,setIssues]=useState<BookingSelectionIssues>({}),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const controller=useRef<AbortController|null>(null),pending=useRef<object|null>(null),start=useRef<HTMLInputElement>(null),end=useRef<HTMLInputElement>(null),people=useRef<HTMLInputElement>(null),alert=useRef<HTMLParagraphElement>(null),success=useRef<HTMLHeadingElement>(null),prefix=useId();
+ const quoteTotal=useRef<HTMLParagraphElement>(null);
  const run=useCallback(async(work:(signal:AbortSignal)=>Promise<void>)=>{
   const current=controller.current;if(!current||current.signal.aborted||pending.current)return;const attempt={};pending.current=attempt;setBusy(true);setMessage(null);
   try{await work(current.signal);}catch(error){if(!current.signal.aborted){setMessage(error instanceof Error?error.message:'Не удалось выполнить действие.');if(error instanceof BookingClientError&&error.code==='UNAUTHENTICATED')notifyAccountSessionChange(false);}}
@@ -26,6 +27,9 @@ function Workspace({owner,listingId,visible,renderCalendar}:{owner:string;listin
  },[listingId]);
  useEffect(()=>{const current=new AbortController();controller.current=current;void run(load);return()=>{current.abort();pending.current=null;};},[load,run]);
  useEffect(()=>{if(message)alert.current?.focus();},[message]);useEffect(()=>{if(saved)success.current?.focus();},[saved]);
+ useEffect(()=>{
+  if(visible&&confirmation?.phase==='quoted'&&document.activeElement===document.body)quoteTotal.current?.focus();
+ },[confirmation,visible]);
  const locked=busy||!!confirmation&&confirmation.phase!=='quoted',selection={startDate,endDate,guests};
  function change(field:'startDate'|'endDate'|'guests',value:string){if(!visible||locked||saved)return;({startDate:setStartDate,endDate:setEndDate,guests:setGuests}[field])(value);setConfirmation(null);setMessage(null);setIssues(current=>({...current,[field]:undefined,general:undefined}));}
  function pick(day:string){if(!startDate||endDate||day<=startDate){change('startDate',day);change('endDate','');}else change('endDate',day);}
@@ -59,7 +63,7 @@ function Workspace({owner,listingId,visible,renderCalendar}:{owner:string;listin
     </>:<><p className="text-sm text-slate-800">Свободных мест: {inventory.tourSeatsRemaining}.</p>{issues.startDate&&<p role="alert" className="text-sm text-rose-800">{issues.startDate}</p>}</>}
     <label className="min-w-0 text-sm font-semibold text-slate-950">Количество гостей<input ref={people} aria-label="Количество гостей" type="number" inputMode="numeric" min={1} max={inventory.booking.maxGuests} step={1} required value={guests} disabled={locked} onChange={event=>change('guests',event.target.value)} aria-invalid={!!issues.guests} aria-describedby={issues.guests?`${prefix}-guests`:undefined} className={inputStyle}/>{issues.guests&&<span id={`${prefix}-guests`} className="mt-1 block text-sm font-normal text-rose-800">{issues.guests}</span>}</label>
     {issues.general&&<p role="alert" className="text-sm text-rose-800">{issues.general}</p>}
-    {confirmation?<div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-semibold text-slate-950">Сумма заявки: {confirmation.quote.total} ₽</p><p className="text-sm text-slate-700">Гостей: {confirmation.input.guests}. {confirmation.input.startDate}{confirmation.input.endDate?` — ${confirmation.input.endDate}`:''}. Это не оплата; дождитесь ответа владельца.</p>
+    {confirmation?<div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4"><p ref={quoteTotal} tabIndex={-1} className="font-semibold text-slate-950">Сумма заявки: {confirmation.quote.total} ₽</p><p className="text-sm text-slate-700">Гостей: {confirmation.input.guests}. {confirmation.input.startDate}{confirmation.input.endDate?` — ${confirmation.input.endDate}`:''}. Это не оплата; дождитесь ответа владельца.</p>
      {confirmation.phase==='unknown'?<><p className="text-sm font-semibold text-slate-800">Отправка не подтверждена. Не отправляйте новую заявку до проверки.</p><button type="button" className={bookingButton} disabled={busy} onClick={recover}>Проверить отправку</button></>:<button type="button" className={primaryButton} disabled={busy} onClick={submit}>{confirmation.phase==='retry'?'Повторить ту же отправку':'Отправить заявку владельцу'}</button>}
     </div>:<button type="submit" className={primaryButton} disabled={busy||!fresh}>Рассчитать стоимость</button>}
    </form>}

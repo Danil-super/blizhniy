@@ -61,6 +61,7 @@ test('specialist tab routes to a single questionnaire while fair retains its ind
   '@/components/auth/AccountAuthProvider':{usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})},
   '@/lib/local-account':{notifyAccountSessionChange(){}},'@/lib/client-service-publications':{servicePublications:{}},
   '@/lib/service-publication-navigation':load('service-publication-navigation'),'@/components/listings/PrivateDraftEditor':{draftButton:'min-h-11'},
+  '@/components/listings/ListingWorkflowProvider':{useDraftRemovals:()=>false},'@/components/listings/ListingOwnerRemoveButton':{ListingOwnerRemoveButton:()=>null},
   './ServicePublicationForm':{serviceFormLabels:{specialist:'Анкета специалиста',fair:'Заявка на ярмарку',marquee:'Рекламный текст'}},
   './ServiceModerationStatus':{ServiceModerationStatus:()=>null},'./PrimaryServicePublicationEditor':{PrimaryServicePublicationEditor:()=>null},
   './SpecialistProfilePanel':{SpecialistProfilePanel:()=>React.createElement('div',{'data-single-questionnaire':true})},
@@ -82,4 +83,23 @@ test('a specialist sees the publication status and the paid period with checkout
   assert.equal(h.html.includes('aria-label="Срок размещения"'),paid);
   if(paid){assert.ok(h.html.includes(publishedAt));assert.ok(h.html.includes(expiresAt));}
  }
+});
+
+test('specialist checkout only opens for an approved, unpaid draft without a publication period',()=>{
+ let stateIndex=0;
+ const {ServiceModerationStatus}=moduleAt('ServiceModerationStatus.tsx',{
+  react:{...React,useState(initial){return [stateIndex++===0?{state:'approved'}:initial,()=>{}];},useEffect(){},useRef:current=>({current}),useCallback:fn=>fn},
+  'next/link':{__esModule:true,default:link},'@/lib/client-service-publications':{serviceModeration:{}},
+  '@/components/listings/ListingWorkflowProvider':{useServiceCheckout:()=>false,useSpecialistCheckout:()=>true},
+  '@/components/listings/PrivateDraftEditor':{draftButton:'min-h-11'},
+  '@/components/listings/PrivateListingCheckout':{PrivateListingCheckout:()=>React.createElement('button',null,'Оплатить размещение')},
+ });
+ const period={publishedAt:'2026-10-25T12:00:00.000000Z',expiresAt:'2026-11-24T12:00:00.000000Z'};
+ const render=changes=>{stateIndex=0;return renderToStaticMarkup(React.createElement(ServiceModerationStatus,{owner,snapshot:{...snapshot,...changes}}));};
+ assert.match(render({}),/Оплатить размещение/);
+ assert.doesNotMatch(render({status:'archived',...period}),/Оплатить размещение/);
+ assert.doesNotMatch(render({status:'pending_payment'}),/Оплатить размещение/);
+ assert.doesNotMatch(render({status:'draft',...period}),/Оплатить размещение/);
+ assert.doesNotMatch(render({status:'published',paid:true,...period}),/Оплатить размещение/);
+ assert.match(render({status:'expired',paid:true,...period}),/Срок размещения истёк/);
 });

@@ -37,6 +37,18 @@ test("remembered CAPTCHA is an explicit opt-in and invalid feature settings fail
     assert.throws(() => readProductionAuthConfig({ ...env, BLIZHNIY_AUTH_REMEMBERED_CAPTCHA: value }), /Invalid production auth configuration/);
   }
 });
+test("production Auth accepts only the opted-in loopback endpoint for self-hosted PostgreSQL", () => {
+  const local = { ...env, BLIZHNIY_DB_PLACEMENT: "same-host", BLIZHNIY_DB_HOST: "127.0.0.1" };
+  assert.deepEqual(readProductionAuthConfig(local), readProductionAuthConfig(env));
+  for (const changes of [
+    { BLIZHNIY_DB_PLACEMENT: "unknown" }, { BLIZHNIY_DB_HOST: env.BLIZHNIY_DB_HOST },
+    { BLIZHNIY_DB_PLACEMENT: "unknown", BLIZHNIY_DB_HOST: env.BLIZHNIY_DB_HOST },
+    { BLIZHNIY_DB_HOST: "localhost" }, { BLIZHNIY_DB_HOST: "192.0.2.1" },
+    { BLIZHNIY_DB_SSL_MODE: "disable" }, { BLIZHNIY_DB_CA_FILE: "" }, { BLIZHNIY_DB_NAME: "default_db" },
+  ]) {
+    assert.throws(() => readProductionAuthConfig({ ...local, ...changes }), /Invalid production auth configuration/);
+  }
+});
 test("mail key reader requires an exact private owned regular 32-byte file and does not follow symlinks", () => {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-auth-key-test-"));
   const file = join(directory, "key.bin");

@@ -9,17 +9,19 @@ import {startReportTestTls} from './local-csp-https-fixture.mjs';
 
 const tag='https://mc.yandex.ru/metrika/tag.js',counterId=987654321;
 const stub=`{const queued=window.ym?.a??[];window.__metricaEvents=[];window.ym=(...args)=>window.__metricaEvents.push(args);for(const args of queued)window.ym(...args);}`;
+const tagResponse={contentType:'application/javascript',headers:{'access-control-allow-origin':'*'},body:stub};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(check,label,timeout=15000){
  const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await sleep(50);}throw new Error('Timed out: '+label);
 }
-async function start(id){
+async function start(id, isolation){
  const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');
  const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
  const tls=await startReportTestTls(port),env={};
  for(const name of ['PATH','HOME','TMPDIR'])if(process.env[name])env[name]=process.env[name];
  Object.assign(env,{NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_CSP_MODE:'enforce',NEXT_PUBLIC_SITE_URL:tls.origin,SITE_URL:tls.origin,BLIZHNIY_YANDEX_METRICA_ID:id});
+ if(isolation)env.BLIZHNIY_HTML_ISOLATION='enforce';
  let log='';const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{cwd:process.cwd(),env,stdio:['ignore','pipe','pipe']});
  for(const stream of [server.stdout,server.stderr])stream.on('data',value=>{log=(log+value).slice(-8000);});
  const close=async()=>{if(server.exitCode===null){server.kill('SIGTERM');await once(server,'exit');}tls.close();};
@@ -44,14 +46,14 @@ async function context({transport='stub',cookies=[]}={}){
    requests.push({url,headers:await route.request().allHeaders()});
    if(transport==='delay'){pending=route;return;}
    if(transport==='block')return route.abort();
-   return route.fulfill({contentType:'application/javascript',body:stub});
+   return route.fulfill(tagResponse);
   }
   if(new URL(url).origin!==fixture.origin){unexpected.push(url);return route.abort();}
   if(new URL(url).pathname==='/api/account/session')return route.fulfill({contentType:'application/json',body:'{"user":null}'});
   return route.continue();
  });
  if(cookies.length)await ctx.addCookies(cookies.map(cookie=>({url:fixture.origin,secure:true,sameSite:'Lax',...cookie})));
- return{ctx,requests,unexpected,errors,release:async()=>{assert.ok(pending,'a delayed tag request exists');await pending.fulfill({contentType:'application/javascript',body:stub});pending=undefined;}};
+ return{ctx,requests,unexpected,errors,release:async()=>{assert.ok(pending,'a delayed tag request exists');await pending.fulfill(tagResponse);pending=undefined;}};
 }
 const notice=page=>page.getByRole('region',{name:'Файлы cookie',exact:true});
 const events=page=>page.evaluate(()=>window.__metricaEvents??[]);
@@ -65,6 +67,36 @@ async function clean(f,pages){
 }
 try{
  fixture=await start(String(counterId));
+ {
+  const f=await context(),page=await f.ctx.newPage();
+  await page.setViewportSize({width:320,height:568});
+  let resumeHydration;
+  const hydration=new Promise(resolve=>{resumeHydration=resolve;});
+  await f.ctx.route(url=>url.pathname.startsWith('/_next/static/')&&url.pathname.endsWith('.js'),async route=>{
+   await hydration;await route.fallback();
+  });
+  try{
+   await page.goto(fixture.origin+'/o-proekte',{waitUntil:'commit'});
+   const buttons=notice(page).getByRole('button');
+   await until(async()=>await buttons.count()===2&&await buttons.evaluateAll(items=>
+    items.every(button=>button.disabled&&Number(getComputedStyle(button).opacity)<1)),'disabled consent before hydration');
+   await notice(page).evaluate(panel=>{
+    const controls=[...panel.querySelectorAll('button')];
+    window.__enabledConsentOpacity=null;
+    const observer=new MutationObserver(()=>{
+     if(controls.some(button=>button.disabled))return;
+     window.__enabledConsentOpacity=controls.map(button=>getComputedStyle(button).opacity);
+     observer.disconnect();
+    });
+    observer.observe(panel,{subtree:true,attributes:true,attributeFilter:['disabled']});
+   });
+   resumeHydration();
+   await page.waitForFunction(()=>window.__enabledConsentOpacity!==null);
+   assert.deepEqual(await page.evaluate(()=>window.__enabledConsentOpacity),['1','1'],
+    'Consent buttons have full opacity as soon as they become interactive');
+  }finally{resumeHydration();}
+  await clean(f,[page]);checks.push('enabled consent buttons have full opacity immediately');
+ }
  {
   const f=await context({cookies:[{name:'__Host-blizhniy_cookie_notice',value:'v1'}]}),page=await f.ctx.newPage();
   const response=await page.goto(fixture.origin+'/o-proekte?q=private-query-sentinel#private-fragment');await ready(page);
@@ -126,6 +158,21 @@ try{
   await page.waitForLoadState('networkidle');assert.equal(f.requests.length,1);assert.deepEqual(await events(page),[]);await clean(f,[page]);checks.push('blocked provider leaves navigation working without retry loop');
  }
  await fixture.close();fixture=null;
+ {
+  fixture=await start(String(counterId),true);
+  const f=await context(),page=await f.ctx.newPage();
+  const response=await page.goto(fixture.origin+'/o-proekte');await ready(page);
+  assert.equal((await response.allHeaders())['cross-origin-embedder-policy'],'require-corp');
+  assert.equal((await response.allHeaders())['cross-origin-opener-policy'],'same-origin');
+  assert.equal(f.requests.length,0);
+  await page.getByRole('button',{name:'Принять все',exact:true}).click();
+  await until(()=>f.requests.length===1,'tag request under strict isolation');
+  assert.equal(f.requests[0].headers.referer,undefined);
+  await until(async()=>await count(page,'hit')===1,'CORS-only tag under strict isolation',7000);
+  assert.equal(await page.locator('#blizhniy-yandex-metrica').getAttribute('crossorigin'),'anonymous');
+  await clean(f,[page]);await fixture.close();fixture=null;
+  checks.push('strict isolation with a CORS-only tag and no analytics before consent');
+ }
  for(const id of ['', 'invalid-id']){
   fixture=await start(id);const f=await context({cookies:[{name:'__Host-blizhniy_analytics',value:'v1.granted'}]}),page=await f.ctx.newPage();
   const response=await page.goto(fixture.origin+'/o-proekte');await page.getByRole('button',{name:'Понятно',exact:true}).waitFor();await page.waitForLoadState('networkidle');

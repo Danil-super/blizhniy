@@ -5,6 +5,7 @@ import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {ListingDraftPhoto} from './listing-photo-contract';
 import {validProfileName} from './cabinet-field-validation.ts';
 import {specialistAbout,checkSpecialistApplicationForm} from './specialist-application-profile.ts';
+import {specialistTestShop} from './specialist-checkout-config';
 import {effectivePublicationStatusSql} from './publication-effective-status';
 import {resolveProfession,professionFormSql,ProfessionReferenceError} from './profession-reference';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
@@ -13,7 +14,7 @@ export class ServicePublicationCheckoutActiveError extends Error{constructor(){s
 export class ServicePublicationProfileNameError extends ServicePublicationInputError{
  constructor(){super();this.name='ServicePublicationProfileNameError';}
 }
-export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:typeof servicePublicationStatuses[number];paid:boolean;professionId?:string|null;
+export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:typeof servicePublicationStatuses[number];paid:boolean;professionId?:string|null;canRepeat?:true;
  createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
 type Row=Omit<ServicePublicationSnapshot,'form'|'photos'>&{form:unknown};
 const columns=`id,kind,${professionFormSql()} as form,profession_id as "professionId",revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,
@@ -32,14 +33,25 @@ export class PostgresServicePublicationStore{
   if(!validProfileName(profile?.name))throw new ServicePublicationProfileNameError();
   return parseServicePublicationForm('specialist',{...form,title:profile.name,description:specialistAbout(form),skills:null,experience:null,district:null,videoUrl:null,photoIds:[]});
  }
- private async snapshot(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,id:string):Promise<ServicePublicationSnapshot>{
+ private async snapshot(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,id:string,includeRepeat=false):Promise<ServicePublicationSnapshot>{
   const row=(await tx.query<Row>(`select ${columns} from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();const form=parseServicePublicationForm(kind,row.form);
   if(form.kind==='specialist'&&form.professionId&&form.professionId!==row.professionId)throw new ServicePublicationAccessError();
   const photos=(await tx.query<ListingDraftPhoto&{permitted:boolean}>(`select m.id,m.mime_type as "mimeType",m.width,m.height,m.size,(m.owner_id=$2 and m.state='ready') as permitted
    from app.service_publication_photos p join app.media_objects m on m.id=p.media_id where p.publication_id=$1 order by p.position limit 13`,[id,owner])).rows;
   if(photos.some(item=>!item.permitted)||photos.reduce((sum,item)=>sum+item.size,0)>maxListingMediaTotalSize||JSON.stringify(photoIds(form))!==JSON.stringify(photos.map(item=>item.id)))throw new ServicePublicationAccessError();
-  return{...row,form,photos:photos.map(({id,mimeType,width,height,size})=>({id,mimeType,width,height,size}))};
+  const shop=includeRepeat&&kind==='specialist'&&row.status==='expired'&&row.paid?specialistTestShop(owner):undefined;
+  const repeatInstalled=shop&&(await tx.query<{installed:boolean}>(`select exists(
+   select 1 from pg_trigger where tgrelid='app.payment_orders'::regclass and tgname='specialist_repeat_purchase_guard' and tgenabled='A'
+    and tgfoid=to_regprocedure('app.guard_specialist_repeat_purchase()')) as installed`)).rows[0]?.installed;
+  const canRepeat=repeatInstalled&&(await tx.query<{available:boolean}>(`select exists(select 1 from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id
+    join app.payment_fulfillments f on f.intent_id=i.id join app.specialist_checkout_terms terms on terms.intent_id=i.id
+    where o.owner_id=$1 and o.target_type='specialist' and o.target_id=$2 and o.status='succeeded'
+     and i.is_test and i.merchant_shop_id=$3 and i.tariff_id='specialist-publication'
+     and i.request_body::jsonb#>>'{metadata,publicationMode}'='specialist-account-test-v1'
+     and f.published_at=$4::timestamptz and f.expires_at=$5::timestamptz) as available`,
+   [owner,id,shop,row.publishedAt,row.expiresAt])).rows[0]?.available;
+  return{...row,form,...(canRepeat?{canRepeat:true as const}:{}),photos:photos.map(({id,mimeType,width,height,size})=>({id,mimeType,width,height,size}))};
  }
  private async references(tx:PostgresQueries,form:ServicePublicationForm,previous?:{id:string|null;name:string|null}){
   const lookup=async(value:string|null,sql:string)=>{if(!value)return null;const rows=(await tx.query<{id:string}>(sql,[value])).rows;
@@ -60,16 +72,21 @@ export class PostgresServicePublicationStore{
    select $1,item.id,(item.position-1)::integer from unnest($2::uuid[]) with ordinality as item(id,position)`,[id,ids]);
  }
  private async write<T>(work:()=>Promise<T>):Promise<T>{try{return await work();}catch(error){
-  if(error&&typeof error==='object'&&'code'in error&&['23503','23514'].includes(String(error.code)))throw new ServicePublicationInputError();throw error;}}
+  if(error&&typeof error==='object'&&'code'in error){
+   if(error.code==='PSF01')throw new ServicePublicationCheckoutActiveError();
+   if(error.code==='23503'||error.code==='23514')throw new ServicePublicationInputError();
+  }
+  throw error;
+ }}
  /** Trusted composition only; the caller authorizes the same transaction's owner or current administrator. */
- async inspectInTransaction(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,publicationId:unknown,expectedRevision:unknown){
+ async inspectInTransaction(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,publicationId:unknown,expectedRevision:unknown,includeRepeat=false){
   kindOf(kind);const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision);
   const row=(await tx.query<{revision:string;referencesActive:boolean}>(`select s.revision::text as revision,
    (s.kind='marquee' or (c.id is not null and (s.kind<>'specialist' or p.active is true))) as "referencesActive"
    from app.service_publications s left join app.cities c on c.id=s.city_id left join app.specialist_categories p on p.id=s.profession_id
    where s.id=$1 and s.author_id=$2 and s.kind=$3 and s.deleted_at is null for update of s`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision)throw new ServicePublicationConflictError();
-  const snapshot=await this.snapshot(tx,owner,kind,id),issues=this.options.specialistProfileIdentity&&kind==='specialist'?checkSpecialistApplicationForm(snapshot.form):checkServicePublicationForm(snapshot.form);
+  const snapshot=await this.snapshot(tx,owner,kind,id,includeRepeat),issues=this.options.specialistProfileIdentity&&kind==='specialist'?checkSpecialistApplicationForm(snapshot.form):checkServicePublicationForm(snapshot.form);
   if(!row.referencesActive)issues.push('Выберите действующие город и профессию.');return{snapshot,issues};
  }
  create(token:string,owner:string,kind:ServicePublicationKind,creationKey:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
@@ -84,8 +101,8 @@ export class PostgresServicePublicationStore{
   const existing=inserted??(await tx.query<{id:string}>("select id from app.service_publications where author_id=$1 and kind=$2 and (creation_key=$3 or kind='specialist') and deleted_at is null",[owner,kind,key])).rows[0];
   if(!existing)throw new ServicePublicationAccessError();if(inserted)await this.photos(tx,inserted.id,ids);return this.snapshot(tx,owner,kind,existing.id);
  }));}
- read(token:string,owner:string,kind:ServicePublicationKind,publicationId:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new ServicePublicationAccessError();return this.snapshot(tx,owner,kindOf(kind),parseListingDraftId(publicationId));
+ read(token:string,owner:string,kind:ServicePublicationKind,publicationId:unknown,includeRepeat=false){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
+  if(user.id!==owner)throw new ServicePublicationAccessError();return this.snapshot(tx,owner,kindOf(kind),parseListingDraftId(publicationId),includeRepeat);
  });}
  readIntent(token:string,owner:string,kind:ServicePublicationKind,creationKey:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);

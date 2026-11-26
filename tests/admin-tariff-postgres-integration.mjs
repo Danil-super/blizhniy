@@ -95,5 +95,33 @@ test('admin tariffs use atomic exact-price CAS and receipts through EXECUTE-only
    await owner.query('begin read only');assert.deepEqual(await readRefundSchema(owner),before);await owner.query('rollback');
    assert.equal((await owner.query('select count(*)::int n from blizhniy_meta.migrations')).rows[0].n,59);
   });
+  await suite.test('hosted tariff authority rejects out-of-scope or unusable terms without writing a receipt',async()=>{
+   const migration=await readFile(new URL('../database/candidates/0088-hosted-tariff-policy.sql',import.meta.url),'utf8');
+   await owner.query(migration);
+   const hostedSignature=signature.replace('.tariff_access(','.hosted_tariff_access(');
+   await owner.query('revoke execute on function '+signature+' from blizhniy_user_operator;grant execute on function '+hostedSignature+' to blizhniy_user_operator');
+   await assert.rejects(list(),{code:'TARIFF_UNAVAILABLE'});
+   const sql='select app_admin.hosted_tariff_access($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as result';
+   const call=async(action,target=null,id=null,revision=null,name=null,price=null,days=null,active=null,reason=null)=>
+    (await operator.query(sql,[hash(token),actor,action,target,id,revision,name,price,days,active,reason])).rows[0].result;
+   const rows=(await call('list')).tariffs;
+   const listing=rows.find(row=>row.action==='listing_publication'),response=rows.find(row=>row.action==='job_response'),fair=rows.find(row=>row.action==='fair_participation');
+   assert.ok(listing&&response&&fair);
+   const changeHosted=(row,id,price,days,active,name=row.name)=>call('change',row.id,id,row.revision,name,price,days,active,'Проверка условий тарифа');
+   for(const [row,price,days,active,name] of [
+    [listing,'0.00',30,true], [listing,'199.00',null,true], [response,'199.00',30,true],
+    [fair,'199.00',null,true], [listing,'199.00',30,true,'Другое название'],
+   ]){
+    const id=randomUUID();
+    await assert.rejects(changeHosted(row,id,price,days,active,name),{code:'PTA09'});
+    assert.equal((await call('recover',row.id,id)).receipt,null);
+   }
+   assert.deepEqual((await call('list')).tariffs,rows);
+   const id=randomUUID(),changed=await changeHosted(listing,id,'249.51',31,true);
+   assert.deepEqual([changed.receipt.next.price,changed.receipt.next.durationDays,changed.receipt.next.active],['249.51',31,true]);
+   assert.deepEqual((await call('recover',listing.id,id)).receipt,changed.receipt);
+   assert.deepEqual((await changeHosted(listing,id,'249.51',31,true)).receipt,changed.receipt);
+   await owner.query('begin read only');assert.deepEqual(await readRefundSchema(owner),before);await owner.query('rollback');
+  });
  }finally{await ownerDb?.close();await operator?.end();await owner?.end();if(container){const m=JSON.parse(await docker(['inspect',container]))[0];assert.equal(m.Config.Labels[label],name);await docker(['rm','--force',container]);}}
 });

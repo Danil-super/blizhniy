@@ -14,3 +14,13 @@ test('cabinet denies unknown status, unsafe shape, noncanonical values and forei
  assert.throws(()=>parseListingCabinetPage({...page({}),nextCursor:{id,updatedAt:'2026-10-20T00:00:00.000000Z'}}));
  assert.throws(()=>parseListingCabinetPage({...page({}),items:[item,item]}));
 });
+test('cabinet round-trips optional paid periods with exact UTC precision',()=>{
+ const period={expiresAt:'2026-11-25T21:00:00.000001Z',active:false};
+ const page=placement=>({items:[{...item,card:{...item.card,status:'expired',placement}}],nextCursor:null,workflow:'postmoderation'});
+ assert.deepEqual(parseListingCabinetPage(page(period)),page(period));
+ assert.deepEqual(parseListingCabinetPage(page(null)),page(null));
+ for(const bad of [{...period,active:'false'},{...period,expiresAt:'2026-02-30T21:00:00.000001Z'},
+  {...period,expiresAt:'2026-11-26T00:00:00+03:00'},{...period,ownerId:id},undefined]){
+  assert.throws(()=>parseListingCabinetPage(page(bad)));
+ }
+});

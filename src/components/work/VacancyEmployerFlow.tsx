@@ -1,7 +1,8 @@
 "use client";
 import {useRef,useState,type ReactNode} from 'react';
 import {Field} from '@/components/FormPanel';
-import type {VacancyEmployerDefaults} from '@/components/VacancyEmployerFields';
+import {VacancyEmployerField} from '@/components/VacancyEmployerFields';
+import type {VacancyEmployerDefaults,VacancyEmployerPrefill} from '@/lib/vacancy-employer-defaults';
 import {checkVacancyEmployer} from '@/lib/vacancy-checkout-validation';
 import type {VacancyEmployerType} from '@/lib/vacancy-requisites';
 
@@ -9,7 +10,7 @@ const types=[{id:'organization',label:'Организация',hint:'Юриди�
  {id:'ip',label:'ИП',hint:'Индивидуальный предприниматель: ФИО, ИНН и контакты.'},
  {id:'person',label:'Частное лицо',hint:'Частный работодатель: имя и телефон.'}] as const;
 /** Keep both steps mounted: Back/type changes must not erase entered fields or photos. */
-export function VacancyEmployerFlow({defaults,children,disabled=false,actions}:{defaults?:VacancyEmployerDefaults;children:ReactNode;disabled?:boolean;actions?:ReactNode}){
+export function VacancyEmployerFlow({defaults,prefill,children,disabled=false,actions}:{defaults?:VacancyEmployerDefaults;prefill?:VacancyEmployerPrefill;children:ReactNode;disabled?:boolean;actions?:ReactNode}){
  const initial=types.find(item=>item.id===defaults?.employerType)?.id??null;
  const [type,setType]=useState<VacancyEmployerType|null>(initial),[step,setStep]=useState(1),[error,setError]=useState<string|null>(null);
  const refs=useRef<Partial<Record<VacancyEmployerType,HTMLFieldSetElement|null>>>({});
@@ -30,22 +31,22 @@ export function VacancyEmployerFlow({defaults,children,disabled=false,actions}:{
     onClick={()=>{setType(item.id);setError(null);}} className={`rounded-xl border p-3 text-left ${type===item.id?'border-blue-500 bg-blue-50 ring-2 ring-blue-100':'border-slate-200 bg-white'}`}>
     <span className="block font-bold">{item.label}</span><span className="mt-1 block text-xs text-slate-600">{item.hint}</span></button>)}</div>
    {!type&&<p className="text-sm text-slate-600">Выберите тип работодателя — ниже появятся необходимые поля.</p>}
-   {types.map(item=>{const d=initial===item.id?defaults:undefined;return <fieldset key={item.id} ref={node=>{refs.current[item.id]=node;}}
+   {types.map(item=>{const d=initial===item.id?defaults:undefined,saved=prefill?.[item.id];return <fieldset key={item.id} ref={node=>{refs.current[item.id]=node;}}
     disabled={disabled||type!==item.id} className={type===item.id?'grid min-w-0 gap-3 sm:grid-cols-2':'hidden'}
     onInvalidCapture={()=>setStep(1)}>
     <legend className="mb-3 font-semibold">{item.label}: реквизиты и контакты</legend>
     <input type="hidden" name="employerType" value={item.id}/>
-    <Field name="organization" label={item.id==='person'?'Имя':item.id==='ip'?'ФИО ИП':'Название организации'} defaultValue={d?.organization} minLength={2} maxLength={item.id==='person'?60:120} required/>
+    <VacancyEmployerField name="organization" label={item.id==='person'?'Имя':item.id==='ip'?'ФИО ИП':'Название организации'} defaultValue={d?.organization} profileValue={saved?.organization} minLength={2} maxLength={item.id==='person'?60:120} required/>
     {item.id!=='person'&&<>
-     <Field name="inn" label="ИНН" defaultValue={d?.inn} inputMode="numeric" pattern={item.id==='ip'?'[0-9]{12}':'[0-9]{10}'} maxLength={item.id==='ip'?12:10} title={item.id==='ip'?'12 цифр ИНН':'10 цифр ИНН'} required/>
-     <Field name={item.id==='ip'?'ogrnip':'ogrn'} label={item.id==='ip'?'ОГРНИП (если есть)':'ОГРН (если есть)'} defaultValue={item.id==='ip'?d?.ogrnip:d?.ogrn}
+     <VacancyEmployerField name="inn" label="ИНН" defaultValue={d?.inn} profileValue={saved?.inn} inputMode="numeric" pattern={item.id==='ip'?'[0-9]{12}':'[0-9]{10}'} maxLength={item.id==='ip'?12:10} title={item.id==='ip'?'12 цифр ИНН':'10 цифр ИНН'} required/>
+     <VacancyEmployerField name={item.id==='ip'?'ogrnip':'ogrn'} label={item.id==='ip'?'ОГРНИП (если есть)':'ОГРН (если есть)'} defaultValue={item.id==='ip'?d?.ogrnip:d?.ogrn} profileValue={item.id==='ip'?saved?.ogrnip:saved?.ogrn}
       inputMode="numeric" pattern={item.id==='ip'?'[0-9]{15}':'[0-9]{13}'} maxLength={item.id==='ip'?15:13}/>
-     <Field name="contactPerson" label="Контактное лицо" defaultValue={d?.contactPerson} minLength={2} maxLength={80} required/>
+     <VacancyEmployerField name="contactPerson" label="Контактное лицо" defaultValue={d?.contactPerson} profileValue={saved?.contactPerson} minLength={2} maxLength={80} required/>
     </>}
-    <Field name="phone" label="Телефон" defaultValue={d?.phone} required/>
+    <VacancyEmployerField name="phone" label="Телефон" defaultValue={d?.phone} profileValue={saved?.phone} required/>
     {item.id==='person'?<Field name="messengerUrl" label="WhatsApp / Telegram (необязательно)" defaultValue={d?.messengerUrl} placeholder="@username или https://…" maxLength={500}/>
-     :<Field name="emailOrMessenger" label="Email / мессенджер" defaultValue={d?.email||d?.messengerUrl} required maxLength={254}/>}
-    {item.id!=='person'&&<Field name="website" label="Сайт" defaultValue={d?.website} type="url" placeholder="https://…" maxLength={500}/>}
+     :<VacancyEmployerField name="emailOrMessenger" label="Email / мессенджер" defaultValue={d?.email||d?.messengerUrl} profileValue={saved?.email} required maxLength={254}/>}
+    {item.id!=='person'&&<VacancyEmployerField name="website" label="Сайт" defaultValue={d?.website} profileValue={saved?.website} type="url" placeholder="https://…" maxLength={500}/>}
    </fieldset>;})}
    {error&&<p role="alert" className="text-sm text-rose-700">{error}</p>}
    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">Контакты не показываются в публичной карточке.</p>

@@ -41,7 +41,7 @@ test('moderation reads and submissions belong to the displayed revision', async 
           Object.assign(window.modules, {
             'next/link': {default: 'a'},
             '@/components/listings/ListingWorkflowProvider': {useSpecialistCheckout: () => true, useServiceCheckout: () => false},
-            '@/components/listings/PrivateListingCheckout': {PrivateListingCheckout: () => 'Оплатить анкету'},
+            '@/components/listings/PrivateListingCheckout': {PrivateListingCheckout: ({repeatSpecialist}) => window.modules.react.createElement('button', null, repeatSpecialist ? 'Разместить повторно' : 'Оплатить анкету')},
             '@/lib/client-service-publications': {serviceModeration: {
               read: (...args) => request('read', ...args), submit: (...args) => request('submit', ...args)
             }},
@@ -52,8 +52,10 @@ test('moderation reads and submissions belong to the displayed revision', async 
         await page.evaluate(strict => {
           const {createElement: h, StrictMode, Fragment} = window.modules.react;
           const root = window.modules['react-dom/client'].createRoot(document.querySelector('main'));
-          window.showRevision = revision => root.render(h(strict ? StrictMode : Fragment, null,
-            h(window.modules.component.ServiceModerationStatus, {owner: 'owner', snapshot: {kind: 'specialist', id: 'profile', revision, paid: false}})));
+          window.showRevision = (revision, change = {}) => root.render(h(strict ? StrictMode : Fragment, null,
+            h(window.modules.component.ServiceModerationStatus, {owner: 'owner', snapshot: {
+              kind: 'specialist', id: 'profile', revision, status: 'draft', paid: false, publishedAt: null, expiresAt: null, ...change
+            }})));
           window.showRevision('1');
         }, strict);
         if (strict) {
@@ -77,6 +79,14 @@ test('moderation reads and submissions belong to the displayed revision', async 
         }
         await page.getByText('Оплатить анкету').waitFor({timeout: 3000});
         assert.equal(await page.getByRole('button', {name: 'Обновить статус модерации'}).isEnabled(), true);
+        await page.evaluate(revision => window.showRevision(revision, {status: 'expired', paid: true,
+          publishedAt: '2026-10-24T12:00:00Z', expiresAt: '2026-11-23T12:00:00Z'}), strict ? '1' : '2');
+        await page.getByText('Срок размещения истёк.', {exact: true}).waitFor({timeout: 3000});
+        assert.equal(await page.getByText('Разместить повторно').count(), 0);
+        await page.evaluate(revision => window.showRevision(revision, {status: 'expired', paid: true, canRepeat: true,
+          publishedAt: '2026-10-24T12:00:00Z', expiresAt: '2026-11-23T12:00:00Z'}), strict ? '1' : '2');
+        await page.getByText('Разместить повторно', {exact: true}).waitFor({timeout: 3000});
+        assert.equal(await page.getByText('Оплатить анкету').count(), 0);
       } finally { await page.close(); }
     });
   } finally { await browser.close(); }

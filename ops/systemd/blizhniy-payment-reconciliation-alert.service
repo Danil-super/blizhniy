@@ -1,0 +1,25 @@
+[Unit]
+Description=Send Blizhniy TEST reconciliation blockage notifications
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/blizhniy/reconciliation-monitor/monitor.env
+
+[Service]
+Type=oneshot
+User=blizhniy-mail
+Group=blizhniy-mail
+WorkingDirectory=/opt/blizhniy-reconciliation-monitor
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/reconciliation-monitor/monitor.env
+StateDirectory=blizhniy-reconciliation-monitor
+StateDirectoryMode=0700
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /opt/blizhniy-reconciliation-monitor/scripts/payment-reconciliation-alert.mjs
+TimeoutStartSec=90
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

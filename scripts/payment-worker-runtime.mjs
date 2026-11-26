@@ -16,8 +16,11 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
  try {
   const env={...environment};
   const publicationTest=env.BLIZHNIY_PAYMENT_WORKER==='account-publication-test';
+  const placement=env.BLIZHNIY_DB_PLACEMENT;
+  const databaseHost=placement==='same-host'?'127.0.0.1':'17e86f80f26733d39ef4b84d.twc1.net';
   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!['queued-test','account-test','account-publication-test'].includes(env.BLIZHNIY_PAYMENT_WORKER)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
-   env.BLIZHNIY_DB_HOST!=='17e86f80f26733d39ef4b84d.twc1.net'||env.BLIZHNIY_DB_PORT!=='5432'||env.BLIZHNIY_DB_NAME!=='blizhniy_prod'||
+   (placement!==undefined&&placement!=='same-host')||env.BLIZHNIY_DB_HOST!==databaseHost||
+   env.BLIZHNIY_DB_PORT!=='5432'||env.BLIZHNIY_DB_NAME!=='blizhniy_prod'||
    env.BLIZHNIY_DB_USER!=='blizhniy_payment_reconciler'||!env.BLIZHNIY_DB_PASSWORD||env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||
    !env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
    [env,process.env].some(source=>Object.keys(source).some(key=>key.startsWith('PG')))||process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
@@ -40,8 +43,9 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
   let worker=placementWorker,closing;
   return{get worker(){return worker;},preflight:async()=>{
    worker=placementWorker;
-   const responses=await verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})});
-   if(responses===true)worker=createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,specialistAccountTest||undefined,true);
+   let marqueeQueue=false;
+   const responses=await verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})},()=>{marqueeQueue=true;});
+   if(responses===true)worker=createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,specialistAccountTest||undefined,true,...(marqueeQueue?[true]:[]));
   },
    close:()=>closing??=db.close()};
  }catch {

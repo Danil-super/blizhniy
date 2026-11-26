@@ -39,3 +39,12 @@ test('a well-formed but invalid second actor session fails read-only preflight b
  const db={readTransaction:work=>work({query:async(sql,values)=>({rows:sql.includes('current_database')?[{database:'blizhniy_erasure_test',readonly:'on',isolation:'repeatable read'}]:[{allowed:++checks===1&&values[1]===ordered[0].actorId}]})}),transaction:async()=>{writes++;}};
  const before=process.env.NODE_ENV;process.env.NODE_ENV='test';try{await assert.rejects(reapplyBasicErasureLedger(db,document,key,checkpoint(document),new Map(ordered.map(row=>[row.actorId,'a'.repeat(64)])),'0'.repeat(64)));assert.equal(checks,2);assert.equal(writes,0);}finally{if(before===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=before;}
 });
+test('version 3 authenticates its notification profile and exact media list',()=>{
+ const row={...record(),mediaIds:[randomUUID()]};
+ const sealed=sealBasicErasureLedger([row],key,sourceId,3);
+ assert.equal(verifyBasicErasureLedger(sealed,key,checkpoint(sealed)).version,3);
+ const downgraded=sealed.replace('"version":3','"version":2');
+ assert.throws(()=>verifyBasicErasureLedger(downgraded,key,checkpoint(downgraded)),{name:'ErasureLedgerValidationError'});
+ assert.throws(()=>sealBasicErasureLedger([record()],key,sourceId,3));
+ assert.throws(()=>sealBasicErasureLedger([row],key,sourceId,4));
+});

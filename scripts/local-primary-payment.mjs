@@ -82,14 +82,14 @@ async function create(context,targetType){
  }
  if(targetType==='application')return{store,identity,verification,fulfillment,handler:load('application-checkout-http').createApplicationCheckoutHandler(canonical,{store,limiter,dispatch:async(token,owner,id)=>{
   const binding=await recoverExistingProvider(token,owner,id)??await store.authorizeDispatch(token,owner,id);
-  const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
+  const result=await dispatch.dispatch(binding,attempt=>store.authorizeDispatch(token,owner,id,true,attempt));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
  }})};
  if(service)return{store,identity,verification,fulfillment,handler:load('service-checkout-http').createServiceCheckoutHandler({origin:canonical},targetType,{store,limiter,dispatch:async(token,owner,id)=>{
-  const binding=await recoverExistingProvider(token,owner,id)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
+  const binding=await recoverExistingProvider(token,owner,id)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,attempt=>store.authorizeDispatch(token,owner,id,true,attempt));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
  }})};
  const handler=load('listing-checkout-http').createListingCheckoutHandler({origin:canonical},()=>({store,limiter,payments:{
   preview:(...args)=>store.preview(...args),
-  dispatch:async(token,owner,id)=>{const binding=(targetType==='specialist'?await recoverExistingProvider(token,owner,id):null)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
+  dispatch:async(token,owner,id)=>{const binding=(targetType==='specialist'?await recoverExistingProvider(token,owner,id):null)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,attempt=>store.authorizeDispatch(token,owner,id,true,attempt));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
  }}));
  return{handler,store,identity,verification,fulfillment};
 }

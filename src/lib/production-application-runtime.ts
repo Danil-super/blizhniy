@@ -2,11 +2,8 @@ import {authJson} from './auth-http';import {readProductionAuthConfig} from './p
 import {getProductionAccountDatabase} from './production-auth-runtime';import {PostgresApplicationStore} from './postgres-applications';
 import {createProductionApplicationHandler} from './production-application-http';
 import {readPostmoderationEnabled} from './listing-workflow-config';
-export function readApplicationContactViewsMode(env:NodeJS.ProcessEnv=process.env):boolean{
- const value=env.BLIZHNIY_APPLICATION_CONTACT_VIEWS;
- if(value!==undefined&&value!=='enabled'&&value!=='disabled')throw Error('Invalid application contact view policy');
- return value==='enabled';
-}
+import {readApplicationContactViewsMode} from './application-contact-views-config';
+export {readApplicationContactViewsMode};
 export async function handleProductionApplicationRequest(request:Request){
  try{
   const config=readProductionAuthConfig();if(!config)return authJson({error:{code:'NOT_FOUND'}},404);

@@ -1,3 +1,4 @@
+import {readCheckoutCancellationPolicy} from './checkout-cancellation-policy';
 import {authJson} from './auth-http';
 import {readProductionAuthConfig} from './production-auth-config';
 import {getProductionAccountDatabase} from './production-auth-runtime';
@@ -11,7 +12,7 @@ export async function handleProductionWorkPublicationRequest(request:Request){
    const {db,limiter}=await getProductionAccountDatabase(config);
    await db.query('select id,author_id,kind,creation_key,form,revision,status,is_paid,city_id,profession_id,created_at,updated_at,published_at,expires_at,deleted_at from app.work_publications limit 0');
    await db.query('select publication_id,media_id,position from app.work_publication_photos limit 0');
-   return{store:new PostgresWorkPublicationStore(db),limiter};
+   return{store:new PostgresWorkPublicationStore(db,request.headers.get('x-blizhniy-active-checkout')==='1'?readCheckoutCancellationPolicy():null),limiter};
   })(request);
  }catch{return authJson({error:{code:'WORK_PUBLICATIONS_UNAVAILABLE'}},503);}
 }

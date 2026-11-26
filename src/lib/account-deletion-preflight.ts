@@ -3,7 +3,8 @@ import type {PostgresQueries} from './postgres';
 import {readAccountListingViews} from './listing-view-history.ts';
 
 export const deletionPreflightFields=['profiles','sessions','authRecords','publications','applications','bookings','listingViews','media','mail','payments','refunds','compensations','externalAudit','caseAudit',
- 'openPayments','openRefunds','openCompensations','openBookings','openUploads','openMail'] as const;
+ 'notifications','businessMail','pushSubscriptions','pushDeliveries',
+ 'openPayments','openRefunds','openCompensations','openBookings','openUploads','openMail','openPush'] as const;
 type Field=typeof deletionPreflightFields[number];
 type Counts=Record<Field,string>;
 export class DeletionPreflightUnavailableError extends Error{constructor(){super('Deletion preflight unavailable');this.name='DeletionPreflightUnavailableError';}}
@@ -11,7 +12,7 @@ export class DeletionPreflightCaseError extends Error{constructor(){super('Delet
 function count(value:unknown):string{
  if(typeof value!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(value)||BigInt(value)>BigInt('9223372036854775807'))throw new DeletionPreflightUnavailableError();return value;
 }
-const operations={openPayments:'PAYMENT_UNSETTLED',openRefunds:'REFUND_UNSETTLED',openCompensations:'COMPENSATION_UNSETTLED',openBookings:'BOOKING_OPEN',openUploads:'UPLOAD_UNSETTLED',openMail:'MAIL_IN_FLIGHT'} as const;
+const operations={openPayments:'PAYMENT_UNSETTLED',openRefunds:'REFUND_UNSETTLED',openCompensations:'COMPENSATION_UNSETTLED',openBookings:'BOOKING_OPEN',openUploads:'UPLOAD_UNSETTLED',openMail:'MAIL_IN_FLIGHT',openPush:'PUSH_IN_FLIGHT'} as const;
 type BlockerCode=typeof operations[keyof typeof operations]|'PRIVILEGED_ACCOUNT';
 const retained={payments:'FINANCIAL_HISTORY',refunds:'REFUND_HISTORY',compensations:'COMPENSATION_HISTORY',applications:'CROSS_PARTY_APPLICATIONS',bookings:'BOOKING_HISTORY',listingViews:'LISTING_VIEW_HISTORY',publications:'PUBLICATION_DATA',media:'MEDIA_AND_REFERENCE_HISTORY',externalAudit:'IMMUTABLE_AUDIT'} as const;
 /** Advisory routing only. A count snapshot is never permission to erase or an assigned retention policy. */
@@ -38,7 +39,9 @@ const optionalPairs=[
  ['app.application_compensation_cases','app.application_compensation_refunds'],
  ['app.media_retirement_requests','app.media_retirement_completions'],
 ] as const;
-const optionalRelations=[...optionalPairs.flat(),...optionalAudit.map(([table])=>table),'app_stats.listing_views'];
+const businessMailTable='notification_delivery.business_email',pushSubscriptionsTable='app_push.subscriptions',pushDeliveriesTable='app_push.deliveries';
+const optionalRelations=[...optionalPairs.flat(),...optionalAudit.map(([table])=>table),'app_stats.listing_views',
+ businessMailTable,pushSubscriptionsTable,pushDeliveriesTable];
 
 function factsSql(installed:ReadonlySet<string>){
  const [refunds,compensations,mediaRetirement]=optionalPairs.map(([first,second])=>{
@@ -46,6 +49,11 @@ function factsSql(installed:ReadonlySet<string>){
   if(available!==installed.has(second))throw new DeletionPreflightUnavailableError();
   return available;
  });
+ const pushSubscriptions=installed.has(pushSubscriptionsTable);
+ if(installed.has(pushDeliveriesTable)&&!pushSubscriptions)throw new DeletionPreflightUnavailableError();
+ const deliveries=(table:string)=>installed.has(table)
+  ?'select d.state from '+table+' d join owned_notifications n on n.id=d.notification_id'
+  :'select null::text as state where false';
  const extraAudit=optionalAudit.filter(([table])=>installed.has(table))
   .map(([table,predicate])=>`+(select count(*) from ${table} where ${predicate})`).join('');
  return `with owned_targets as (
@@ -69,7 +77,10 @@ function factsSql(installed:ReadonlySet<string>){
   or c.application_id in(select id from related_applications)`:'select null::uuid as payment_intent_id where false'}
 ), related_bookings as (
  select b.* from app.booking_requests b where b.guest_id=$1 or b.host_id=$1 or b.cancelled_by=$1 or b.listing_id in(select id from owned_targets where target_type='listing')
-), owned_media as (select id,state from app.media_objects where owner_id=$1)
+), owned_media as (select id,state from app.media_objects where owner_id=$1),
+owned_notifications as(select id from app.notifications where user_id=$1),
+business_mail as(${deliveries(businessMailTable)}),
+push_deliveries as(${deliveries(pushDeliveriesTable)})
 select
  (select count(*)::text from app.cabinet_profiles where user_id=$1) as profiles,
  (select count(*)::text from app.sessions where user_id=$1) as sessions,
@@ -78,6 +89,10 @@ select
   (select count(*) from app.telegram_phone_bindings where user_id=$1))::text as "authRecords",
  (select count(*)::text from owned_targets) as publications,(select count(*)::text from related_applications) as applications,
  (select count(*)::text from related_bookings) as bookings,(select count(*)::text from owned_media) as media,
+ (select count(*)::text from owned_notifications) as notifications,
+ (select count(*)::text from business_mail) as "businessMail",
+ ${pushSubscriptions?'(select count(*)::text from app_push.subscriptions d join app.sessions s on s.token_hash=d.session_hash where s.user_id=$1)':"'0'::text"} as "pushSubscriptions",
+ (select count(*)::text from push_deliveries) as "pushDeliveries",
  (select count(*)::text from app.mail_outbox where user_id=$1) as mail,(select count(*)::text from related_payments) as payments,
  (select count(*)::text from related_refunds) as refunds,(select count(*)::text from related_compensations) as compensations,
  ((select count(*) from app.listing_blocks where blocked_by=$1)+(select count(*) from app.listing_moderation where decided_by=$1)+
@@ -95,7 +110,9 @@ select
  (select count(*)::text from related_bookings where status in ('pending','accepted')) as "openBookings",
  (select count(*)::text from owned_media m where state='pending'
   ${mediaRetirement?'and not exists(select 1 from app.media_retirement_completions c where c.media_id=m.id)':''}) as "openUploads",
- (select count(*)::text from app.mail_outbox where user_id=$1 and state in ('reserved','sending','unknown')) as "openMail"`;
+ ((select count(*) from app.mail_outbox where user_id=$1 and state in ('reserved','sending','unknown'))+
+  (select count(*) from business_mail where state in ('sending','unknown')))::text as "openMail",
+ (select count(*)::text from push_deliveries where state in ('sending','unknown')) as "openPush"`;
 }
 
 /** Caller supplies a bounded, owned-local repeatable-read transaction. No writes or session touching. */

@@ -7,6 +7,7 @@ import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
 import {getMediaRetentionMigration} from './media-retention-release.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
+import {assertHostedRefundRelease,getHostedRefundReleasePlan} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_refund_worker',locks=['users','payment_checkout_intents','payment_orders'];
 const suffix=['0033-account-deletion.sql','0034-checkout-edit-fence.sql','0035-application-contact-views.sql','0036-placement-refund-reservations.sql','0037-refund-requests.sql','0038-refund-journal.sql','0039-refund-dispatch.sql','0040-placement-refund-effects.sql','0041-booking-lifecycle.sql','0042-placement-refund-approvals.sql','0043-application-compensation-cases.sql','0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql','0049-application-compensation-queue.sql','0050-application-compensation-discovery.sql','0051-refund-recovery.sql','0052-placement-refund-queue.sql','0053-application-compensation-lease.sql','0054-refund-worker-locks.sql'];
@@ -48,8 +49,10 @@ function journal(schema=54){return[...getBootstrapPlan({includeListingContactMet
 }),...(schema>=58?[getMediaRetentionMigration()]:[]),...(schema===60?[getSpecialistCheckoutMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
 
 export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58,60].includes(schema))throw Error('Invalid refund database');
- return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
+ const hosted=[75,76,78,79,80,81,82,83,84,87].includes(schema);
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(hosted&&localPrimary)||!validDatabase(database)||![54,55,56,57,58,60,75,76,78,79,80,81,82,83,84,87].includes(schema))throw Error('Invalid refund database');
+ const expected=hosted?getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256})):journal(schema);
+ return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:expected,
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
    ...functions.map(signature=>`grant execute on function ${signature} to ${role}`)]};
@@ -59,11 +62,11 @@ export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}=
  * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
  * No managed membership exception, production runtime wiring or automatic activation.
  */
-export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrimary=false}={}){
+export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrimary=false,hostedRefunds=false}={}){
  try{
-  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
-  const expectedJournal=journal();
+  if(!validDatabase(database)||typeof localPrimary!=='boolean'||typeof hostedRefunds!=='boolean'||(localPrimary&&(hostedRefunds||database!=='blizhniy_prod'))||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
   await db.transaction(async tx=>{
+   if(hostedRefunds)await tx.query('set transaction isolation level repeatable read');
    await tx.query("set local statement_timeout='5s'");
    await tx.query("set local lock_timeout='1s'");
    await tx.query('set local search_path=pg_catalog');
@@ -79,9 +82,16 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrim
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
-   if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=55?journal(schema):expectedJournal))throw Error('Invalid refund journal');
-   await assertRefundSchema(tx,schema,{localPrimary});
+   if(hostedRefunds){
+    const hostedSchema=await assertHostedRefundRelease(tx,actualJournal);
+    if(merchant.marqueeRefunds!==undefined&&merchant.marqueeRefunds!==(hostedSchema>=78))throw Error('Marquee refund configuration does not match schema');
+    if(merchant.specialistRefunds!==undefined&&merchant.specialistRefunds!==(hostedSchema>=80))throw Error('Specialist refund configuration does not match schema');
+   }
+   else{
+    const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
+    if(JSON.stringify(actualJournal)!==JSON.stringify(journal(schema)))throw Error('Invalid refund journal');
+    await assertRefundSchema(tx,schema,{localPrimary});
+   }
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

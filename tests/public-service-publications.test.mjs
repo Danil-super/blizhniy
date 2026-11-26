@@ -6,7 +6,9 @@ const row=kind=>({id,kind,form:parseServicePublicationForm(kind,{title:'Публ
  ...(kind==='marquee'?{href:'https://example.invalid/'}:{description:'Подробное описание синтетического материала.',cityName:'Краснодар',contactPhone:'+79990000000',email:'private@example.invalid',messengerUrl:'@private_fixture',address:'Приватная улица',latitude:45.123456,longitude:39.123456,showExactAddress:false,photoIds:[photo],
  ...(kind==='specialist'?{professionName:'Сантехник',price:'1250.50',skills:'Монтаж',experience:'5 лет'}:{category:'Посуда',comment:'Приватный комментарий'})})}),mediaIds:kind==='marquee'?[]:[photo],status:'published',paid:true,createdAt:'2026-10-01T00:00:00.000001Z',publishedAt:'2026-10-17T00:00:00.000001Z',expiresAt:'2026-10-19T00:00:00.000001Z'});
 test('public service DTOs include exact domain fields and local photo routes, never private contacts or comments',()=>{
- const specialist=mapPublicServicePublication(row('specialist'),now),fair=mapPublicServicePublication(row('fair'),now),marquee=mapPublicServicePublication(row('marquee'),now);
+ const specialist=mapPublicServicePublication(row('specialist'),now),fair=mapPublicServicePublication(row('fair'),now);
+ const {publishedAt,expiresAt,...marquee}=mapPublicServicePublication(row('marquee'),now);
+ assert.equal(publishedAt,row('marquee').publishedAt);assert.equal(expiresAt,row('marquee').expiresAt);
  assert.equal(specialist.name,'Публичный синтетический материал');assert.equal(specialist.price,'от 1 250,50 ₽');assert.equal(specialist.skills,'Монтаж');
  assert.deepEqual(specialist.images,[`/api/service-publications/${id}/photos/${photo}`]);assert.deepEqual(fair.productPhotos,specialist.images);
  assert.equal(fair.category,'Посуда');assert.equal(fair.phone,'');assert.equal(fair.email,'');assert.deepEqual(marquee,{id,text:'Публичный синтетический материал',href:'https://example.invalid/'});

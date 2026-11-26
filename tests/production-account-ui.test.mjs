@@ -106,6 +106,7 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     '@/lib/trusted-proxy-ip': trustedProxy,
     '@/lib/telegram-phone-config': load('src/lib/telegram-phone-config.ts', {}, {process:{env:environment},URL}),
     '@/components/phone/PhonePlacementProvider': {PhonePlacementProvider:({children})=>children},
+    '@/components/payments/PlacementReturnNotice': {PlacementReturnNoticeProvider:({children})=>children},
     '@/lib/listing-workflow-config': load('src/lib/listing-workflow-config.ts', {}, {process:{env:environment},URL}),
     '@/lib/work-owner-actions-contract': {readWorkOwnerActionsEnabled:()=>false},
     '@/lib/placement-renewal-config': {readPlacementRenewalsEnabled:()=>false},

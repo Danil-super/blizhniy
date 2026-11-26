@@ -161,7 +161,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
  }finally{await db.close();}
 }
 
-function provider(item,operationId,shop){
+export function provider(item,operationId,shop){
  let posts=0;const refundId=randomUUID(),refund={id:refundId,payment_id:item.providerPaymentId,amount:{value:item.amount,currency:'RUB'},status:'succeeded',created_at:new Date().toISOString(),metadata:{localRefundId:operationId,localPaymentId:item.id}};
  return{posts:()=>posts,fetcher:async(url,init)=>{
   assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');

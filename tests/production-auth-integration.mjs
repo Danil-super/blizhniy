@@ -75,6 +75,35 @@ export async function testProductionAuth(suite, db) {
     assert.equal(JSON.stringify(events).includes(token), false);
     await db.query("delete from app.users where email=$1", [email]);
   });
+  await suite.test("HTTP 429 keeps its exact Retry-After and one NAT limit across trusted ingress and PG connections", async () => {
+    const key = randomBytes(32).toString("hex");
+    const makeHandler = () => createProductionAccountHandler({
+      origin: config.productionAuthOrigin, rateSecret: key, rememberedCaptcha: true, mailKeyFile: "/synthetic/key.bin",
+    }, () => ({ ...state, limiter: new AuthRateLimiter(db, key), verifyCaptcha: async () => false }), () => {});
+    const first = makeHandler(), second = makeHandler();
+    const response = (handle, real, forwarded) => handle(new Request(`${config.productionAuthOrigin}/api/account/login`, {
+      method: "POST", headers: {
+        host: new URL(config.productionAuthOrigin).host, origin: config.productionAuthOrigin,
+        "x-blizhniy-request": "1", "content-type": "application/json",
+        "x-forwarded-for": forwarded, "cf-connecting-ip": forwarded, ...(real ? { "x-real-ip": real } : {}),
+      }, body: JSON.stringify({ email: "same-nat@example.invalid", password, captchaToken }),
+    }), "login");
+    const burst = await Promise.all(Array.from({ length: 24 }, (_, i) =>
+      response(i % 2 ? first : second, "192.0.2.105", `198.51.100.${i+1}`)));
+    assert.equal(burst.filter(reply => reply.status === 403).length, 20);
+    assert.equal(burst.filter(reply => reply.status === 429).length, 4);
+    for (const reply of burst.filter(reply => reply.status === 429)) {
+      assert.equal(reply.headers.get("Retry-After"), "900");
+      assert.match(reply.headers.get("Cache-Control"), /no-store/);
+      assert.deepEqual(await reply.json(), { error: { code: "RATE_LIMITED" } });
+    }
+    const restarted = makeHandler();
+    assert.equal((await response(restarted, "192.0.2.105", "198.51.100.55")).status, 429);
+    assert.deepEqual(await (await response(restarted, "192.0.2.106", "198.51.100.55")).json(),
+      { error: { code: "CAPTCHA_REQUIRED" } });
+    assert.deepEqual(await (await response(restarted, null, "198.51.100.55")).json(),
+      { error: { code: "UNTRUSTED_INGRESS" } });
+  });
   await suite.test("production IP/email limits persist across two instances and namespaces without plaintext identifiers", async () => {
     const key = randomBytes(32).toString("hex");
     const first = new AuthRateLimiter(db, key);

@@ -6,7 +6,7 @@ const React = require('react');
 const {renderToStaticMarkup} = require('react-dom/server');
 const ts = require('typescript');
 
-function loadCard() {
+function loadCard(renewals = false) {
   const cache = new Map();
   function load(path) {
     if (cache.has(path)) return cache.get(path);
@@ -23,6 +23,7 @@ function loadCard() {
       if (id === '@/lib/local-account') return {notifyAccountSessionChange() {}};
       if (id.endsWith('/ListingShareButton')) return {ListingShareButton: () => null};
       if (id.endsWith('/ListingViewCounter')) return {ListingViewCounter: () => null};
+      if (id.endsWith('/ListingWorkflowProvider')) return {usePlacementRenewals: () => renewals, useDraftRemovals: () => false};
       if (!id.startsWith('.') && !id.startsWith('@/')) return require(id);
       const base = id.startsWith('@/') ? resolve(__dirname, '../src', id.slice(2)) : resolve(dirname(path), id);
       const filename = [base, `${base}.ts`, `${base}.tsx`].find(candidate => existsSync(candidate));
@@ -81,4 +82,21 @@ test('cabinet badges are shared without importing public-card tracking or stored
   const source = readFileSync(resolve(__dirname, '../src/components/listings/CabinetListingCard.tsx'), 'utf8');
   assert.match(source, /from ['"]\.\/ListingBadges['"]/);
   assert.doesNotMatch(source, /from ['"]\.\/ListingCard['"]/);
+});
+test('owner card shows the real deadline and offers restoration only while the period is active', () => {
+  const expiresAt='2026-11-25T21:00:00.000001Z';
+  const render=(status,placement,renewals)=>renderToStaticMarkup(React.createElement(loadCard(renewals),{
+    owner:'10000000-0000-4000-8000-000000000002',item:item(status,{placement}),managePublication:true,open:false,onToggle() {},
+  },null));
+  for(const renewals of [false,true]){
+    const archived=render('archived',{expiresAt,active:true},renewals);
+    assert.match(archived, /datetime="2026-11-25T21:00:00\.000001Z"/i);
+    assert.match(archived, /26 ноября 2026\s+г\.(?:,|\s+в)\s+00:00/);
+    assert.match(archived, /Опубликовать снова/);
+    const expired=render('expired',{expiresAt,active:false},renewals);
+    assert.match(expired, /datetime="2026-11-25T21:00:00\.000001Z"/i);
+    assert.doesNotMatch(expired, /Опубликовать снова|Снять с публикации/);
+    assert.equal(expired.includes('Продлить размещение'),renewals);
+    assert.doesNotMatch(render('archived',null,renewals), /Опубликовать снова|Срок размещения продолжает идти/);
+  }
 });

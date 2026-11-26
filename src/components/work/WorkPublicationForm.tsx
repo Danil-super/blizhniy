@@ -9,6 +9,7 @@ import {LegalConsentCheckbox,LegalLink} from '@/components/LegalConsentCheckbox'
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import type {WorkPublicationKind} from '@/lib/work-publication-contract';
 import type {WorkPublicationSnapshot} from '@/lib/postgres-work-publications';
+import type {VacancyEmployerPrefill} from '@/lib/vacancy-employer-defaults';
 import {useWorkPublicationSave} from './useWorkPublicationSave';
 import {WorkAmountField} from './WorkAmountField';
 import {PrimaryProfessionSelect} from './PrimaryProfessionSelect';
@@ -17,7 +18,7 @@ import {PublicationPhotoEditor} from '@/components/PublicationPhotoEditor';
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 
 /** Existing form vocabulary, one owner-scoped save intent for both actions. */
-export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange,hostedTest=false}:{hostedTest?:boolean;owner:string;kind:WorkPublicationKind;initial?:WorkPublicationSnapshot;onSaved?:(snapshot:WorkPublicationSnapshot)=>void;onDirtyChange?:(dirty:boolean)=>void}){
+export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange,hostedTest=false,employerPrefill}:{hostedTest?:boolean;owner:string;kind:WorkPublicationKind;initial?:WorkPublicationSnapshot;onSaved?:(snapshot:WorkPublicationSnapshot)=>void;onDirtyChange?:(dirty:boolean)=>void;employerPrefill?:VacancyEmployerPrefill}){
  const formRef=useRef<HTMLFormElement>(null),[dirty,setDirty]=useState(false),localPayment=useListingPostmoderation(),simulation=useLocalPaymentSimulation();
  const save=useWorkPublicationSave(owner,kind,formRef,dirty,initial,onSaved),form=initial?.form,vacancy=form?.kind==='vacancy'?form:null;
  const canPay=simulation||hostedTest;
@@ -27,6 +28,7 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange,ho
  const editable=save.active&&!save.done;
  const defaults=vacancy?{...vacancy,email:vacancy.email??undefined,organization:vacancy.organization??undefined,
     contactPerson:vacancy.contactPerson??undefined,website:vacancy.website??undefined,messengerUrl:vacancy.messengerUrl??undefined,phone:vacancy.contactPhone??undefined}:undefined;
+ const prefill=initial?undefined:employerPrefill;
  const body=<>
    <Field name="title" label={kind==='vacancy'?'Название':'Название заказа'} defaultValue={form?.title} minLength={3} maxLength={120} placeholder={kind==='vacancy'?'Мастер по ремонту':'Нужен ремонт ванной'} required/>
    <PrimaryProfessionSelect defaultValue={form?.professionName??''} defaultId={initial?.professionId} required/>
@@ -64,9 +66,9 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange,ho
  </>;
  return <form ref={formRef} className="grid min-w-0 gap-4 [&_a]:text-blue-800 [&_.uppercase]:text-blue-800" aria-label={initial?'Редактирование публикации':kind==='vacancy'?'Создание вакансии':'Создание заказа'}
   onInput={()=>{setDirty(true);onDirtyChange?.(true);}} onChange={()=>{setDirty(true);onDirtyChange?.(true);}} onSubmit={event=>{event.preventDefault();if(localPayment&&!paidEdit&&!canPay)return;void save.start(paidEdit||(!localPayment&&!!initial));}}>
-  {localPayment&&kind==='vacancy'?<VacancyEmployerFlow defaults={defaults} disabled={editable} actions={actions}>{body}</VacancyEmployerFlow>:<>
+  {localPayment&&kind==='vacancy'?<VacancyEmployerFlow defaults={defaults} prefill={prefill} disabled={editable} actions={actions}>{body}</VacancyEmployerFlow>:<>
    <fieldset disabled={editable} className="grid min-w-0 gap-4"><legend className="sr-only">Поля публикации</legend>
-    {kind==='vacancy'?<VacancyEmployerFields defaults={defaults}>{body}</VacancyEmployerFields>:body}
+    {kind==='vacancy'?<VacancyEmployerFields defaults={defaults} prefill={prefill}>{body}</VacancyEmployerFields>:body}
    </fieldset>{actions}
   </>}
   <CabinetFormValidation/>

@@ -31,6 +31,7 @@ test('booking lifecycle: real restricted PostgreSQL expiry, cancellation, audit 
   await admin.query(`create role blizhniy_runtime login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls password ${pg.escapeLiteral(password)};
    revoke all on database blizhniy_test from public;grant connect on database blizhniy_test to blizhniy_runtime;grant usage on schema app to blizhniy_runtime;
    grant select on app.users,app.sessions,app.listings,app.categories,app.cities,app.listing_moderation,app.listing_photos,app.media_objects,app.booking_requests,app.notifications to blizhniy_runtime;
+   grant select(listing_id) on app.listing_blocks to blizhniy_runtime;
    grant update(last_seen_at) on app.sessions to blizhniy_runtime;grant update(id) on app.users,app.listings to blizhniy_runtime;
    grant insert(listing_id,guest_id,creation_key,mode,start_date,end_date,guests,total,details_snapshot),update(status,revision,decided_at,updated_at) on app.booking_requests to blizhniy_runtime;
    grant insert(user_id,event_key,category,tone,title,body,action_href,booking_request_id) on app.notifications to blizhniy_runtime`);
@@ -104,6 +105,54 @@ test('booking lifecycle: real restricted PostgreSQL expiry, cancellation, audit 
    assert.equal(Date.parse(request.lifecycle.expiresAt)-Date.parse(request.createdAt),6*3600000);assert.equal(request.lifecycle.canCancel,true);
    assert.equal(Object.hasOwn(request,'hostId'),false);assert.deepEqual((await events(request.id)).map(e=>e.status),['pending']);
    await store.cancel(guest.token,guest.id,request.id,request.revision,'Не смогу приехать.');
+  });
+  await suite.test('tour quote, retried creation, competing acceptances and released seats agree on the lifecycle schema',async()=>{
+   const env={NODE_ENV:'production',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',
+    BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_BOOKING_LIFECYCLE:'production-v1'};
+   const options={lifecycle:load('production-booking-config').readBookingRuntimeEnabled(env),
+    postmoderation:load('listing-workflow-config').readPostmoderationEnabled(env)};
+   const bookings=new PostgresBookingStore(db,options),calendar=new PostgresBookingAvailabilityStore(db,options);
+   const terms={mode:'tour',pricePerPerson:100.01,maxGuests:3,tourDate:day(4),tourTime:'14:30'};
+   const id=await listing(terms),data=input(id,{mode:'tour',startDate:terms.tourDate,endDate:null});
+   const quote=await bookings.preview(guest.token,guest.id,data);
+   assert.equal(quote.quote.total,'200.02');
+   let committed;
+   const uncertain=new PostgresBookingStore({transaction:async work=>{
+    committed=await db.transaction(work);
+    throw Error('Synthetic lost booking confirmation');
+   }},options);
+   await assert.rejects(uncertain.create(guest.token,guest.id,data),/Synthetic lost booking confirmation/);
+   assert.equal(committed.lifecycle.startsAt,terms.tourDate+'T11:30:00.000000Z');
+   const first=await bookings.readIntent(guest.token,guest.id,data.creationKey);
+   assert.deepEqual(first,committed);assert.deepEqual(await bookings.create(guest.token,guest.id,data),first);
+   assert.deepEqual(await bookings.read(host.token,host.id,first.id),{...first,view:'host'});
+   assert.equal(first.total,quote.quote.total);
+   const second=await bookings.create(other.token,other.id,{...data,creationKey:randomUUID()});
+   assert.equal((await calendar.read(id)).tourSeatsRemaining,3);
+   await assert.rejects(bookings.read(third.token,third.id,first.id),{name:'BookingAccessError'});
+   await assert.rejects(bookings.decide(third.token,third.id,first.id,first.revision,'accepted'),{name:'BookingAccessError'});
+   const requests=[first,second];
+   const outcomes=await Promise.allSettled(requests.map(row=>bookings.decide(host.token,host.id,row.id,row.revision,'accepted')));
+   const rejected=outcomes.findIndex(result=>result.status==='rejected'),accepted=outcomes.find(result=>result.status==='fulfilled');
+   assert.ok(accepted);assert.equal(outcomes[rejected]?.reason.name,'BookingAvailabilityError');
+   assert.equal((await calendar.read(id)).tourSeatsRemaining,1);
+   const loser=requests[rejected];
+   const declined=await bookings.decide(host.token,host.id,loser.id,loser.revision,'declined');
+   assert.equal(declined.status,'declined');assert.deepEqual(await bookings.decide(host.token,host.id,loser.id,loser.revision,'declined'),declined);
+   const winner=accepted.value,participant=winner.id===first.id?guest:other;
+   assert.deepEqual(await bookings.read(participant.token,participant.id,winner.id),{...winner,view:'guest'});
+   const cancelled=await bookings.cancel(host.token,host.id,winner.id,winner.revision,'Экскурсия отменена.');
+   assert.equal(cancelled.status,'cancelled');assert.equal((await calendar.read(id)).tourSeatsRemaining,3);
+   assert.deepEqual(await bookings.read(participant.token,participant.id,winner.id),{...cancelled,view:'guest'});
+   assert.deepEqual((await events(winner.id)).map(event=>event.status),['pending','accepted','cancelled']);
+   assert.deepEqual((await events(loser.id)).map(event=>event.status),['pending','declined']);
+   const notifications=(await admin.query('select event_key,user_id from app.notifications where booking_request_id=any($1::uuid[])',[requests.map(row=>row.id)])).rows;
+   assert.deepEqual(notifications.map(n=>[n.event_key,n.user_id]).sort(),[
+    ...requests.map(row=>['booking_request:'+row.id,host.id]),
+    ['booking_decision:'+winner.id+':accepted',participant.id],
+    ['booking_decision:'+loser.id+':declined',loser.id===first.id?guest.id:other.id],
+    ['booking_cancelled:'+winner.id,participant.id],
+   ].sort());
   });
   await suite.test('both participants cancel pending or accepted once, notify the other and release the dates',async()=>{
    for(const actor of [guest,host])for(const accepted of [false,true]){

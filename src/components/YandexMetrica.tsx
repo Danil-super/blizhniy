@@ -21,6 +21,7 @@ function loadLibrary(): Promise<MetricaCommand> {
     queued.l = Date.now(); scope.ym = queued;
     const script = document.createElement('script');
     script.id = 'blizhniy-yandex-metrica'; script.async = true;
+    script.crossOrigin = 'anonymous';
     script.src = 'https://mc.yandex.ru/metrika/tag.js';
     script.nonce = nonce; script.referrerPolicy = 'no-referrer';
     script.onload = () => {

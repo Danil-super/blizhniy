@@ -15,7 +15,11 @@ function display() {
   return exports;
 }
 function page(kind, tariffs, specialistCheckout = false, readSpecialistAccountTest = () => null) {
-  const paths = { fair: "src/components/FairPages.tsx", tariffs: "src/app/tarify/page.tsx" };
+  const paths = {
+    fair: "src/components/FairPages.tsx",
+    tariffs: "src/app/tarify/page.tsx",
+    guide: "src/app/kak-rabotaet/page.tsx",
+  };
   assert.ok(Object.hasOwn(paths, kind));
   const source = readFileSync(new URL(`../${paths[kind]}`, import.meta.url), "utf8"), exports = {};
   const dependencies = {
@@ -24,6 +28,7 @@ function page(kind, tariffs, specialistCheckout = false, readSpecialistAccountTe
     "@/lib/public-tariffs": { getPublicTariffs: async () => tariffs },
     "@/lib/specialist-checkout-config": { readSpecialistCheckoutEnabled: () => specialistCheckout, readSpecialistAccountTest },
     "@/components/SiteHeader": { SiteHeader: () => React.createElement("header") },
+    "@/components/BrandName": { BrandName: () => "БЛИЖНИЙ" },
     "@/components/FairApplicationForm": { FairApplicationForm: () => React.createElement("form") },
     "@/components/LocationMap": { LocationMap: () => React.createElement("div") },
     "@/lib/data": { fairCategories },
@@ -73,6 +78,14 @@ test("active public tariff keeps its stored display price and existing action", 
   const html = renderToStaticMarkup(await page("tariffs", [fair]).default());
   assert.match(html, /7\.29\s*₽/);
   assert.match(html, /href="\/yarmarka-masterov\/zayavka"/);
+});
+test("public guide and tariffs explain that fair payment is unavailable even with a stored tariff", async () => {
+  const tariffs = renderToStaticMarkup(await page("tariffs", [fair]).default());
+  const guide = renderToStaticMarkup(page("guide", []).default());
+  assert.match(tariffs, /Оплата участия в ярмарке пока недоступна/);
+  assert.match(guide, /Оплата участия в ярмарке пока недоступна/);
+  assert.match(guide, /Контакты вакансий и заказов закрыты на публичной странице/);
+  assert.match(guide, /Подтверждённый отклик поступает автору публикации в личный кабинет/);
 });
 for (const [action, href, label] of [
   ["listing_publication", "/razmestit/obyavlenie", "Создать объявление"],

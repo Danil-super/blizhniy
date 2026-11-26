@@ -44,9 +44,22 @@ test('booking lifecycle cancellation: browser reason, unknown outcome, expiry an
   await suite.test('guest and host explicitly cancel a confirmed booking with bounded reason and one exact write',async()=>{
    for(const guest of [true,false]){
     const {context,panel,state}=await fixture(guest,true);try{
+     const announcement=panel.locator('[role="status"][aria-atomic="true"]');
+     assert.equal(await announcement.count(),1,'The announcement container exists before cancelling');
+     const liveRegion=await announcement.elementHandle();
+     assert.equal(await liveRegion.textContent(),'');
      await panel.getByRole('button',{name:'Отменить бронирование',exact:true}).click();const confirm=panel.getByRole('button',{name:'Подтвердить отмену',exact:true});assert.equal(await confirm.isEnabled(),false);
      const reason=panel.getByLabel('Причина отмены',{exact:true});assert.equal(await reason.getAttribute('maxlength'),'500');await reason.fill('Изменились планы.');
-     await confirm.click();await panel.getByText('Бронирование отменено. Вторая сторона получила уведомление.',{exact:true}).waitFor();
+     await confirm.click();
+     const cancelledMessage='Бронирование отменено. Вторая сторона получила уведомление.';
+     await panel.getByText(cancelledMessage,{exact:true}).waitFor();
+     assert.equal(await liveRegion.evaluate((node,message)=>node.isConnected&&node.textContent===message,cancelledMessage),true);
+     const details=panel.getByRole('heading',{name:'Детали бронирования',exact:true});
+     const detailsHeading=await details.elementHandle();
+     await announcement.page().waitForFunction(node=>document.activeElement===node,detailsHeading,{timeout:1500});
+     const announcementId=await announcement.getAttribute('id');
+     assert.ok(announcementId);
+     assert.equal(await details.getAttribute('aria-describedby'),announcementId);
      assert.equal(state.writes.length,1);assert.equal(state.writes[0].reason,'Изменились планы.');assert.equal(state.writes[0].expectedRevision,original.revision);
      await panel.getByText('Изменились планы.',{exact:true}).waitFor();assert.equal(await panel.getByRole('button',{name:'Отменить бронирование',exact:true}).count(),0);assert.deepEqual(state.errors,[]);assert.deepEqual(state.legacy,[]);
     }finally{await context.close();}

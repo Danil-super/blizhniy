@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
-import { isValidAccountPassword, normalizeRegistrationName, PASSWORD_MIN_LENGTH, PROFILE_NAME_MAX_LENGTH } from "@/lib/account-validation";
+import { isValidAccountPassword, normalizeRegistrationName, PASSWORD_MIN_LENGTH, PROFILE_NAME_ISSUE, PROFILE_NAME_MAX_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
 import { consumeAccountCaptchaResponse } from "@/lib/local-account";
 
@@ -74,7 +74,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", captchaReady
   }, []);
 
   const fieldErrors: Record<Field, string> = {
-    name: normalizeRegistrationName(name) ? "" : "Введите имя буквами. Допустимы пробелы, дефис и апостроф.",
+    name: normalizeRegistrationName(name) ? "" : PROFILE_NAME_ISSUE,
     email: !email.trim() ? "Введите email." : emailValid ? "" : "Введите email вида name@example.ru.",
     password: isValidAccountPassword(password) ? "" : "От 8 до 128 символов, не только пробелы.",
     repeat: !repeat ? "Повторите пароль." : repeat !== password ? "Пароли не совпадают." : "",

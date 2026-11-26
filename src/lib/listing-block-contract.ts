@@ -17,7 +17,7 @@ export function parseListingManagementItem(value:unknown):ListingManagementItem 
  if(!value||typeof value!=='object'||Array.isArray(value))throw new ListingBlockInputError();
  const row=value as ListingManagementItem;
  if(Object.keys(row).sort().join()!=='blockReason,blocked,blockedAt,id,paid,revision,status,title'||typeof row.title!=='string'||row.title.length>160||!row.title.isWellFormed()||
- !['draft','pending_payment','paid','published','sold','archived','expired','rejected'].includes(row.status)||typeof row.paid!=='boolean'||typeof row.blocked!=='boolean'||
+ !['draft','pending_payment','paid','published','sold','archived','expired','rejected','removed'].includes(row.status)||typeof row.paid!=='boolean'||typeof row.blocked!=='boolean'||
  (row.blocked?(parseListingBlockReason(row.blockReason)!==row.blockReason||typeof row.blockedAt!=='string'||!Number.isFinite(Date.parse(row.blockedAt))):(row.blockReason!==null||row.blockedAt!==null)))throw new ListingBlockInputError();
  return {...row,id:parseListingDraftId(row.id),revision:parseListingDraftRevision(row.revision)};
 }

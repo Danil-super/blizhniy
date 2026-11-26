@@ -23,7 +23,8 @@ const { middleware, config } = exports;
 // sequential tests, including assertion failures, without touching local .env.
 async function withEnvironment(settings, run) {
   const selected = { NODE_ENV: 'production', BLIZHNIY_AUTH_MODE: 'postgres', BLIZHNIY_CSP_MODE: undefined,
-    NEXT_PUBLIC_SUPABASE_URL: undefined, BLIZHNIY_YANDEX_METRICA_ID: undefined, ...settings };
+    BLIZHNIY_HTML_ISOLATION: undefined, NEXT_PUBLIC_2GIS_API_KEY: undefined, NEXT_PUBLIC_SUPABASE_URL: undefined,
+    BLIZHNIY_YANDEX_METRICA_ID: undefined, ...settings };
   const original = new Map(Object.keys(selected).map(key => [key, process.env[key]]));
   try {
     for (const [key, value] of Object.entries(selected)) {
@@ -88,6 +89,45 @@ test('explicit enforce uses the same nonce and policy for renderer and browser',
     assertNextPolicy(response, 'content-security-policy');
     assert.equal(response.headers.get('content-security-policy-report-only'), null);
   });
+});
+
+test('HTML and Flight responses restrict resource consumption to the same origin', { concurrency: false }, async () => {
+  await withEnvironment({ BLIZHNIY_CSP_MODE: 'enforce' }, () => {
+    for (const headers of [{}, { rsc: '1' }]) {
+      const response = middleware(request('/kabinet', headers));
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
+      assert.equal(response.headers.get('cross-origin-embedder-policy'), null);
+      assert.equal(response.headers.get('cross-origin-opener-policy'), null);
+    }
+  });
+});
+
+test('the explicit production isolation profile protects documents and Next.js navigation', { concurrency: false }, async () => {
+  await withEnvironment({ BLIZHNIY_CSP_MODE: 'enforce', BLIZHNIY_HTML_ISOLATION: 'enforce' }, () => {
+    for (const headers of [{}, { rsc: '1' }]) {
+      const response = middleware(request('/auth', headers));
+      const { policy } = assertNextPolicy(response, 'content-security-policy');
+      assert.ok(policy.includes('frame-src https://challenges.cloudflare.com'));
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
+      assert.equal(response.headers.get('cross-origin-embedder-policy'), 'require-corp');
+      assert.equal(response.headers.get('cross-origin-opener-policy'), 'same-origin');
+    }
+  });
+});
+
+test('the isolation profile refuses unknown modes and unverified combinations', { concurrency: false }, async () => {
+  const settings = { BLIZHNIY_CSP_MODE: 'enforce', BLIZHNIY_HTML_ISOLATION: 'enforce' };
+  for (const extra of [
+    { BLIZHNIY_HTML_ISOLATION: 'unknown' }, { BLIZHNIY_CSP_MODE: 'report-only' },
+    { NODE_ENV: 'development' }, { BLIZHNIY_AUTH_MODE: 'local' },
+    { NEXT_PUBLIC_2GIS_API_KEY: 'synthetic-map-key' },
+  ]) {
+    await withEnvironment({ ...settings, ...extra }, () => {
+      const response = middleware(request('/auth'));
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    });
+  }
 });
 
 test('valid runtime Metrica IDs enable only exact analytics origins without changing nonce or CSP mode', { concurrency: false }, async () => {
@@ -205,6 +245,7 @@ test('unknown mode and unsafe selected legacy configuration fail closed without 
       assert.equal(response.headers.get('x-middleware-next'), null);
       assert.equal(response.headers.get('x-middleware-override-headers'), null);
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
       assert.equal(await response.text(), 'Page security configuration unavailable');
     });
   }

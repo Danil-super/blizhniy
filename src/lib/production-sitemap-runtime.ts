@@ -12,18 +12,18 @@ export async function listPrimarySitemapEntries(base:string):Promise<MetadataRou
  const [listings,work,services]=await Promise.all([
   getProductionPublicListingStore(),getProductionPublicWorkStore(),getProductionPublicServiceStore(),
  ]);
- const sources:Array<{prefix:string;read:(offset:number)=>Promise<Page>}>= [
-  {prefix:'/obyavlenie',read:offset=>listings.sitemapPage(batchSize,offset)},
-  {prefix:'/vakansiya',read:offset=>work.sitemapPage('vacancy',batchSize,offset)},
-  {prefix:'/rabota/zakazy',read:offset=>work.sitemapPage('workRequest',batchSize,offset)},
-  {prefix:'/specialist',read:offset=>services.sitemapPage(batchSize,offset)},
+ const sources:Array<{prefix:string;batchSize:number;read:(limit:number,offset:number)=>Promise<Page>}>= [
+  {prefix:'/obyavlenie',batchSize:1000,read:(limit,offset)=>listings.sitemapPage(limit,offset)},
+  {prefix:'/vakansiya',batchSize,read:(limit,offset)=>work.sitemapPage('vacancy',limit,offset)},
+  {prefix:'/rabota/zakazy',batchSize,read:(limit,offset)=>work.sitemapPage('workRequest',limit,offset)},
+  {prefix:'/specialist',batchSize,read:(limit,offset)=>services.sitemapPage(limit,offset)},
  ];
  const entries:MetadataRoute.Sitemap=[];
  for(const source of sources){
-  for(let offset=0;;offset+=batchSize){
+  for(let offset=0;;offset+=source.batchSize){
    // A single sitemap has a finite capacity. Never silently omit the remainder.
    if(offset>=50000)throw Error('Public sitemap requires partitioning');
-   const page=await source.read(offset);
+   const page=await source.read(source.batchSize,offset);
    for(const item of page.entries){
     const date=item.publishedAt;
     const lastModified=date&&Number.isFinite(Date.parse(date))?new Date(date):undefined;

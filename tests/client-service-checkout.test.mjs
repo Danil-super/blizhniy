@@ -26,3 +26,26 @@ test('client cancels oversized service replies and does not issue a replacement 
   await assert.rejects(serviceCheckout.order('fair',target,id));assert.equal(calls,1);assert.equal(cancelled,true);
  }finally{globalThis.fetch=original;}
 });
+
+test('advertising dispatch returns only a validated TEST bank redirect',async()=>{
+ const original=globalThis.fetch;
+ try{
+  for(const confirmationUrl of ['https://yoomoney.ru/checkout','https://yookassa.ru/checkout',null]){
+   globalThis.fetch=async(url,init)=>{
+    assert.equal(url,'/api/account/marquee-checkout');
+    assert.deepEqual(JSON.parse(init.body),{action:'dispatch',expectedOwnerId:target,paymentId:id});
+    return Response.json({isTest:true,confirmationUrl});
+   };
+   assert.equal(await serviceCheckout.dispatch('marquee',target,id),confirmationUrl);
+  }
+  for(const payload of [
+   {isTest:false,confirmationUrl:'https://yookassa.ru/checkout'},
+   {isTest:true,confirmationUrl:'https://yookassa.ru.attacker.invalid/checkout'},
+   {isTest:true,confirmationUrl:'https://attacker.invalid@yoomoney.ru/checkout'},
+   {isTest:true,confirmationUrl:'https://yoomoney.ru:8443/checkout'},
+  ]){
+   globalThis.fetch=async()=>Response.json(payload);
+   await assert.rejects(serviceCheckout.dispatch('marquee',target,id));
+  }
+ }finally{globalThis.fetch=original;}
+});

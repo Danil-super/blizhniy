@@ -60,3 +60,17 @@ test('a completed settings write only clears the draft that was submitted',async
  assert.equal(f.render().settingsDraft,null);
  assert.equal(f.render().avatarDraft,selection);
 });
+test('organization input is owner-bound across phone refresh and temporary session checks',async()=>{
+ const f=fixture();f.render();await tick();
+ const edited={organizationName:{original:'',value:'Организация владельца'}};
+ f.render().updateOrganizationDraft(()=>edited);
+ f.setRead(async()=>({profile:{...initial,phone:'+79991234567',phoneVerified:true,verifiedPhone:'+79991234567'},revision:'r2'}));
+ await f.render().refreshVerifiedPhone();
+ assert.equal(f.render().organizationDraft,edited);
+ assert.equal(f.render(null).organizationDraft,null);
+ f.render();await tick();
+ assert.equal(f.render().organizationDraft,edited);
+ assert.equal(f.render(other).organizationDraft,null);
+ f.render();await tick();
+ assert.equal(f.render().organizationDraft,null);
+});

@@ -66,9 +66,9 @@ export function tariffCheckoutNotice(value:ManagedTariff):string|null{
  if(!once&&value.durationDays===null)return 'Для оплаты по этому тарифу нужен срок в днях.';
  return null;
 }
-export const tariffAdminErrorStatus={ADMIN_REQUIRED:403,OPERATION_CONFLICT:409,STALE_TARIFF:409,TARIFF_NOT_FOUND:404,ACCESS_BUSY:409,TARIFF_UNAVAILABLE:503,RATE_LIMITED:429} as const;
+export const tariffAdminErrorStatus={ADMIN_REQUIRED:403,READ_ONLY:403,OPERATION_CONFLICT:409,STALE_TARIFF:409,TARIFF_NOT_FOUND:404,TARIFF_TERMS_INVALID:422,ACCESS_BUSY:409,TARIFF_UNAVAILABLE:503,RATE_LIMITED:429} as const;
 export type TariffAdminErrorCode=keyof typeof tariffAdminErrorStatus;
 export class AdminTariffError extends Error{
  readonly code:TariffAdminErrorCode;
- constructor(code:TariffAdminErrorCode){super(({ADMIN_REQUIRED:'Доступ администратора не подтверждён.',OPERATION_CONFLICT:'Номер сохранения уже использован для другого решения.',STALE_TARIFF:'Тариф уже изменён. Обновите данные и проверьте решение.',TARIFF_NOT_FOUND:'Тариф не найден.',ACCESS_BUSY:'Тариф сейчас изменяется. Обновите данные.',TARIFF_UNAVAILABLE:'Не удалось подтвердить результат. Проверьте исходное сохранение.',RATE_LIMITED:'Слишком много запросов. Повторите позже.'})[code]);this.name='AdminTariffError';this.code=code;}
+ constructor(code:TariffAdminErrorCode){super(({ADMIN_REQUIRED:'Доступ администратора не подтверждён.',READ_ONLY:'Доступен просмотр тарифов.',OPERATION_CONFLICT:'Номер сохранения уже использован для другого решения.',STALE_TARIFF:'Тариф уже изменён. Обновите данные и проверьте решение.',TARIFF_NOT_FOUND:'Тариф не найден.',TARIFF_TERMS_INVALID:'Проверьте цену активного тарифа и срок для этого вида оплаты.',ACCESS_BUSY:'Тариф сейчас изменяется. Обновите данные.',TARIFF_UNAVAILABLE:'Не удалось подтвердить результат. Проверьте исходное сохранение.',RATE_LIMITED:'Слишком много запросов. Повторите позже.'})[code]);this.name='AdminTariffError';this.code=code;}
 }

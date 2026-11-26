@@ -1,4 +1,4 @@
-import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents.ts';
+import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntentBinding} from './postgres-payment-intents.ts';
 import {createPrimaryYooKassaReader} from './primary-yookassa-reader.ts';
 import {createYooKassaTransport} from './yookassa-transport.ts';
 import {assertPrimaryYooKassaBinding,validatePrimaryYooKassaPayment,YooKassaBoundaryError,type YooKassaPaymentResponse} from './yookassa-payment-contract.ts';
@@ -12,26 +12,23 @@ class KnownPaymentDiscovered extends Error{
 }
 const linked=(payment:YooKassaPaymentResponse):LinkedCheckout=>({providerPaymentId:payment.id,confirmationUrl:payment.confirmation?.confirmation_url??null});
 
-/** Private trusted dispatcher, NOT an owner checkout API. No runtime consumer or production grants.
- * The caller must have atomically authorized the target and frozen this original intent first.
- * A successful POST links identity only; authoritative financial verification/fulfillment are separate.
+/** Dispatches a prepared, owner-bound intent. User-facing callers supply a transaction
+ * that checks purchase admission while recording authorization for the provider request.
+ * A successful POST links provider identity. Verification and fulfillment are separate.
  */
 export function createPrimaryPaymentDispatcher(db:Pick<PostgresDatabase,'transaction'>,config:Merchant,fetcher:typeof fetch=globalThis.fetch){
  const merchant={...config},reader=createPrimaryYooKassaReader(merchant,fetcher);
  const intents=new PostgresPaymentIntentStore(db);
  const transport=createYooKassaTransport({fetch:fetcher,monotonicNow:()=>performance.now(),setTimeout,clearTimeout});
  return{
-  async dispatch(value:PaymentIntentBinding,beforePost?:()=>Promise<void>):Promise<LinkedCheckout>{
+  async dispatch(value:PaymentIntentBinding,admitAttempt?:(attempt:PaymentDispatchAttempt)=>Promise<PaymentDispatch>):Promise<LinkedCheckout>{
    const expected={...value};
    assertPrimaryYooKassaBinding(expected,Date.now());
    if(expected.shopId!==merchant.shopId||expected.isTest!==merchant.isTest)throw new YooKassaBoundaryError('YooKassa original merchant binding does not match');
    return transport.withYooKassaRequestBudget(async budget=>{
     budget.start();
-    const authorizingAt=performance.now();
-    const first=await Promise.race([intents.authorize(expected),budget.expired]);
+    const first=await Promise.race([intents.inspectDispatch(expected),budget.expired]);
     if(first.decision==='recover')return linked(await reader.read({...expected,providerPaymentId:first.providerId},budget));
-    // Include scheduling around await as well, even though the store already subtracts its SQL roundtrip.
-    budget.limit(first.remainingMs-Math.max(0,performance.now()-authorizingAt));
     const original=parsePaymentIntent({...expected,requestBody:first.requestBody}).requestBody;
     let payload:unknown;
     try{
@@ -42,13 +39,15 @@ export function createPrimaryPaymentDispatcher(db:Pick<PostgresDatabase,'transac
       },
      },budget,async shared=>{
       // Recheck the original DB anchor and immutable bytes immediately before EVERY attempt.
-      const checkingAt=performance.now(),permitted=await intents.authorize(expected);
+      const checkingAt=performance.now();
+      // Purchase admission and the anchor must commit together. Admission can fail
+      // after the intent lock without leaving an otherwise cancellable order fenced.
+      const permitted=await (admitAttempt
+       ? admitAttempt(tx=>intents.authorizeInTransaction(tx,expected))
+       : intents.authorize(expected));
       if(permitted.decision==='recover')throw new KnownPaymentDiscovered(permitted.providerId);
       if(permitted.requestBody!==original)throw new YooKassaBoundaryError('YooKassa original request changed');
       shared.limit(permitted.remainingMs-Math.max(0,performance.now()-checkingAt));
-      // Purchase admission follows the potentially blocking canonical intent lock.
-      // The transport then checks the shared deadline immediately before fetch.
-      if(beforePost)await beforePost();
      }));
     }catch(error){
      if(error instanceof KnownPaymentDiscovered)return linked(await reader.read({...expected,providerPaymentId:error.id},budget));

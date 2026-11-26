@@ -9,9 +9,15 @@ export function middleware(request: NextRequest) {
     const mode = htmlCspMode({ BLIZHNIY_CSP_MODE: process.env.BLIZHNIY_CSP_MODE });
     const authMode = process.env.BLIZHNIY_AUTH_MODE;
     const legacy = !authMode || authMode === "local";
+    const mapEnabled = Boolean(getPublicRuntimeSetting("dgis-key"));
+    const isolation = process.env.BLIZHNIY_HTML_ISOLATION;
+    if (isolation !== undefined && (isolation !== "enforce" || process.env.NODE_ENV !== "production" ||
+        authMode !== "postgres" || mode !== "enforce" || mapEnabled)) {
+      throw new Error("Invalid HTML isolation configuration");
+    }
     const nonce = createCspNonce();
     const policy = createHtmlCsp(nonce, { development: process.env.NODE_ENV === "development",
-      mapEnabled: Boolean(getPublicRuntimeSetting("dgis-key")),
+      mapEnabled,
       metricaEnabled: getMetricaCounterId() !== null,
       legacyOrigin: legacy ? getPublicRuntimeSetting("legacy-url") : undefined });
     const headers = new Headers(request.headers);
@@ -29,12 +35,18 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.next({ request: { headers } });
     response.headers.set(mode === "enforce" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", policy);
     response.headers.set("Reporting-Endpoints", 'csp="/api/csp-report"');
+    response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
+    if (isolation === "enforce") {
+      response.headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+      response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+    }
     response.headers.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
     return response;
   } catch {
     return new NextResponse("Page security configuration unavailable", { status: 503, headers: {
       "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
       "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
     } });
   }
 }

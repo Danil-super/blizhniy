@@ -12,7 +12,7 @@ import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCl
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
-import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
+import {readDraftRemovalsEnabled,readPostmoderationEnabled} from '@/lib/listing-workflow-config';
 import {ListingWorkflowProvider} from '@/components/listings/ListingWorkflowProvider';
 import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
 import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
@@ -24,6 +24,7 @@ import {readWorkOwnerActionsEnabled} from '@/lib/work-owner-actions-contract';
 import {readPlacementRenewalsEnabled} from '@/lib/placement-renewal-config';
 import {readServiceCheckoutEnabled} from '@/lib/service-checkout-config';
 import {readSpecialistCheckoutEnabled} from '@/lib/specialist-checkout-config';
+import {PlacementReturnNoticeProvider} from '@/components/payments/PlacementReturnNotice';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,6 +56,7 @@ export default async function RootLayout({
     <html lang="ru">
       <head>
         <meta name="blizhniy-auth-backend" content={backend} />
+        {backend === "postgres" && process.env.BLIZHNIY_PUSH === "inbox-v1" && <meta name="blizhniy-push" content="enabled" />}
         {metricaCounterId !== null && <meta name="blizhniy-metrica-id" content={String(metricaCounterId)} />}
         {backend === "postgres" && process.env.BLIZHNIY_LISTING_VIEWS === "enabled" && <meta name="blizhniy-listing-views" content="enabled" />}
         <meta name="blizhniy-phone-verification" content={readTelegramPhoneConfig()?'enabled':'disabled'} />
@@ -66,14 +68,16 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
-        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()} specialistCheckout={readSpecialistCheckoutEnabled()}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()} specialistCheckout={readSpecialistCheckoutEnabled()} draftRemovals={readDraftRemovalsEnabled()}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
         <CookieNotice initiallyAcknowledged={hasCookieNoticeAcknowledgement(incoming.get("cookie") ?? "")} analyticsAvailable={metricaCounterId !== null} />
         <Suspense fallback={null}><YandexMetrica counterId={metricaCounterId} siteUrl={getPublicSiteUrl()} /></Suspense>
         {/* Isolate lazy Flight children from host replay in Next 15's bundled renderer. */}
-        <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
+        <PlacementReturnNoticeProvider>
+          <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
+        </PlacementReturnNoticeProvider>
         <MobileBottomNav />
         <SiteFooter analyticsAvailable={metricaCounterId !== null} />
         </PhonePlacementProvider>

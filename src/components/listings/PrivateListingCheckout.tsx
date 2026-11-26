@@ -13,7 +13,7 @@ import {canStartListingTest} from '@/lib/account-session-state';
 import {draftButton} from './PrivateDraftEditor';
 
 export type {ListingCheckoutAttempt} from '@/lib/listing-payment-start';
-export function PrivateListingCheckout({owner,id,revision,attempt,postmoderationListing=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;postmoderationListing?:boolean;specialist?:boolean}){
+export function PrivateListingCheckout({owner,id,revision,attempt,postmoderationListing=false,specialist=false,repeatSpecialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;postmoderationListing?:boolean;specialist?:boolean;repeatSpecialist?:boolean}){
  const localSimulation=useLocalPaymentSimulation(),directCheckout=specialist?localSimulation:postmoderationListing;
  const payment=specialist?specialistPayment:accountTestPayment;
  const auth=usePrimaryAccountAuth(),visible=!!auth&&(auth.state==='signed-in'||auth.state==='admin')&&auth.userId===owner;
@@ -36,10 +36,10 @@ export function PrivateListingCheckout({owner,id,revision,attempt,postmoderation
   {!paymentUnavailable&&!quote&&!uncertain&&<button type="button" className={draftButton} disabled={busy} onClick={()=>void run(async options=>{
    if(directCheckout){await ensurePhoneForPlacement(owner);try{open(await startListingPayment(payment,owner,id,revision,attempt,options),options.signal);}finally{if(live.current&&!options.signal?.aborted)setUncertain(attempt.uncertain);}}
    else{const value=await payment.preview(owner,id,revision,options);if(live.current&&!options.signal?.aborted)setQuote(value);}
-  })}>Оплатить размещение</button>}
+  })}>{repeatSpecialist?'Разместить повторно':'Оплатить размещение'}</button>}
   {!paymentUnavailable&&quote&&<>
    <h3 className="font-semibold">Тестирование оплаты</h3>
-   <p className="mt-2 text-sm">{specialist?`Тестовое размещение анкеты: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения оплаты анкета появится в каталоге. Деньги не списываются.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
+   <p className="mt-2 text-sm">{specialist?`Тестовое размещение анкеты: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. ${repeatSpecialist?'Новый срок начнётся после подтверждения оплаты.':'После подтверждения оплаты анкета появится в каталоге.'} Деньги не списываются.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
    {quote.activePayment?<Link href={`/oplata/${quote.activePayment.id}${specialist?'?type=specialist':''}`} className={`${draftButton} mt-3`}>Открыть существующий заказ</Link>:<>
     <button type="button" className={`${draftButton} mt-3 bg-blue-700 text-white`} disabled={busy||uncertain} onClick={()=>void run(async options=>{
      attempt.input??={listingId:id,expectedRevision:revision,creationKey:crypto.randomUUID(),expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays};

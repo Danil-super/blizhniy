@@ -143,9 +143,13 @@ function harness({ demo = false, configured = true } = {}) {
       const ast = ts.createSourceFile(modulePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const settings = ast.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "SettingsPanel");
       const submit = settings?.body?.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "handleSubmit");
+      const name = settings?.body?.statements.find((node) => ts.isVariableStatement(node) &&
+        node.declarationList.declarations.some((declaration) => declaration.name.getText(ast) === "name"));
       assert.ok(submit, "extract the actual SettingsPanel callback, not a rewritten test implementation");
+      assert.ok(name, "extract the normalized form name used by the callback");
       source += `\nexport function __settingsSubmitForTest(identity, form, callbacks) {
         const { setForm, setMessage, setSaving, onClose, saveProfile } = callbacks;
+        ${name.getText(ast)}
         ${submit.getText(ast)}
         return handleSubmit;
       }`;

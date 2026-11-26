@@ -20,6 +20,10 @@ const suites=[
  'approved-account-export-postgres.mjs',
  'specialist-checkout-postgres.mjs',
  'specialist-checkout-guards-postgres.mjs',
+ 'admin-user-access-postgres-integration.mjs',
+ 'admin-tariff-postgres-integration.mjs',
+ 'logical-backup-restore-postgres.mjs',
+ 'basic-erasure-restore-postgres.mjs',
 ];
 test('real PostgreSQL is a mandatory gate before packaging and is inherited by deployment',()=>{
  assert.ok(ci.on.workflow_call);assert.deepEqual(ci.on.pull_request.branches,['main']);assert.ok(Object.hasOwn(ci.on,'workflow_dispatch'));

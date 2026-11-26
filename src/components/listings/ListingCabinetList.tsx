@@ -10,15 +10,19 @@ import {PrivateDraftModeration} from './PrivateDraftModeration';
 import {PrivateListingCheckout,type ListingCheckoutAttempt} from './PrivateListingCheckout';
 import {draftButton} from './PrivateDraftEditor';
 import {CabinetListingCard} from './CabinetListingCard';
+import {ListingOwnerRemoveButton} from './ListingOwnerRemoveButton';
+import {useDraftRemovals} from './ListingWorkflowProvider';
 import {TwoRowCardViewport} from '@/components/cabinet/TwoRowCardViewport';
 
-function ListingCard({owner,item,open,onToggle,checkout}:{owner:string;item:ListingDraftSummary;open:boolean;onToggle:()=>void;checkout:ListingCheckoutAttempt}){
+function ListingCard({owner,item,open,onToggle,checkout,onChanged}:{owner:string;item:ListingDraftSummary;open:boolean;onToggle:()=>void;checkout:ListingCheckoutAttempt;onChanged:()=>void}){
+ const draftRemovals=useDraftRemovals();
  return <li className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
   <Link href={`/razmestit/obyavlenie?draft=${item.id}`} className="break-words text-lg font-bold text-[#060b27] hover:text-[#0875d1] hover:underline">{item.title||'Без названия'}</Link>
   {item.price&&<p className="mt-2 font-semibold">{item.price.replace('.',',')} ₽</p>}
   <div className="mt-4 flex flex-wrap gap-3">
    <Link href={`/razmestit/obyavlenie?draft=${item.id}`} className={`${draftButton} inline-flex items-center`}>Редактировать</Link>
    <button type="button" className={draftButton} aria-expanded={open} onClick={onToggle}>Статус и оплата</button>
+   {draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
   </div>
   {open&&<PrivateDraftModeration owner={owner} id={item.id} revision={item.revision} disabled={false} checkoutAttempt={checkout} allowSubmit={false}/>}
  </li>;
@@ -82,9 +86,10 @@ export function ListingCabinetList({owner,visible,enriched=false}:{owner:string;
     gridClassName={enriched?'grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5':'grid auto-rows-fr gap-4'}>{page.items.map(item=>{
     const checkout=checkouts.current.get(item.id)!;
     const toggle=()=>setSelected(value=>value===item.id?null:item.id);
-    if(!('card' in item))return <ListingCard key={`${item.id}:${item.revision}`} owner={owner} item={item} open={selected===item.id} onToggle={toggle} checkout={checkout}/>;
+    const changed=()=>setRefresh(value=>value+1);
+    if(!('card' in item))return <ListingCard key={`${item.id}:${item.revision}`} owner={owner} item={item} open={selected===item.id} onToggle={toggle} checkout={checkout} onChanged={changed}/>;
     const postmoderation='workflow' in page&&page.workflow==='postmoderation';
-    return <li key={`${item.id}:${item.revision}`} className="min-w-0"><CabinetListingCard owner={owner} item={item} open={selected===item.id} onToggle={toggle} managePublication={postmoderation} onChanged={()=>setRefresh(value=>value+1)}>
+    return <li key={`${item.id}:${item.revision}`} className="min-w-0"><CabinetListingCard owner={owner} item={item} open={selected===item.id} onToggle={toggle} managePublication={postmoderation} onChanged={changed}>
      {postmoderation?(item.card.status==='draft'||item.card.status==='pending_payment'||checkout.uncertain?
       <PrivateListingCheckout owner={owner} id={item.id} revision={item.revision} attempt={checkout} postmoderationListing/>:
       <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">{item.card.status==='published'?'Объявление опубликовано и доступно в каталоге.':item.card.status==='paid'?'Оплата подтверждена. Текущее состояние объявления указано в карточке. Повторно оплачивать не нужно.':item.card.status==='blocked'?'Объявление скрыто из каталога. Причина блокировки указана выше.':item.card.status==='expired'?'Срок размещения завершён. Объявление больше не показывается в каталоге.':'Объявление не показывается в каталоге.'}</p>):

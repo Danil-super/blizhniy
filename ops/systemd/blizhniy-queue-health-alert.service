@@ -1,0 +1,25 @@
+[Unit]
+Description=Send Blizhniy queue health notifications
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/blizhniy/queue-monitor/monitor.env
+
+[Service]
+Type=oneshot
+User=blizhniy-mail
+Group=blizhniy-mail
+WorkingDirectory=/opt/blizhniy-queue-monitor
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/queue-monitor/monitor.env
+StateDirectory=blizhniy-queue-monitor
+StateDirectoryMode=0700
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /opt/blizhniy-queue-monitor/scripts/queue-health-alert.mjs
+TimeoutStartSec=90
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

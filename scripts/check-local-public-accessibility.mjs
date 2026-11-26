@@ -18,6 +18,7 @@ try{
  for(const width of [320,768,1440]){
   const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width,height:1000}});
   try{
+   await context.route('**/*',route=>new URL(route.request().url()).origin===state.origin?route.continue():route.abort());
    const page=await context.newPage();page.setDefaultTimeout(15000);
    for(const path of paths){
     const errors=[],onError=error=>errors.push(error.name);page.on('pageerror',onError);

@@ -1,6 +1,6 @@
 // Disposable synthetic PostgreSQL only. The planner itself always runs read-only.
 import assert from 'node:assert/strict';import{test}from'node:test';
-import{execFile}from'node:child_process';import{promisify}from'node:util';import{createHash,createHmac,randomBytes,randomUUID,randomInt}from'node:crypto';
+import{execFile}from'node:child_process';import{promisify}from'node:util';import{createECDH,createHash,createHmac,randomBytes,randomUUID,randomInt}from'node:crypto';
 import{readFile}from'node:fs/promises';import{createRequire}from'node:module';import pg from'pg';
 import{mkdtemp,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
@@ -441,6 +441,45 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const latest=await db.readTransaction(tx=>inspectAccountDeletionCase(tx,actor.request.id,'2'),{timeoutMs:5000});assert.equal(latest.requestRevision,'2');
    await store.resolve(moderator.token,moderator.id,actor.request.id,'2',{resolution:'declined',caseReference:'SYNTHETIC_CASE_0001',confirmedManualDecision:true});
    await assert.rejects(db.readTransaction(tx=>inspectAccountDeletionCase(tx,actor.request.id,'3'),{timeoutMs:5000}),{name:'DeletionPreflightCaseError'});
+  });
+  await suite.test('notification inventory counts only the subject and reports ambiguous delivery before erasure',async()=>{
+   for(const name of ['0064-inbox-notification-preferences','0085-business-email','0086-push-subscriptions','0087-push-delivery']){
+    await owner.query(await readFile(new URL('../database/candidates/'+name+'.sql',import.meta.url),'utf8'));
+   }
+   const actor=await person(),peer=await person(),unrelated=await person();
+   const endpoint=value=>'https://fcm.googleapis.com/fcm/send/synthetic-'+value.id;
+   const browserAuth=randomBytes(16).toString('base64url');
+   const browserKey=createECDH('prime256v1').generateKeys().toString('base64url');
+   for(const value of [actor,peer]){
+    await owner.query("update app.cabinet_profiles set profile=profile||'{\"pushNotifications\":true}'::jsonb where user_id=$1",[value.id]);
+    await owner.query('select app_push.set_subscription($1,$2,$3,$4,$5,null)',[load('identity').hashSessionToken(value.token),value.id,endpoint(value),browserKey,browserAuth]);
+   }
+   const event=async value=>(await owner.query("insert into app.notifications(user_id,event_key,category,tone,title,body) values($1,$2,'booking','info','Уведомление','Синтетическая запись') returning id",[value.id,'synthetic-'+value.id])).rows[0].id;
+   const id=await event(actor);await event(peer);
+   await owner.query("update notification_delivery.business_email set state='unknown',last_code='UNKNOWN' where notification_id=$1",[id]);
+   await owner.query("update app_push.deliveries set state='unknown',last_code='unknown' where notification_id=$1",[id]);
+   const result=await plan(actor);
+   assert.equal(result.counts.notifications,'1');
+   assert.equal(result.counts.businessMail,'1');
+   assert.equal(result.counts.pushSubscriptions,'1');
+   assert.equal(result.counts.pushDeliveries,'1');
+   assert.equal(result.counts.openMail,'1');
+   assert.equal(result.counts.openPush,'1');
+   assert.deepEqual(result.blockers,[{code:'MAIL_IN_FLIGHT',count:'1'},{code:'PUSH_IN_FLIGHT',count:'1'}]);
+   assert.equal(result.executionAuthorized,false);
+   assert.equal(result.decision,'manual-review');
+   for(const secret of [endpoint(actor),endpoint(peer),browserAuth,browserKey])assert.equal(JSON.stringify(result).includes(secret),false);
+   assert.equal((await plan(peer)).counts.openMail,'0');
+   assert.equal((await plan(peer)).counts.openPush,'0');
+   assert.equal((await plan(unrelated)).counts.notifications,'0');
+   assert.equal((await owner.query('select state from app_push.deliveries where notification_id=$1',[id])).rows[0].state,'unknown');
+   await owner.query('delete from app.sessions where user_id=$1',[actor.id]);
+   const after=await plan(actor);
+   assert.equal(after.counts.pushSubscriptions,'0');
+   assert.equal(after.counts.pushDeliveries,'1');
+   await owner.query('alter table app_push.subscriptions rename to absent_subscriptions');
+   try{await assert.rejects(plan(actor),{name:'DeletionPreflightUnavailableError'});}
+   finally{await owner.query('alter table app_push.absent_subscriptions rename to subscriptions');}
   });
   await suite.test('the archive contains only the account views recorded in migration 0066 across listing pages',async t=>{
    const actor=await person(),peer=await person(),publisher=await person();

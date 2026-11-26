@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { deliverSiteAlert } from '../scripts/site-health-alert.mjs';
 
 function fixture() {
@@ -55,4 +59,301 @@ test('an ambiguous acceptance or a crash after reservation cannot resend an aler
     assert.equal(await deliverSiteAlert('site-unavailable', f.dependencies), 'unknown');
     assert.equal(f.sends.length, interrupted ? 0 : 1);
   }
+});
+
+test('the reconciliation monitor sends once per blocked period and retains the incident after a database error', async t => {
+  const { runPaymentReconciliationAlert } = await import('../scripts/payment-reconciliation-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-reconciliation-alert-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const messages = [];
+  let blocked = true;
+  const db = { readTransaction: async read => read({
+    query: async (_sql, parameters) => {
+      assert.deepEqual(parameters, ['synthetic-shop']);
+      if (blocked === undefined) throw new Error('synthetic database failure');
+      return { rows: [{ blocked }] };
+    },
+  }) };
+  const run = () => runPaymentReconciliationAlert({
+    db, shop: 'synthetic-shop', directory, recipient: 'operator@example.invalid',
+    mailer: { send: async message => messages.push(message) },
+  });
+  assert.deepEqual(await run(), { result: 'reconciliation-blocked', delivery: 'accepted' });
+  blocked = undefined;
+  await assert.rejects(run(), /synthetic database failure/);
+  blocked = true;
+  assert.deepEqual(await run(), { result: 'reconciliation-blocked', delivery: 'accepted' });
+  assert.equal(messages.length, 1);
+  blocked = false;
+  assert.deepEqual(await run(), { result: 'healthy', delivery: 'healthy' });
+  blocked = true;
+  assert.deepEqual(await run(), { result: 'reconciliation-blocked', delivery: 'accepted' });
+  assert.equal(messages.length, 2);
+  assert.notEqual(messages[0].id, messages[1].id);
+});
+
+test('the reconciliation timer uses a separate protected oneshot and valid systemd units', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-reconciliation-unit-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const serviceName = 'blizhniy-payment-reconciliation-alert.service';
+  const timerName = 'blizhniy-payment-reconciliation-alert.timer';
+  const service = await readFile(new URL('../ops/systemd/' + serviceName, import.meta.url), 'utf8');
+  const timer = await readFile(new URL('../ops/systemd/' + timerName, import.meta.url), 'utf8');
+  for (const line of ['Type=oneshot', 'User=blizhniy-mail', 'Group=blizhniy-mail', 'StateDirectory=blizhniy-reconciliation-monitor',
+    'StateDirectoryMode=0700', 'LimitCORE=0', 'NoNewPrivileges=true', 'ProtectSystem=strict']) assert.ok(service.includes(line));
+  assert.match(service, /ExecStart=\/opt\/blizhniy-node22\/bin\/node .*\/scripts\/payment-reconciliation-alert\.mjs/);
+  assert.match(timer, /^OnUnitInactiveSec=5min$/m);
+  const serviceFile = join(directory, serviceName), timerFile = join(directory, timerName);
+  await writeFile(serviceFile, service.replace('/opt/blizhniy-node22/bin/node', process.execPath));
+  await writeFile(timerFile, timer);
+  execFileSync('systemd-analyze', ['verify', '--man=no', serviceFile, timerFile], { timeout: 5000, maxBuffer: 16384 });
+});
+
+test('a recovered site sends one recovery message and retains a retry after a known rejection', async () => {
+  const f = fixture();
+  const resolved = [];
+  f.dependencies.sendResolved = async (id, reason) => {
+    resolved.push({ id, reason });
+    if (resolved.length === 1) throw Object.assign(new Error('synthetic SMTP rejection'), { code: 'TEMPORARY' });
+  };
+  assert.equal(await deliverSiteAlert('site-unavailable', f.dependencies), 'accepted');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'retry');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'healthy');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'healthy');
+  assert.equal(f.sends.length, 1);
+  assert.equal(resolved.length, 2);
+  assert.deepEqual(resolved[0], resolved[1]);
+  assert.notEqual(resolved[0].id, f.sends[0].id);
+  assert.equal(resolved[0].reason, 'site-unavailable');
+});
+
+test('a lost recovery acknowledgement cannot resend and cannot suppress the next outage', async () => {
+  const f = fixture();
+  let resolutions = 0;
+  f.dependencies.sendResolved = async () => {
+    resolutions++;
+    throw Object.assign(new Error('lost acknowledgement'), { code: 'UNKNOWN' });
+  };
+  assert.equal(await deliverSiteAlert('readiness-unavailable', f.dependencies), 'accepted');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'unknown');
+  assert.equal(await deliverSiteAlert('healthy', f.dependencies), 'unknown');
+  assert.equal(resolutions, 1);
+  assert.equal(await deliverSiteAlert('readiness-unavailable', f.dependencies), 'accepted');
+  assert.equal(f.sends.length, 2);
+  assert.notEqual(f.sends[0].id, f.sends[1].id);
+});
+
+test('restart with a saved recovery attempt does not send or clear the ambiguous delivery', async t => {
+  const { alertStateFile } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-site-recovery-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const statePath = join(directory, 'site-health.json');
+  const stateFile = alertStateFile(statePath, { 'site-slow': 'slow' });
+  const outage = { id: '2a642a21-f4bf-457e-9a88-fb276181accd', result: 'site-slow', attempts: 1, delivery: 'accepted' };
+  const state = { ...outage, resolution: { id: '2b70a455-bdd2-411a-8cfd-e5da0f283e44', attempts: 1, delivery: 'sending' } };
+  await stateFile.save(state);
+  const dependencies = { ...stateFile, sendResolved: async () => assert.fail('already reserved') };
+  assert.equal(await deliverSiteAlert('healthy', dependencies), 'unknown');
+  assert.deepEqual(await stateFile.load(), state);
+  await stateFile.save({ ...state, resolution: { ...state.resolution, id: outage.id } });
+  await assert.rejects(stateFile.load(), /Invalid alert state/);
+});
+
+test('independent probes persist their own incidents and send recovery even with another alarm active', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-independent-probes-'));
+  t.after(() => rm(directory, { recursive: true }));
+  let site = 'site-slow', tls = 'tls-expiring', disk = 'disk-low';
+  let confirms = 0;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => { messages.push(message); },
+    waitForConfirm: async () => { confirms++; },
+    site: async () => site, certificate: async () => tls, storage: async () => disk,
+  });
+  const first = await run();
+  assert.equal(confirms, 3);
+  assert.deepEqual(first.map(row => [row.probe,row.delivery]), [
+    ['site-health','healthy'], ['site-latency','accepted'], ['site-tls','accepted'], ['site-disk','accepted'],
+  ]);
+  assert.equal(messages.length, 3);
+  assert.equal(new Set(messages.map(message => message.id)).size, 3);
+  assert.equal((await run()).every(row => ['healthy','accepted'].includes(row.delivery)), true);
+  assert.equal(messages.length, 3);
+  site = 'readiness-unavailable'; tls = 'healthy';
+  assert.deepEqual((await run()).map(row => [row.probe,row.result]), [
+    ['site-health','readiness-unavailable'], ['site-tls','healthy'], ['site-disk','disk-low'],
+  ]);
+  assert.equal(messages.filter(message => message.subject.endsWith('работа восстановлена')).length, 1);
+  assert.equal((await readFile(join(directory, 'site-latency.json'), 'utf8')).includes('site-slow'), true);
+  assert.equal(messages.length, 5);
+});
+
+test('worker and backup failures notify independently and distinguish operators by worker name', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-worker-backup-alert-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const messages = [];
+  let backupResult = 'backup-failed', timerResult = 'worker-stopped';
+  const unit = 'blizhniy-auth-mail';
+  const healthy = async () => 'healthy';
+  const run = () => runSiteHealthAlert({
+    directory, recipient:'monitor@example.invalid', notify:async message => messages.push(message),
+    waitForConfirm: async () => {}, site:healthy, certificate:healthy, backup:async () => backupResult,
+    workerTimers:[unit], worker:async name => name === unit ? timerResult : 'worker-unavailable',
+  });
+  const recorded = await run();
+  assert.deepEqual(recorded.filter(row => row.result !== 'healthy').map(({probe,result}) => [probe,result]), [
+    ['site-backup','backup-failed'], [unit,'worker-stopped'],
+  ]);
+  assert.equal(messages.length, 2);
+  assert.ok(messages.some(message => message.text.includes(unit)));
+  timerResult = 'healthy';
+  await run();
+  assert.equal(messages.length,3);
+  assert.ok(messages[2].subject.endsWith('работа восстановлена'));
+  assert.ok(messages[2].text.includes(unit));
+  backupResult = 'healthy';
+  await run();
+  assert.equal(messages.length,4);
+  assert.ok(messages[3].subject.endsWith('работа восстановлена'));
+});
+
+test('a public 5xx sends and recovers independently while another public page stays unavailable', async t => {
+  const { createServer } = await import('node:http');
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const { checkPublicPageSignals } = await import('../scripts/check-site-health.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-public-alerts-'));
+  const pages = new Map();
+  let changeOnConfirm = () => {};
+  const originServer = createServer((req, res) => {
+    const path = new URL(req.url, 'http://127.0.0.1').pathname;
+    res.writeHead(pages.get(path) ?? 200, { 'content-type': 'text/html' });
+    res.end('<h1>Synthetic public route</h1>');
+  });
+  t.after(async () => {
+    await new Promise((resolve, reject) => originServer.close(error => error ? reject(error) : resolve()));
+    await rm(directory, { recursive: true });
+  });
+  await new Promise((resolve, reject) => {
+    originServer.once('error', reject);
+    originServer.listen(0, '127.0.0.1', resolve);
+  });
+  const origin = 'http://127.0.0.1:' + originServer.address().port;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => messages.push(message),
+    site: async () => 'healthy', certificate: async () => 'healthy',
+    publicPages: () => checkPublicPageSignals(origin), waitForConfirm: async () => changeOnConfirm(),
+  });
+
+  pages.set('/obyavleniya', 404);
+  await run();
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /не смог открыть/);
+
+  pages.set('/poisk', 503);
+  await run();
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].text, /ошибку сервера/);
+  await run();
+  assert.equal(messages.length, 2);
+
+  pages.delete('/poisk');
+  await run();
+  assert.equal(messages.length, 3);
+  assert.match(messages[2].text, /снова отвечают без ошибки сервера/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'site-public-pages.json'), 'utf8')).result, 'public-page-unavailable');
+
+  pages.delete('/obyavleniya');
+  await run();
+  assert.equal(messages.length, 4);
+  assert.match(messages[3].text, /снова открываются/);
+  assert.equal(new Set(messages.map(message => message.id)).size, 4);
+
+  pages.set('/obyavleniya', 404);
+  changeOnConfirm = () => {
+    pages.delete('/obyavleniya');
+    pages.set('/poisk', 503);
+  };
+  await run();
+  assert.equal(messages.length, 4);
+  await run();
+  assert.equal(messages.length, 5);
+  assert.match(messages[4].text, /ошибку сервера/);
+});
+
+test('an accepted 5xx under the old state file moves without reissuing the incident', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-public-alert-state-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const legacy = join(directory, 'site-public-pages.json');
+  const serverErrors = join(directory, 'site-public-5xx.json');
+  const previous = {
+    id: 'e86e68ae-6afb-456a-8552-2d1430e9db39', attempts: 1,
+    delivery: 'accepted', result: 'public-page-5xx',
+  };
+  await writeFile(legacy, JSON.stringify(previous), { mode: 0o600 });
+
+  let serverError = true;
+  const messages = [];
+  const run = () => runSiteHealthAlert({
+    directory, recipient: 'monitor@example.invalid',
+    notify: async message => messages.push(message),
+    site: async () => 'healthy', certificate: async () => 'healthy',
+    publicPages: async () => ({ serverError, unavailable: true }), waitForConfirm: async () => {},
+  });
+
+  await run();
+  assert.deepEqual(JSON.parse(await readFile(serverErrors, 'utf8')), previous);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /не смог открыть/);
+  assert.equal(JSON.parse(await readFile(legacy, 'utf8')).result, 'public-page-unavailable');
+
+  serverError = false;
+  await run();
+  assert.equal(JSON.parse(await readFile(serverErrors, 'utf8')), null);
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].text, /снова отвечают без ошибки сервера/);
+  assert.equal(JSON.parse(await readFile(legacy, 'utf8')).result, 'public-page-unavailable');
+});
+
+test('Caddy traffic alerts at three errors and 0.5%, with one recovery after a valid observation', async t => {
+  const { runSiteHealthAlert } = await import('../scripts/site-health-alert.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'blizhniy-caddy-traffic-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const messages = [];
+  let clock = 1795699900000;
+  const run = async (requests, errors, loadedAt = 1795699817, minutes = 5) => {
+    clock += minutes * 60000;
+    const results = await runSiteHealthAlert({
+      directory, recipient: 'monitor@example.invalid',
+      notify: async message => messages.push(message),
+      site: async () => 'healthy', certificate: async () => 'healthy',
+      publicPages: async () => ({ serverError: false, unavailable: false }),
+      traffic: async () => requests === null ? null : { requests, errors, loadedAt },
+      now: () => clock,
+    });
+    return results.find(probe => probe.probe === 'site-traffic-5xx');
+  };
+  assert.equal((await run(10, 3)).result, 'traffic-waiting');
+  assert.equal((await run(110, 5)).result, 'healthy');
+  assert.equal((await run(711, 8)).result, 'healthy');
+  assert.equal(messages.length, 0);
+  assert.equal((await run(1311, 11)).delivery, 'accepted');
+  assert.equal((await run(1314, 14)).delivery, 'accepted');
+  assert.equal(messages.length, 1);
+  assert.equal((await run(null)).delivery, 'unavailable');
+  assert.equal((await run(1314, 14)).result, 'traffic-waiting');
+  assert.equal((await run(1600, 15, 1795700000)).result, 'traffic-waiting');
+  assert.equal((await run(2, 0, 1795700000)).result, 'traffic-waiting');
+  assert.equal((await run(3, 0, 1795700000, 13)).result, 'traffic-waiting');
+  assert.equal(messages.length, 1);
+  assert.equal((await run(4, 0, 1795700000)).result, 'healthy');
+  assert.equal((await run(5, 0, 1795700000)).result, 'healthy');
+  assert.equal(messages.length, 2);
+  assert.match(messages[0].text, /5xx/);
+  assert.match(messages[1].subject, /работа восстановлена/);
 });

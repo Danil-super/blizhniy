@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll the Blizhniy browser push queue
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=blizhniy-push.service
+
+[Install]
+WantedBy=timers.target

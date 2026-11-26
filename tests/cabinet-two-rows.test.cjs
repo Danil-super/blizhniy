@@ -38,6 +38,8 @@ function mount(kind,responses){
   new Function('exports','require',compiled)(out,name=>{
    if(Object.hasOwn(deps,name))return deps[name];
    if(name==='./WorkOwnerActions')return {WorkOwnerActions:()=>null};
+   if(name==='./ListingOwnerRemoveButton')return {ListingOwnerRemoveButton:()=>null};
+   if(name==='./ListingWorkflowProvider')return deps['@/components/listings/ListingWorkflowProvider'];
    if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
    if(name.endsWith('/CabinetListingCard')||name==='./CabinetListingCard')return {CabinetListingCard:({item,onChanged})=>jsx('article',{'data-record':item.id,onChanged,children:item.title})};
    if(name==='./WorkCabinetCard')return {WorkCabinetCard:({item})=>jsx('article',{'data-record':item.id,children:item.title})};

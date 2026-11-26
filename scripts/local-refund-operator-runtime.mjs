@@ -1,6 +1,7 @@
 import {isAbsolute} from 'node:path';
 import {createRequire} from 'node:module';
 import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
+import {isHostedRefundDatabase} from './hosted-refund-target.mjs';
 import {verifyRefundOperatorDatabase} from './refund-operator-role.mjs';
 
 const require=createRequire(import.meta.url),unavailable=()=>Error('Local refund operator unavailable');
@@ -24,25 +25,37 @@ export async function createLocalPrimaryRefundOperatorRuntime(environment,{state
   return await createRuntime(env,options,'blizhniy_prod',certificate);
  }catch{throw unavailable();}
 }
-async function createRuntime(environment,options,database,certificate){
+/** Explicit server TEST entry under the dedicated refund operator role. */
+export function createHostedRefundOperatorRuntime(environment,options={}){
+ return createRuntime(environment,options,'blizhniy_prod',undefined,true);
+}
+async function createRuntime(environment,options,database,certificate,hosted=false){
  let db,pool;
  try{
   const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
-  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_OPERATOR!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
-   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
+  const specialistRefunds=hosted||env.BLIZHNIY_REFUND_OPERATOR==='hosted-specialist-schema-local-test';
+  const marqueeRefunds=specialistRefunds||env.BLIZHNIY_REFUND_OPERATOR==='hosted-marquee-schema-local-test';
+  const hostedRefunds=hosted||(env.BLIZHNIY_REFUND_OPERATOR==='hosted-schema-local-test'||marqueeRefunds)&&database==='blizhniy_test'&&certificate===undefined;
+  const validTarget=hosted?env.BLIZHNIY_REFUND_OPERATOR==='hosted-test-v1'&&isHostedRefundDatabase(env):
+   (env.BLIZHNIY_REFUND_OPERATOR==='local-test'||hostedRefunds)&&env.BLIZHNIY_DB_HOST==='127.0.0.1';
+  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!validTarget||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+   env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
    [env,process.env].some(e=>e.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(e).some(k=>k.startsWith('PG')))||
    !/^[a-zA-Z0-9_-]{1,64}$/.test(env.BLIZHNIY_PAYMENT_SHOP_ID??'')||typeof env.BLIZHNIY_PAYMENT_SECRET_KEY!=='string'||
    !env.BLIZHNIY_PAYMENT_SECRET_KEY.startsWith('test_')||env.BLIZHNIY_PAYMENT_SECRET_KEY.length>2048||/[\s\u0000-\u001f\u007f]/.test(env.BLIZHNIY_PAYMENT_SECRET_KEY)||
    typeof fetcher!=='function')throw unavailable();
-  const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true}),modules=loadModules();
+  const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true,
+   ...(hostedRefunds?{marqueeRefunds,specialistRefunds}:{})}),modules=loadModules();
   let closed=false,active,closing;
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
-  const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
+  const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:hosted?'blizhniy-refund-operator':'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
-  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
+  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,
+   ...(hostedRefunds?{hostedRefunds:true}:certificate!==undefined?{localPrimary:true}:{})});
+  const probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
   function execute(work,merchantAdmission=false){
    if(closed||active)return Promise.reject(unavailable());
@@ -71,7 +84,7 @@ async function createRuntime(environment,options,database,certificate){
     },kind==='approve');
    }catch{return Promise.reject(unavailable());}
   }
-  return{preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
+  return{...(hostedRefunds?{shopId:merchant.shopId}:{}),preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
    close:()=>closing??=(async()=>{closed=true;try{await active;}catch{ /* Drain the current command before closing its pool. */ }try{await db.close();}catch{throw unavailable();}})()};
  }catch{
   try{if(db)await db.close();else if(pool)await pool.end();}catch{ /* Preserve the redacted error. */ }
