@@ -68,6 +68,36 @@ async function clean(f,pages){
 try{
  fixture=await start(String(counterId));
  {
+  const f=await context(),page=await f.ctx.newPage();
+  await page.setViewportSize({width:320,height:568});
+  let resumeHydration;
+  const hydration=new Promise(resolve=>{resumeHydration=resolve;});
+  await f.ctx.route(url=>url.pathname.startsWith('/_next/static/')&&url.pathname.endsWith('.js'),async route=>{
+   await hydration;await route.fallback();
+  });
+  try{
+   await page.goto(fixture.origin+'/o-proekte',{waitUntil:'commit'});
+   const buttons=notice(page).getByRole('button');
+   await until(async()=>await buttons.count()===2&&await buttons.evaluateAll(items=>
+    items.every(button=>button.disabled&&Number(getComputedStyle(button).opacity)<1)),'disabled consent before hydration');
+   await notice(page).evaluate(panel=>{
+    const controls=[...panel.querySelectorAll('button')];
+    window.__enabledConsentOpacity=null;
+    const observer=new MutationObserver(()=>{
+     if(controls.some(button=>button.disabled))return;
+     window.__enabledConsentOpacity=controls.map(button=>getComputedStyle(button).opacity);
+     observer.disconnect();
+    });
+    observer.observe(panel,{subtree:true,attributes:true,attributeFilter:['disabled']});
+   });
+   resumeHydration();
+   await page.waitForFunction(()=>window.__enabledConsentOpacity!==null);
+   assert.deepEqual(await page.evaluate(()=>window.__enabledConsentOpacity),['1','1'],
+    'Consent buttons have full opacity as soon as they become interactive');
+  }finally{resumeHydration();}
+  await clean(f,[page]);checks.push('enabled consent buttons have full opacity immediately');
+ }
+ {
   const f=await context({cookies:[{name:'__Host-blizhniy_cookie_notice',value:'v1'}]}),page=await f.ctx.newPage();
   const response=await page.goto(fixture.origin+'/o-proekte?q=private-query-sentinel#private-fragment');await ready(page);
   assert.ok((await response.allHeaders())['content-security-policy'].includes("'strict-dynamic'"));
