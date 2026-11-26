@@ -4,7 +4,12 @@ import {createContext,useContext,useEffect,useRef,useState,type ReactNode} from 
 import {usePathname} from 'next/navigation';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 
-type Receipt = {owner:string;cabinet:string;result:'fulfilled'|'verified-test'};
+const receiptMessages={
+ fulfilled:'Размещение выполнено',
+ 'verified-test':'Оплата подтверждена. TEST-платёж без списания денег.',
+ 'application-delivered':'Отклик доставлен',
+} as const;
+type Receipt = {owner:string;cabinet:string;result:keyof typeof receiptMessages};
 const Context = createContext<{receipt:Receipt|null;rememberReceipt:(receipt:Receipt)=>void}|null>(null);
 
 export function PlacementReturnNoticeProvider({children}:{children:ReactNode}){
@@ -32,7 +37,7 @@ export function PlacementReturnNotice(){
  const {receipt}=usePlacementReturnNotice();
  const heading=useRef<HTMLHeadingElement>(null);
  const result=receipt?.cabinet===pathname?receipt.result:null;
- const message=result==='fulfilled'?'Размещение выполнено':result==='verified-test'?'Оплата подтверждена. TEST-платёж без списания денег.':null;
+ const message=result?receiptMessages[result]:null;
  useEffect(()=>{if(message)heading.current?.focus();},[message]);
  if(!message)return null;
  return <h2 ref={heading} tabIndex={-1} className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{message}</h2>;

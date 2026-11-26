@@ -62,7 +62,7 @@ export function CabinetResponsesPage() {
   const responses = responseRows();
 
   return (
-    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/rabota/vakansii" createLabel="Найти вакансию">
+    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/rabota/vakansii" createLabel="Найти вакансию" notice={<PlacementReturnNotice />}>
       <CabinetPublicationWorkspace>
         <CabinetResponsesClient responses={responses} />
       </CabinetPublicationWorkspace>

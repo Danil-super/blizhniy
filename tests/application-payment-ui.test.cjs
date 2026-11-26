@@ -5,11 +5,14 @@ const jsx=(type,props)=>({type,props:props||{}}),walk=node=>Array.isArray(node)?
 class ClientError extends Error{constructor(code){super(code);this.code=code;}}
 const mounted=[];
 test.afterEach(()=>{for(const instances of mounted.splice(0))for(const instance of instances.values())for(const hook of instance.values)hook?.cleanup?.();});
-function mount(kind,api,props={}){const instances=new Map(),effects=[],calls=[],locks=[],redirects=[];let current,tree,dirty=false,auth={state:'signed-in',userId:owner};
+function mount(kind,api,props={}){const instances=new Map(),effects=[],calls=[],locks=[],redirects=[],receipts=[];let current,tree,dirty=false,auth={state:'signed-in',userId:owner};
  mounted.push(instances);
+ const router={replace:href=>redirects.push(href)},rememberReceipt=receipt=>receipts.push(receipt);
  const react={useState(initial){const i=current,n=i.cursor++;if(!Object.hasOwn(i.values,n))i.values[n]=typeof initial==='function'?initial():initial;return[i.values[n],v=>{const next=typeof v==='function'?v(i.values[n]):v;if(!Object.is(next,i.values[n])){i.values[n]=next;dirty=true;}}];},useRef(initial){const i=current,n=i.cursor++;return i.values[n]??={current:initial};},useEffect(work,deps){const i=current,n=i.cursor++,prior=i.values[n];if(!prior||deps.some((v,j)=>!Object.is(v,prior.deps[j]))){i.values[n]={deps};effects.push(()=>{prior?.cleanup?.();i.values[n].cleanup=work();});}},useMemo(work,deps){const i=current,n=i.cursor++,prior=i.values[n];if(!prior||deps.some((v,j)=>!Object.is(v,prior.deps[j])))i.values[n]={deps,value:work()};return i.values[n].value;}};react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
  const client=new Proxy({},{get(_target,name){return async(...args)=>{calls.push({method:name,args});assert.equal(typeof api[name],'function',`Explicit ${name} response`);return api[name](...args);};}}),cache=new Map();
  function load(file){if(cache.has(file))return cache.get(file);const out={};cache.set(file,out);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;new Function('require','exports','window','crypto',code)(name=>{
+  if(name==='next/navigation')return{useRouter:()=>router};
+  if(name==='./PlacementReturnNotice')return{usePlacementReturnNotice:()=>({rememberReceipt})};
   if(name==='./CheckoutCancellation')return{CheckoutCancellation:()=>null};
   if(name==='@/components/listings/ListingWorkflowProvider')return{useLocalPaymentSimulation:()=>props.simulation!==false};
   if(name==='react')return react;if(name==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:({children})=>children};if(name==='next/link')return{__esModule:true,default:({children,...props})=>jsx('a',{...props,children})};
@@ -22,7 +25,7 @@ function mount(kind,api,props={}){const instances=new Map(),effects=[],calls=[],
  function render(){dirty=false;tree=expand(jsx(component,kind==='checkout'?{owner,id,revision:'4',onLockChange:value=>locks.push(value),...props}:{paymentId}));while(effects.length)effects.shift()();}
  async function settle(){for(let i=0;i<8;i++){await new Promise(resolve=>setImmediate(resolve));if(dirty)render();}return tree;}
  function button(label){const found=walk(tree).find(n=>n.type==='button'&&text(n)===label);assert.ok(found,`Button ${label}`);return found;}
- render();return{calls,locks,redirects,settle,render,button,auth:value=>{auth=value;render();},get tree(){return tree;}};
+ render();return{calls,locks,redirects,receipts,settle,render,button,auth:value=>{auth=value;render();},get tree(){return tree;}};
 }
 test('checkout explicitly previews and prepares once with the server tariff before opening the local application payment page',async()=>{
  const h=mount('checkout',{preview:async()=>quote,prepare:async()=>order});await h.settle();assert.equal(h.calls.length,0);h.button('Оплатить отклик (локальная TEST)').props.onClick();await h.settle();
@@ -68,6 +71,7 @@ test('a delayed delivery returns to responses only after server confirmation',as
  await h.settle();
  for(const remaining of [1,0]){
   assert.deepEqual(h.redirects,[]);
+  assert.deepEqual(h.receipts,[]);
   t.mock.timers.tick(30000);await h.settle();
   assert.equal(states.length,remaining);
  }
@@ -76,6 +80,7 @@ test('a delayed delivery returns to responses only after server confirmation',as
  assert.ok(walk(h.tree).some(n=>n.type==='a'&&n.props.href==='/cabinet/otkliki'));
  t.mock.timers.tick(2000);await h.settle();
  assert.deepEqual(h.redirects,['/cabinet/otkliki']);
+ assert.deepEqual(h.receipts,[{owner,cabinet:'/cabinet/otkliki',result:'application-delivered'}]);
  assert.deepEqual(h.calls.map(c=>c.method),['read','read','read']);
 });
 
@@ -105,4 +110,27 @@ test('pending reads stop automatically and an explicit retry can resume them',as
  h.button('Проверить статус').props.onClick();await h.settle();
  assert.equal(h.calls.length,10);
  assert.ok(h.calls.every(call=>call.method==='read'));assert.deepEqual(h.redirects,[]);
+});
+
+test('the cabinet link carries the confirmed delivery before the automatic return',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const h=mount('return',{read:async()=>({order:{...order,status:'succeeded'},deliveredAt:stamp})});
+ await h.settle();
+ const cabinet=walk(h.tree).find(node=>node.type==='a'&&node.props.href==='/cabinet/otkliki');
+ assert.ok(cabinet);
+ cabinet.props.onClick();
+ assert.deepEqual(h.receipts,[{owner,cabinet:'/cabinet/otkliki',result:'application-delivered'}]);
+ assert.deepEqual(h.redirects,[]);
+});
+
+test('signing out cancels a scheduled delivery receipt and return',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const h=mount('return',{read:async()=>({order:{...order,status:'succeeded'},deliveredAt:stamp})});
+ await h.settle();
+ h.auth({state:'signed-out',userId:null});
+ await h.settle();
+ t.mock.timers.tick(2000);
+ await h.settle();
+ assert.deepEqual(h.receipts,[]);
+ assert.deepEqual(h.redirects,[]);
 });
