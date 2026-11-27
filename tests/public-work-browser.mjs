@@ -122,7 +122,13 @@ test('Russian public work catalog and detail render safe fields in HTML/RSC and 
   });
   await suite.test('message validation focuses its field; a definite stale revision preserves text and requires refresh without automatic write retry',async()=>{
    const {context,panel,state}=await composer();try{
-    await panel.getByLabel('Сообщение',{exact:true}).fill('x'.repeat(3001));await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByText('Сообщение должно содержать не более 3000 символов, без управляющих знаков.',{exact:true}).waitFor();assert.equal(state.writes.length,0);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).evaluate(node=>node===document.activeElement),true);
+    const message=panel.getByLabel('Сообщение',{exact:true});
+    assert.equal(await message.getAttribute('maxlength'),'500');
+    await message.fill('x'.repeat(501));assert.equal((await message.inputValue()).length,500);
+    await message.fill('<b>текст</b>');
+    await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();
+    await panel.getByText('Сообщение: до 500 символов, без HTML-разметки и скрытых управляющих знаков.',{exact:true}).waitFor();
+    assert.equal(state.writes.length,0);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).evaluate(node=>node===document.activeElement),true);
     await panel.getByLabel('Сообщение',{exact:true}).fill('Не терять этот текст');state.rejectCreate=true;await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByRole('button',{name:'Обновить данные отклика',exact:true}).waitFor();assert.equal(await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).isDisabled(),true);assert.equal(await panel.getByLabel('Сообщение',{exact:true}).inputValue(),'Не терять этот текст');assert.equal(state.writes.length,1);
     state.rejectCreate=false;await panel.getByRole('button',{name:'Обновить данные отклика',exact:true}).click();await panel.getByRole('button',{name:'Сохранить отклик',exact:true}).click();await panel.getByText('Отклик сохранён. Ожидает оплаты.',{exact:true}).waitFor();assert.equal(state.writes.length,2);assert.notEqual(state.writes[0].creationKey,state.writes[1].creationKey);assert.deepEqual(state.unexpected,[]);assert.deepEqual(state.errors,[]);
    }finally{await context.close();}
