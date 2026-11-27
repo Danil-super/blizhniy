@@ -59,6 +59,17 @@ test('UI classifier legacy URL resolves to the existing catalog before a wildcar
   assert.equal(detailRule.destination, '/rabota/specialisty/:path*', 'other specialist aliases keep their wildcard');
 });
 
+test('image optimization is limited to the static assets shipped with the app', () => {
+  const config = load(source('next.config.ts'), {}, { process: { env: {} } }).default;
+  assert.deepEqual(JSON.parse(JSON.stringify(config.images?.localPatterns ?? [])), [
+    { pathname: '/_next/static/media/**', search: '' },
+    { pathname: '/images/**', search: '' },
+    { pathname: '/brand/message.jpg', search: '' },
+    { pathname: '/brand/phone.jpg', search: '' },
+    { pathname: '/policy/no-tattoo.png', search: '' },
+  ]);
+});
+
 function listingPresentation() {
   const path = 'src/components/listings/ListingPages.tsx';
   const code = functionsFrom(path, ['listingImageTone', 'listingCategoryName', 'toDemoListing', 'slugifySubcategory', 'ListingDetailPage']);

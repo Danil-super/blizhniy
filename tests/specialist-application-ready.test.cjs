@@ -43,6 +43,7 @@ function fixture(changes = {}, policy = { specialistApplicationReady: true }) {
   };
   const db = { transaction: work => work({ query: async (sql, values = []) => {
     calls.push({ sql, values });
+    if (sql === "select pg_catalog.to_regnamespace('app_publication_restriction') is not null as installed, pg_catalog.current_setting('transaction_isolation') as isolation") return one({ installed: false, isolation: 'read committed' });
     if (sql.startsWith('select u.id')) return one({ id: owner, role: 'user', verified: state.verified, isBlocked: state.blocked, authVersion: '0' });
     if (sql.startsWith('select token_hash') || sql.startsWith('update app.sessions')) return one({});
     if (sql.includes('from app.cabinet_profiles')) return state.profileName === null ? none() : one({ name: state.profileName, profile: { name: state.profileName } });

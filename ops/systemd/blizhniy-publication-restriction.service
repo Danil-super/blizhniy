@@ -1,0 +1,25 @@
+[Unit]
+Description=Blizhniy restricted publication moderation operator
+Requires=blizhniy-publication-restriction.socket
+After=blizhniy-publication-restriction.socket
+
+[Service]
+Type=simple
+User=blizhniy-publication-operator
+Group=blizhniy-publication-operator
+WorkingDirectory=/opt/blizhniy-publication-restriction
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/publication-restriction/operator.env
+UnsetEnvironment=NODE_OPTIONS NODE_TLS_REJECT_UNAUTHORIZED
+ExecStart=/opt/blizhniy-node22/bin/node /opt/blizhniy-publication-restriction/scripts/hosted-publication-restriction-operator.mjs
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+TimeoutStopSec=20s

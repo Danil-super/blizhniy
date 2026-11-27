@@ -57,3 +57,15 @@ export function metricaPage(href: string, siteUrl: string, referer = ''): Metric
     return { url: site.origin + path, referer: safeReferer(referer, site.origin), title: 'Ближний' };
   } catch { return null; }
 }
+
+const measurementExternalSources = new Set([
+  'https://ya.ru/', 'https://yandex.ru/', 'https://www.yandex.ru/',
+  'https://google.com/', 'https://www.google.com/', 'https://google.ru/', 'https://www.google.ru/',
+]);
+
+export function measurementReferrer(referrer: string, origin: string): string {
+  if (measurementExternalSources.has(referrer)) return referrer;
+  if (!referrer.startsWith(origin + '/')) return '';
+  const path = referrer.slice(origin.length);
+  return metricaPublicPath(path) === path ? path : '';
+}

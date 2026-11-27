@@ -1,9 +1,11 @@
 import {createHash} from 'node:crypto';
 import {readRefundSchema} from './refund-worker-schema.mjs';
 
-export async function assertPaidResponseSchema(tx){
+export async function assertPaidResponseSchema(tx,{publicationRestrictions=false}={}){
  const shape=await readRefundSchema(tx,{namespace:'app_response'});
- if(createHash('sha256').update(JSON.stringify(shape)).digest('hex')!=='57f5775ea39ba4272b07515a7d74c8728d79b4d0430b2a079d4227289696ad50')throw Error('Unexpected response schema');
+ const expectedShape=publicationRestrictions?'61be5fb925736d939df37b6ae5d8ff4babe74bb6b1eb74f6e26d021141ffe262':
+  '57f5775ea39ba4272b07515a7d74c8728d79b4d0430b2a079d4227289696ad50';
+ if(createHash('sha256').update(JSON.stringify(shape)).digest('hex')!==expectedShape)throw Error('Unexpected response schema');
  const {rows:[access]}=await tx.query(`with ns as (
   select oid,nspowner,nspacl from pg_namespace where nspname='app_response'
  ), objects(name,owner,acl) as (
@@ -25,4 +27,29 @@ export async function assertPaidResponseSchema(tx){
   for(const name of functions)expected.push(name+':'+role+':EXECUTE:t:f');
  }
  if(!access?.same_owner||!access.clean_defaults||JSON.stringify(access.grants.sort())!==JSON.stringify(expected.sort()))throw Error('Unexpected response grants');
+ if(publicationRestrictions)await assertHostedPublicationRestrictionSchema(tx);
+}
+
+export async function assertHostedPublicationRestrictionSchema(tx){
+ const shape=await readRefundSchema(tx,{namespace:'app_publication_restriction'});
+ if(createHash('sha256').update(JSON.stringify(shape)).digest('hex')!=='b9d7e16f320b54caafbada8be3ce0651b83f3714b01d4484755d5bf74536f913')throw Error('Unexpected restriction schema');
+ const {rows:[access]}=await tx.query(`with ns as (
+  select oid,nspowner,nspacl from pg_namespace where nspname='app_publication_restriction'
+ ), objects(name,owner,acl) as (
+  select 'namespace',nspowner,coalesce(nspacl,acldefault('n',nspowner)) from ns
+  union all select relname,relowner,coalesce(relacl,acldefault('r',relowner)) from pg_class join ns on relnamespace=ns.oid
+  union all select relname||'.'||attname,relowner,attacl from pg_attribute join pg_class on attrelid=pg_class.oid join ns on relnamespace=ns.oid
+  union all select proname,proowner,coalesce(proacl,acldefault('f',proowner)) from pg_proc join ns on pronamespace=ns.oid
+ ) select nspowner=(select nspowner from pg_namespace where nspname='app_response') as same_owner,
+ not exists(select 1 from pg_default_acl where defaclnamespace=ns.oid) as clean_defaults,
+ array(select concat_ws(':',name,grantee::regrole::text,privilege_type,grantor=owner,is_grantable)
+  from objects cross join lateral aclexplode(acl) where grantee<>owner) as grants from ns`);
+ const expected=[
+  'namespace:blizhniy_publication_operator:USAGE:t:f',
+  'namespace:blizhniy_runtime:USAGE:t:f',
+  'restrict:blizhniy_publication_operator:EXECUTE:t:f',
+  'restrictions.kind:blizhniy_runtime:SELECT:t:f',
+  'restrictions.publication_id:blizhniy_runtime:SELECT:t:f',
+ ];
+ if(!access?.same_owner||!access.clean_defaults||JSON.stringify(access.grants.sort())!==JSON.stringify(expected))throw Error('Unexpected restriction grants');
 }

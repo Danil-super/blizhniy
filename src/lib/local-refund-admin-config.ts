@@ -1,17 +1,22 @@
 import { productionAuthOrigin } from './production-auth-config.ts';
+import { hostedAdminPasskeysEnabled } from './hosted-user-access-config.ts';
 
 export const hostedRefundOperatorSocket = '/run/blizhniy-refund-operator/operator.sock';
+export const guardedRefundOperatorSocket = '/run/blizhniy-refund-operator-passkey/operator.sock';
 
 /** The journal opts into IPC. The operator independently authorizes every action. */
 function readMode(env:NodeJS.ProcessEnv){
  if(typeof window!=='undefined')throw Error('Refund configuration is server-only');
  const mode=env.BLIZHNIY_REFUND_ADMIN;
  if(mode===undefined)return null;
- if(mode==='hosted-test-v1'){
+ if(mode==='hosted-test-v1'||mode==='hosted-passkey-test-v1'){
   if(env.NODE_ENV!=='production'||env.BLIZHNIY_AUTH_ORIGIN!==productionAuthOrigin||
    env.BLIZHNIY_LOCAL_PRIMARY!==undefined||env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==undefined||
    env.BLIZHNIY_REFUND_OPERATOR_SOCKET!==undefined)throw Error('Invalid hosted refund configuration');
-  return mode;
+  const passkeys=env.BLIZHNIY_ADMIN_PASSKEYS!==undefined||env.BLIZHNIY_USER_ACCESS_OPERATOR==='hosted-passkey-v1';
+  if(mode==='hosted-test-v1')return passkeys?null:mode;
+  if(env.BLIZHNIY_ADMIN_PASSKEYS!=='hosted-v1'||env.BLIZHNIY_USER_ACCESS_OPERATOR!=='hosted-passkey-v1')return null;
+  return hostedAdminPasskeysEnabled(env)?mode:null;
  }
  const origin=env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN;
  if(env.NODE_ENV!=='production'||(mode!=='local-test'&&mode!=='journal-test')||env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||
@@ -24,12 +29,12 @@ export function readLocalRefundAdminEnabled(env:NodeJS.ProcessEnv=process.env):b
 }
 
 export function readLocalRefundJournalConfig(env:NodeJS.ProcessEnv=process.env){
- const mode=readMode(env),hosted=mode==='hosted-test-v1';
+ const mode=readMode(env),passkey=mode==='hosted-passkey-test-v1',hosted=passkey||mode==='hosted-test-v1';
  if(mode!=='journal-test'&&!hosted)return null;
- const socketPath=hosted?hostedRefundOperatorSocket:env.BLIZHNIY_REFUND_OPERATOR_SOCKET,shopId=env.BLIZHNIY_PAYMENT_SHOP_ID;
+ const socketPath=passkey?guardedRefundOperatorSocket:hosted?hostedRefundOperatorSocket:env.BLIZHNIY_REFUND_OPERATOR_SOCKET,shopId=env.BLIZHNIY_PAYMENT_SHOP_ID;
  if(env.BLIZHNIY_AUTH_MODE!=='postgres'||env.BLIZHNIY_ADMIN_PAYMENT_JOURNAL!=='test-v1'||
   env.BLIZHNIY_PAYMENT_MODE!=='test'||!socketPath||!shopId||!/^[a-zA-Z0-9_-]{1,64}$/.test(shopId)){
   throw Error('Invalid local refund journal configuration');
  }
- return {socketPath,shopId,...(hosted?{hosted:true as const}:{})};
+ return {socketPath,shopId,...(hosted?{hosted:true as const}:{}),...(passkey?{passkey:true as const}:{})};
 }

@@ -26,10 +26,11 @@ for(const kind of ['listing','work','service']){
    './media-limits.ts':{maxListingMediaTotalSize:1000000},
    './listing-workflow-config':{readPostmoderationEnabled:()=>false},
    './profession-reference':loadLocalPrimaryModule('profession-reference'),
+   './publication-restriction-eligibility':loadLocalPrimaryModule('publication-restriction-eligibility'),
    './public-listings':{mapPublicListing:mapper},
    './public-work-publications.ts':{mapPublicWorkPublication:mapper},
    './public-service-publications.ts':{mapPublicServicePublication:mapper},
-   './listing-public-eligibility':{publicListingSource:'from app.listings l',publicListingLive:'live',publicListingPhotos:'photos'},
+   './listing-public-eligibility':loadLocalPrimaryModule('listing-public-eligibility'),
   };
   const file={listing:'postgres-public-listings',work:'postgres-public-work',service:'postgres-public-service'}[kind];
   const name={listing:'PostgresPublicListingStore',work:'PostgresPublicWorkStore',service:'PostgresPublicServiceStore'}[kind];

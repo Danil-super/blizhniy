@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {adminRefunds,AdminRefundClientError} from '@/lib/client-admin-refunds';
+import {adminPasskeys,AdminPasskeyClientError} from '@/lib/client-admin-passkey';
 import {createRefundActionDrafts} from '@/lib/refund-action-draft';
 import {parseAdminRefundCommand,parseAdminRefundResult,type AdminRefundCommand} from '@/lib/admin-refund-contract';
 
@@ -33,7 +34,7 @@ function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:Re
   <div className="mt-3 flex flex-wrap gap-2"><button type="submit" disabled={busy} className={refundButton}>{kind==='approve'?'Подтвердить возврат':'Сверить возврат'}</button><button type="button" disabled={busy} className={refundButton} onClick={onCancel}>Отмена</button></div>
  </form>;
 }
-export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(state:'recorded'|'rejected')=>void,loading=false){
+export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(state:'recorded'|'rejected')=>void,loading=false,passkey=false){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [storageError,setStorageError]=useState(''),[storageReady,setStorageReady]=useState(false);
  const [pending,setPending]=useState<Action|null>(null),[selection,setSelection]=useState<Selection|null>(null);
@@ -84,7 +85,8 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
    const command={...action,expectedAdminId:actor} as Action;
    try{createRefundActionDrafts(sessionStorage).save(actor,command);}catch{setStorageReady(false);throw Error('DRAFT_NOT_SAVED');}
    setPending(command);setSelection(null);
-   const value=await adminRefunds.call(readback&&command.action==='approve'?{action:'read',expectedAdminId:actor,input:command.input.id}:command,scope.controller.signal);
+   const proof=passkey&&!readback?await adminPasskeys.refundAssertion(command,scope.controller.signal):undefined;
+   const value=await adminRefunds.call(readback&&command.action==='approve'?{action:'read',expectedAdminId:actor,input:command.input.id}:command,scope.controller.signal,proof);
    parseAdminRefundResult(command,value);
    if(!scope.active)return;
    createRefundActionDrafts(sessionStorage).clear(actor,command.input.id);setPending(null);
@@ -95,6 +97,7 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
     try{createRefundActionDrafts(sessionStorage).clear(actor,action.input.id);setPending(null);onSettled('rejected');setError(error.message+' Обновите журнал.');}
     catch{setStorageReady(false);setStorageError('Браузер не очистил отклонённое решение. Новые решения недоступны.');}
    }else if(error instanceof Error&&error.message==='DRAFT_NOT_SAVED')setStorageError('Браузер не сохранил номер операции. Команда не отправлена.');
+   else if(error instanceof AdminPasskeyClientError||error instanceof AdminRefundClientError&&error.code==='PASSKEY_REQUIRED')setError(error.message);
    else setError('Результат операции не подтверждён. Проверьте сохранённое решение или повторите ту же операцию.');
   }}
   finally{if(life.current===scope){working.current=false;if(scope.active)setBusy(false);}}
@@ -107,7 +110,7 @@ export function useAdminRefundActions(actor:string,enabled:boolean,onSettled:(st
    className={'mt-3 rounded-lg border p-3 text-sm '+(failure?'border-red-200 bg-red-50 text-red-800':'border-blue-200 bg-blue-50 text-blue-900')}>{message}</p>}
  </>;
  const panel=enabled&&<>
-  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{pending.action==='approve'&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>Проверить сохранённое решение</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
+  {pending&&<div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Сохранённая операция</h3><p className="mt-1 text-sm text-amber-900">Результат нужно подтвердить. Новое решение не создаётся.</p><p className="mt-2 break-all font-mono text-xs text-amber-900">{pending.input.id}</p><p className="mt-2 text-sm text-slate-800">{pending.input.reason}</p><div className="mt-3 flex flex-wrap gap-2">{(pending.action==='approve'||passkey)&&<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending,true)}>{pending.action==='approve'?'Проверить сохранённое решение':'Проверить записанный результат'}</button>}<button type="button" className={refundButton} disabled={busy||loading||!storageReady} onClick={()=>void perform(pending)}>Повторить ту же операцию</button></div></div>}
   {selection&&!pending&&<div className="mt-4"><RefundForm actor={actor} key={selection.row.id+selection.kind} {...selection} busy={busy||loading} onCancel={cancel} onSubmit={action=>void perform(action)}/></div>}
  </>;
  return{feedback,hasFeedback:!!message,panel,busy,disabled:busy||!!pending||!storageReady,select,life,working,clearFeedback};

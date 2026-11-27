@@ -7,11 +7,14 @@ import { AdminShell } from "@/components/admin/AdminShell";
 
 export function AdminPaymentsPage() {
   if(readLocalRefundAdminEnabled())return <AdminWorkspaceShell activeHref="/admin/payments" description="Журнал платежей и решения о возврате." title="Платежи"><PrimaryAdminRefunds/></AdminWorkspaceShell>;
-  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return (
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const refundOperator=readLocalRefundJournalConfig();
+    return (
     <AdminWorkspaceShell activeHref="/admin/payments" description="Заказы TEST-магазина и результаты их обработки." title="Платежи">
-      <PrimaryAdminPaymentJournal refundActions={readLocalRefundJournalConfig()!==null}/>
+      <PrimaryAdminPaymentJournal refundActions={refundOperator!==null} refundPasskey={refundOperator?.passkey===true}/>
     </AdminWorkspaceShell>
-  );
+    );
+  }
   return (
     <AdminShell
       activeHref="/admin/payments"

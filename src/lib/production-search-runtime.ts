@@ -48,6 +48,6 @@ export async function searchPrimaryPublications(value:PublicSearchInput){
   });
   const timeoutMs=Math.ceil(deadline-performance.now());if(timeoutMs<=0)throw new PublicSearchError();
   const store=new PostgresPublicSearchStore(db,{postmoderation:readPostmoderationEnabled(),specialistProfileIdentity:true});
-  delegated=true;return await store.search(input,{onComplete:release,timeoutMs,deadline});
+  delegated=true;return await store.search(input,{onComplete:release,timeoutMs,deadline,verifyListingBlocks:true});
  }finally{if(!delegated&&!initializing)release();}
 }

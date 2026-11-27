@@ -52,6 +52,14 @@ test('hosted refund actions require the TEST journal and the fixed private opera
   BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture'};
  assert.equal(readLocalRefundAdminEnabled(env),false);
  assert.deepEqual(readLocalRefundJournalConfig(env),{hosted:true,shopId:'fixture',socketPath:'/run/blizhniy-refund-operator/operator.sock'});
+ const protectedMode={...env,BLIZHNIY_REFUND_ADMIN:'hosted-passkey-test-v1',
+  BLIZHNIY_ADMIN_PASSKEYS:'hosted-v1',BLIZHNIY_USER_ACCESS_OPERATOR:'hosted-passkey-v1'};
+ assert.deepEqual(readLocalRefundJournalConfig(protectedMode),{hosted:true,passkey:true,shopId:'fixture',
+  socketPath:'/run/blizhniy-refund-operator-passkey/operator.sock'});
+ for(const configuration of [
+  {...protectedMode,BLIZHNIY_ADMIN_PASSKEYS:undefined},{...protectedMode,BLIZHNIY_USER_ACCESS_OPERATOR:undefined},
+  {...protectedMode,BLIZHNIY_REFUND_ADMIN:'hosted-test-v1'},
+ ])assert.equal(readLocalRefundJournalConfig(configuration),null);
  for(const change of [{BLIZHNIY_AUTH_ORIGIN:'https://foreign.invalid'},{BLIZHNIY_AUTH_MODE:'local'},
   {BLIZHNIY_LOCAL_PRIMARY:'enabled'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045'},
   {BLIZHNIY_REFUND_OPERATOR_SOCKET:'/tmp/other.sock'},{BLIZHNIY_ADMIN_PAYMENT_JOURNAL:undefined},

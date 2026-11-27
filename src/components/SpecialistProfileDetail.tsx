@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { BadgeCheck, Mail, MapPin, Phone, Send, UserRound } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
@@ -85,7 +86,7 @@ function messageHref(specialist: Pick<SpecialistProfileDetailData, "email" | "me
   return "";
 }
 
-export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", specialist, publicPage = false }: { fallbackHref?: string; specialist: SpecialistProfileDetailData; publicPage?: boolean }) {
+export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", specialist, publicPage = false, complaintLink }: { fallbackHref?: string; specialist: SpecialistProfileDetailData; publicPage?: boolean; complaintLink?: ReactNode }) {
   const placeLabel = locationLabel(specialist);
   const publishedLabel = formatPublicationDateTime(specialist.publishedAt ?? specialist.createdAt, "10:00");
   const writeHref = messageHref(specialist);
@@ -170,6 +171,7 @@ export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", 
                 <LocationMap location={specialist} exactLabel="Точный адрес специалиста по умолчанию не показывается" />
               </div>
             ) : null}
+            {publicPage ? complaintLink : null}
           </aside>}
         </article>
       </div>

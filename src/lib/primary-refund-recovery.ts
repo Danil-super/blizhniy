@@ -33,7 +33,8 @@ export function createPrimaryRefundRecovery(db:Database,merchant:Merchant,fetche
  // Validate the complete TEST provider configuration before any SQL or HTTP.
  new PostgresRefundJournalStore(db,merchant,fetcher);
  const scope={...merchant};
- async function authorized<T>(token:string,actor:string,input:RecoveryInput,request:boolean,work:(tx:PostgresQueries,source:Source)=>Promise<T>):Promise<T>{
+ async function authorized<T>(token:string,actor:string,input:RecoveryInput,mode:'record'|'existing'|'lookup',
+  work:(tx:PostgresQueries,source:Source,recorded:boolean)=>Promise<T>):Promise<T>{
   return withAppSessionTransaction(db,token,async(tx,user)=>{
    if(user.id!==actor)fail();
    await tx.query("select set_config('blizhniy.refund_recovery_session',$1,true)",[hashSessionToken(token)]);
@@ -42,32 +43,39 @@ export function createPrimaryRefundRecovery(db:Database,merchant:Merchant,fetche
    // Reuse canonical source validation and reject a newly bound, contradictory candidate before every write.
    const loaded=await new PostgresRefundDispatchStore({transaction:task=>task(tx)},scope).load(input.operationId);
    if(!loaded.attempted||(loaded.candidateId&&loaded.candidateId!==input.providerRefundId))fail();
-   if(request)await tx.query(`insert into app.payment_refund_recovery_actions(action_id,operation_id,provider_refund_id,reason,phase)
+   if(mode==='record')await tx.query(`insert into app.payment_refund_recovery_actions(action_id,operation_id,provider_refund_id,reason,phase)
     values($1,$2,$3,$4,'requested') on conflict do nothing`,[input.id,input.operationId,input.providerRefundId,input.reason]);
    const saved=(await tx.query<Audit>(`select ${columns} from app.payment_refund_recovery_actions where action_id=$1 and phase='requested'`,[input.id])).rows[0];
-   if(!saved||saved.operatorId!==actor||saved.operationId!==input.operationId||saved.providerRefundId!==input.providerRefundId||saved.reason!==input.reason)fail();
-   return work(tx,source);
+   if(saved?saved.operatorId!==actor||saved.operationId!==input.operationId||saved.providerRefundId!==input.providerRefundId||saved.reason!==input.reason:
+    mode!=='lookup')fail();
+   return work(tx,source,!!saved);
   },{requireAdmin:true,denied:()=>new RefundRecoveryError()});
  }
- async function prepare(token:string,actor:string,input:RecoveryInput){
-  return authorized(token,actor,input,true,async tx=>{
+ async function terminal(tx:PostgresQueries,input:RecoveryInput){
    const audit=(await tx.query<Audit>(`select ${columns} from app.payment_refund_recovery_actions where action_id=$1 and phase in ('succeeded','canceled')`,[input.id])).rows[0];
    if(!audit)return null;
    const verification=await new PostgresRefundJournalStore({transaction:work=>work(tx)},scope,fetcher).read(input.operationId);
    if(!verification||verification.providerRefundId!==input.providerRefundId||verification.status!==audit.phase)fail();
    return{state:verification.status==='succeeded'?'applied' as const:verification.status,verification,audit};
-  });
+ }
+ function prepare(token:string,actor:string,input:RecoveryInput){
+  return authorized(token,actor,input,'record',tx=>terminal(tx,input));
  }
  return{
   /** Durable administrator request and local terminal proof; never provider I/O or a new financial attempt. */
   prepare(token:string,expectedAdmin:unknown,value:unknown){return prepare(token,parseListingDraftId(expectedAdmin),parseRefundRecovery(value));},
+  readCompleted(token:string,expectedAdmin:unknown,value:unknown){
+   const input=parseRefundRecovery(value);
+   return authorized(token,parseListingDraftId(expectedAdmin),input,'lookup',
+    async(tx,_source,recorded)=>recorded?terminal(tx,input):null);
+  },
   async recover(token:string,expectedAdmin:unknown,value:unknown){
   const input=parseRefundRecovery(value),actor=parseListingDraftId(expectedAdmin);
   const completed=await prepare(token,actor,input);
   if(completed)return completed;
-  const guarded:Database={transaction:work=>authorized(token,actor,input,false,tx=>work(tx))};
+  const guarded:Database={transaction:work=>authorized(token,actor,input,'existing',tx=>work(tx))};
   await new PostgresRefundJournalStore(guarded,scope,fetcher).reconcile(input.operationId,input.providerRefundId);
-  return authorized(token,actor,input,false,async(tx,source)=>{
+  return authorized(token,actor,input,'existing',async(tx,source)=>{
    const local:Database={transaction:work=>work(tx)};
    const verified=await new PostgresRefundJournalStore(local,scope,fetcher).read(input.operationId);
    if(!verified||verified.providerRefundId!==input.providerRefundId)fail();

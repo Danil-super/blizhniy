@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83|84|85|86|87)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78|79|80|81|82|83|84|85|86|87|93|94|95)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -115,8 +115,17 @@ export function getHostedNotificationMigrations(){
  ];
 }
 
+export function getHostedPublicationRestrictionMigrations(){
+ return [
+  readReleaseMigration('0093-publication-restrictions.sql','f7fc924cc20a78e83ae45d504097b9cabbf8c3f449f9445a52c16b5b01d435f2'),
+  readReleaseMigration('0094-publication-restriction-operator.sql','680fb7f1d51cb5aafc41799f332ebc131c1e899d07d423166fa6662a35ff8e63'),
+  readReleaseMigration('0095-restricted-response-delivery.sql','a5d7aa31c1bdfb279f4bf0b15dba120722612ba1767888178d424ee13bdabd0c'),
+ ];
+}
+
 export function getHostedRefundSchemaVersion(journal){
  switch(journal.at(-1)?.name){
+  case '0095-restricted-response-delivery.sql':return 95;
   case '0087-push-delivery.sql':return 87;
   case '0084-hosted-marquee-queue.sql':return 84;
   case '0083-hosted-marquee-admission.sql':return 83;
@@ -137,7 +146,7 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(![75,76,78,79,80,81,82,83,84,87].includes(schema))throw Error('Invalid hosted refund schema');
+ if(![75,76,78,79,80,81,82,83,84,87,95].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
  if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
  if(schema>=78)plan.push(getHostedMarqueeRefundRecoveryMigration());
@@ -147,7 +156,8 @@ export function getHostedRefundReleasePlan(schema=75){
  if(schema>=82)plan.push(getHostedPlacementRenewalMigration());
  if(schema>=83)plan.push(getHostedMarqueeAdmissionMigration());
  if(schema>=84)plan.push(getHostedMarqueeQueueMigration());
- if(schema===87)plan.push(...getHostedNotificationMigrations());
+ if(schema>=87)plan.push(...getHostedNotificationMigrations());
+ if(schema===95)plan.push(...getHostedPublicationRestrictionMigrations());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -192,6 +202,10 @@ export function getHostedNotificationUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(84),getHostedNotificationMigrations());
 }
 
+export function getHostedPublicationRestrictionUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(87),getHostedPublicationRestrictionMigrations());
+}
+
 function composeHostedRefundSql(previous,plan){
  const baseline=previous.sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const body=plan.map(({sql})=>{
@@ -222,9 +236,9 @@ export async function assertHostedRefundRelease(tx,journal){
  const schema=getHostedRefundSchemaVersion(journal),marqueeRefunds=schema>=78,placementRefundProof=schema>=79,specialistRefunds=schema>=80,specialistRepeat=schema>=81,placementRenewals=schema>=82,marqueeAdmission=schema>=83,marqueeQueue=schema>=84;
  const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
- await assertPaidResponseSchema(tx);
+ await assertPaidResponseSchema(tx,{publicationRestrictions:schema===95});
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue,notifications:schema===87});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue,notifications:schema>=87});
  return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
@@ -264,6 +278,9 @@ const fingerprints={
  hostedNotifications:[
   '4ed3cf34526dbf71fef5129727a7318aa91a1a6ed0ed14693bae9674c0a9d17d',
   'a1545f152d1872ec965b5c410b511727572a7203e865f0a65e7b581a8ffe1a00',
+  // Same release with the reviewed passkey foreign keys and their internal triggers.
+  '3b5cadc48f5583da965b9884175b99be83fdcc151b36b965b9fbb1526d298250',
+  '98f97cd189b9cbe6a529cead813a060f7b2723278d12f77c6bde2bd589c0a14e',
  ],
  businessEmail:'ea84a98ca7432decaa7c35f7d008665c863e4f79e95981b17c8c337b9fa5944d',
  pushDelivery:'6406dd2a19072ef2e225785f7c0dfec34f7a894d63118d8e2665831260b26f42',

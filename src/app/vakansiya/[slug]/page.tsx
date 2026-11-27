@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BriefcaseBusiness, MapPin, Wrench } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
+import { PublicationComplaintLink } from "@/components/PublicationComplaintLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -151,6 +152,9 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                     Отклики доступны для опубликованных вакансий пользователей.
                   </p>
                 )}
+              </div>
+              <div className="mt-3">
+                <PublicationComplaintLink section="vakansiya" slug={vacancy.id} />
               </div>
             </section>
             {hasPoint ? (

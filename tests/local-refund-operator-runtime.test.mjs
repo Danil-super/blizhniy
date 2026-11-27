@@ -154,3 +154,40 @@ test('hosted TEST refund operator can use the approved PostgreSQL on the same se
  try{ await runtime.preflight(); }
  finally{ await runtime.close(); }
 });
+
+test('guarded hosted refunds require confirmation before merchant admission or a new recovery record',async()=>{
+ const {createHostedRefundOperatorRuntime}=await import('../scripts/local-refund-operator-runtime.mjs');
+ const guarded={...env,BLIZHNIY_REFUND_OPERATOR:'hosted-passkey-test-v1',BLIZHNIY_ADMIN_PASSKEYS:'hosted-v1',
+  BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_PLACEMENT:'same-host'};
+ const f=fixture();let terminal=null;
+ const recovery=f.modules.createPrimaryRefundRecovery;
+ f.modules.createPrimaryRefundRecovery=()=>({...recovery(),readCompleted:async()=>{
+  f.calls.push(['completed']);return terminal;
+ }});
+ const assertion={id:'fixture_key',rawId:'fixture_key',type:'public-key',
+  response:{clientDataJSON:'fixture',authenticatorData:'fixture',signature:'fixture'}};
+ f.modules.authorizeRefundPasskey=async(session,command,proof)=>{
+  assert.equal(session,token);assert.equal(proof.id,assertion.id);
+  f.calls.push(['passkey',command]);
+ };
+ await assert.rejects(createHostedRefundOperatorRuntime({...guarded,BLIZHNIY_ADMIN_PASSKEYS:undefined},{loadModules:()=>f.modules}));
+ await assert.rejects(createHostedRefundOperatorRuntime({...guarded,BLIZHNIY_REFUND_OPERATOR:'hosted-test-v1'},{loadModules:()=>f.modules}));
+ const runtime=await createHostedRefundOperatorRuntime(guarded,{loadModules:()=>f.modules});
+ const repair={id:input.id,operationId:input.id,providerRefundId:input.paymentIntentId,reason:input.reason};
+ try{
+  await assert.rejects(runtime.approve(token,actor,input),{code:'PASSKEY_REQUIRED'});
+  await assert.rejects(runtime.recover(token,actor,repair),{code:'PASSKEY_REQUIRED'});
+  assert.ok(!f.calls.some(([kind])=>['merchant','approve','prepare','recover'].includes(kind)));
+  assert.deepEqual(await runtime.readForAdmin(token,actor,input.id),{id:input.id});
+  terminal={state:'applied'};
+  assert.deepEqual(await runtime.recover(token,actor,repair),terminal);
+  assert.ok(!f.calls.some(([kind])=>['merchant','prepare','recover'].includes(kind)));
+  terminal=null;
+  await runtime.approve(token,actor,input,assertion);
+  assert.deepEqual(f.calls.slice(-5).map(([kind])=>kind),['database','passkey','merchant','database','approve']);
+  assert.deepEqual(f.calls.at(-4)[1],{action:'approve',expectedAdminId:actor,input});
+  await runtime.recover(token,actor,repair,assertion);
+  assert.deepEqual(f.calls.slice(-7).map(([kind])=>kind),['database','completed','passkey','prepare','merchant','database','recover']);
+  assert.deepEqual(f.calls.at(-5)[1],{action:'recover',expectedAdminId:actor,input:repair});
+ }finally{await runtime.close();}
+});

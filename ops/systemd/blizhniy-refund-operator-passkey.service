@@ -1,0 +1,24 @@
+[Unit]
+Description=Blizhniy TEST refund operator with passkey confirmation
+After=network-online.target blizhniy-admin-passkey.socket
+Wants=network-online.target
+Requires=blizhniy-admin-passkey.socket
+
+[Service]
+Type=simple
+User=blizhniy-refund-operator
+Group=blizhniy-refund-operator
+# The private staging package needs root ownership and group read and traversal for the service.
+WorkingDirectory=/opt/blizhniy-refund-operator-passkey
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/refund-operator/passkey.env
+UnsetEnvironment=NODE_OPTIONS NODE_TLS_REJECT_UNAUTHORIZED
+ExecStart=/opt/blizhniy-node22/bin/node /opt/blizhniy-refund-operator-passkey/scripts/hosted-refund-operator.mjs
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

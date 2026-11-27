@@ -5,6 +5,7 @@ import {adminUserDirectory,AdminUserDirectoryClientError} from '@/lib/client-adm
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import type {AdminUserQuery,AdminUserPage,AdminDirectoryUser} from '@/lib/admin-user-directory-contract';
 import {AdminUserAccessPanel} from './AdminUserAccessPanel';
+import {AdminPasskeyEnrollmentForm} from './AdminPasskeyEnrollmentForm';
 
 const button='min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50';
 const field='mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600';
@@ -55,12 +56,13 @@ function DirectoryPage({input,onNext,onFirst,onRefresh,onManage}:{input:AdminUse
     </nav>
   </section>;
 }
-function UserDirectory({actor,accessManagement=false}:{actor:string;accessManagement?:boolean}) {
+function UserDirectory({actor,accessManagement=false,passkeyEnrollment=false}:{actor:string;accessManagement?:boolean;passkeyEnrollment?:boolean}) {
   const [query,setQuery]=useState(''),[role,setRole]=useState<AdminUserQuery['role']>('all'),[status,setStatus]=useState<AdminUserQuery['status']>('all');
   const [input,setInput]=useState<AdminUserQuery>({expectedAdminId:actor,query:'',role:'all',status:'all',cursor:null}),[revision,setRevision]=useState(0);
   const [selected,setSelected]=useState<{id:string;label:string}|null>(null);
   return <div>
     <p className="text-sm leading-6 text-slate-600">Аккаунты сайта. Статус «Активен» означает подтверждённый email и отсутствие блокировки.</p>
+    {passkeyEnrollment&&<AdminPasskeyEnrollmentForm/>}
     <form className="mt-4 grid items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto]" onSubmit={event=>{event.preventDefault();setInput({expectedAdminId:actor,query:query.trim(),role,status,cursor:null});setRevision(value=>value+1);}}>
       <label className="text-xs font-bold text-slate-600">Поиск<input id="admin-user-search" type="search" maxLength={120} value={query} onChange={event=>setQuery(event.target.value)} placeholder="Имя, email, телефон или ID" className={field}/></label>
       <label className="text-xs font-bold text-slate-600">Роль<select value={role} onChange={event=>setRole(event.target.value as AdminUserQuery['role'])} className={field}>
@@ -77,8 +79,8 @@ function UserDirectory({actor,accessManagement=false}:{actor:string;accessManage
     {!accessManagement&&<p className="mt-4 text-xs text-slate-500">Изменение доступа пока недоступно.</p>}
   </div>;
 }
-export function PrimaryAdminUsersClient({accessManagement=false}:{accessManagement?:boolean}={}) {
+export function PrimaryAdminUsersClient({accessManagement=false,passkeyEnrollment=false}:{accessManagement?:boolean;passkeyEnrollment?:boolean}={}) {
   const auth=usePrimaryAccountAuth();
   if(auth?.state!=='admin'||!auth.userId)return <p role="status" className="text-sm text-slate-600">{auth?.state==='loading'?'Проверяем права администратора…':'Доступ администратора не подтверждён.'}</p>;
-  return <UserDirectory key={auth.userId} actor={auth.userId} accessManagement={accessManagement}/>;
+  return <UserDirectory key={auth.userId} actor={auth.userId} accessManagement={accessManagement} passkeyEnrollment={passkeyEnrollment}/>;
 }

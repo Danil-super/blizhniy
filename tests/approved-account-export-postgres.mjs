@@ -7,12 +7,19 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
+import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server';
 import pg from 'pg';
+import { chromium } from 'playwright';
 import * as exporter from '../scripts/export-local-account-data.mjs';
+import { getAdminPasskeyUpgradeSql, getAdminUserAccessMigration } from '../scripts/admin-user-access-release.mjs';
+import { startAdminPasskeyOperator } from '../scripts/admin-passkey-operator.mjs';
 import { assertListingViewsAccess, getBookingLifecycleMigration, getInboxPreferenceMigration, getListingViewsMigration, getPaidResponseMigrations, getPublicationTestMigrationPlan, getSpecialistAccountTestMigration } from '../scripts/publication-test-release-plan.mjs';
 import { getSpecialistCheckoutMigration, specialistCheckoutRuntimeGrants } from '../scripts/specialist-checkout-release.mjs';
 import { getPaymentReconciliationRolePlan, verifyPaymentReconciliationDatabase } from '../scripts/payment-reconciliation-role.mjs';
 import { listingViewDigest } from '../src/lib/listing-view-history.ts';
+import { createAdminArchivePasskey } from '../src/lib/admin-archive-passkey.ts';
+import { callLocalAdminPasskey } from '../src/lib/admin-passkey-operator-client.ts';
+import { AdminPasskeyStore } from '../src/lib/postgres-admin-passkey.ts';
 
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile), role='blizhniy_account_export_reader', database='blizhniy_prod';
@@ -28,8 +35,9 @@ test('approved operator exports only the confirmed owner in a disposable product
   '--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,postgresImage]);
  const meta=JSON.parse(await docker(['inspect',container]))[0],binding=meta.NetworkSettings.Ports['5432/tcp'][0];
  assert.equal(meta.Config.Labels[label],name);assert.equal(meta.Id,container);assert.equal(binding.HostIp,'127.0.0.1');
- let owner, reader, worker;
+ let owner, reader, worker, verifier, browser, daemon;
  t.after(async()=>{
+  await daemon?.close();await browser?.close();await verifier?.close();
   await reader?.close();await worker?.close();await owner?.end();
   assert.equal(JSON.parse(await docker(['inspect',container]))[0].Config.Labels[label],name);
   await docker(['rm','--force',container]);
@@ -40,14 +48,17 @@ test('approved operator exports only the confirmed owner in a disposable product
  }
  const config={host:'127.0.0.1',port:Number(binding.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:1500};
 
- const ownerPassword=randomBytes(32).toString('hex');
+ const ownerPassword=randomBytes(32).toString('hex'),verifierPassword=randomBytes(32).toString('hex');
  const bootstrap=new pg.Client(config);
  await bootstrap.connect();
  try{
   await bootstrap.query('create role gen_user login createrole password '+pg.escapeLiteral(ownerPassword));
   await bootstrap.query('create role blizhniy_runtime nologin');
+  await bootstrap.query('create role blizhniy_user_operator nologin');
+  await bootstrap.query('create role blizhniy_passkey_verifier login noinherit connection limit 4 password '+pg.escapeLiteral(verifierPassword));
   await bootstrap.query('alter database '+database+' owner to gen_user');
   await bootstrap.query('revoke all on database '+database+' from public; revoke all on schema public from public');
+  await bootstrap.query('grant connect on database '+database+' to blizhniy_passkey_verifier');
  }finally{await bootstrap.end();}
  owner=new pg.Client({...config,user:'gen_user',password:ownerPassword});
  await owner.connect();
@@ -197,21 +208,60 @@ test('approved operator exports only the confirmed owner in a disposable product
  const browserCache=process.env.PLAYWRIGHT_BROWSERS_PATH??join(homedir(),'.cache','ms-playwright');
  const manifest=buildApprovedAccountExportOperator(artifact,browserCache);
  assert.ok(manifest.sources.includes('lib/postgres.js')&&manifest.browserRevision);
+ assert.ok(manifest.sources.includes('lib/admin-passkey-operator-client.js'));
  assert.equal((await readdir(join(artifact,'node_modules'))).includes('typescript'),false);
+ await owner.query(getAdminUserAccessMigration().source);
+ await owner.query(getAdminPasskeyUpgradeSql());
+ verifier=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_passkey_verifier',password:verifierPassword,max:1}));
+ const authOrigin='https://archive.example.test',rpID=new URL(authOrigin).hostname;
+ browser=await chromium.launch({headless:true});
+ const context=await browser.newContext();
+ await context.route('**/*',route=>route.request().url()===authOrigin+'/'
+  ?route.fulfill({contentType:'text/html',body:'<!doctype html><title>Archive fixture</title>'}):route.abort());
+ const page=await context.newPage(),cdp=await context.newCDPSession(page);
+ await cdp.send('WebAuthn.enable');
+ await cdp.send('WebAuthn.addVirtualAuthenticator',{options:{
+  protocol:'ctap2',transport:'internal',hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true,
+ }});
+ await page.goto(authOrigin);
+ const userID=randomBytes(32),registration=await generateRegistrationOptions({
+  rpID,rpName:'Archive fixture',userID,userName:'synthetic-admin',
+  authenticatorSelection:{residentKey:'required',userVerification:'required'},
+ });
+ const registered=await page.evaluate(async options=>(await navigator.credentials.create({
+  publicKey:PublicKeyCredential.parseCreationOptionsFromJSON(options),
+ })).toJSON(),registration);
+ const key=await verifyRegistrationResponse({response:registered,expectedChallenge:registration.challenge,
+  expectedOrigin:authOrigin,expectedRPID:rpID,requireUserVerification:true});
+ assert.equal(key.verified,true);
+ const {id,publicKey,counter}=key.registrationInfo.credential;
+ await owner.query('insert into app_admin_passkey.credentials(id,admin_id,user_handle,public_key,counter) values($1,$2,$3,$4,$5)',
+  [id,administrator.id,userID.toString('base64url'),Buffer.from(publicKey),counter]);
+ const archiveService=createAdminArchivePasskey(new AdminPasskeyStore(verifier,authOrigin));
+ daemon=await startAdminPasskeyOperator({archive:archiveService},async()=>{});
+ const {options:assertionOptions}=await operator.reviewedAccountExportOptions(reviewCommand,reviewed,
+  (token,command)=>callLocalAdminPasskey(daemon.socketPath,token,command));
+ const credential=await page.evaluate(async options=>(await navigator.credentials.get({
+  publicKey:PublicKeyCredential.parseRequestOptionsFromJSON(options),
+ })).toJSON(),assertionOptions);
  await reader.close();
  reader=undefined;
  const child=run(process.execPath,['--input-type=module','--eval',`
   import {readFileSync} from 'node:fs';
   import {createRequire} from 'node:module';
   import pg from 'pg';
-  import {bindReviewedAccountExport,prepareOperatorArchive} from './scripts/prepare-approved-account-export.mjs';
-  const {PostgresDatabase}=createRequire(import.meta.url)('./compiled/lib/postgres.js');
+  import {authorizeReviewedAccountExport,prepareOperatorArchive} from './scripts/prepare-approved-account-export.mjs';
+  const require=createRequire(import.meta.url);
+  const {PostgresDatabase}=require('./compiled/lib/postgres.js');
+  const {callLocalAdminPasskey}=require('./compiled/lib/admin-passkey-operator-client.js');
   const data=JSON.parse(readFileSync(0,'utf8'));
+  const approved=await authorizeReviewedAccountExport(data.command,data.review,
+   (token,command)=>callLocalAdminPasskey(data.socketPath,token,command));
   const db=new PostgresDatabase(new pg.Pool(data.readerConfig));
-  try{console.log(JSON.stringify(await prepareOperatorArchive(db,bindReviewedAccountExport(data.command,data.review),data.operatorOptions)));}
+  try{console.log(JSON.stringify(await prepareOperatorArchive(db,approved,data.operatorOptions)));}
   finally{await db.close();}
  `],{cwd:artifact,timeout:25000,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',NODE_ENV:'test',PLAYWRIGHT_BROWSERS_PATH:join(artifact,'browser')}});
- child.child.stdin.end(JSON.stringify({readerConfig,command:reviewCommand,review:reviewed,operatorOptions}));
+ child.child.stdin.end(JSON.stringify({readerConfig,command:{...reviewCommand,credential},review:reviewed,operatorOptions,socketPath:daemon.socketPath}));
  const prepared=JSON.parse((await child).stdout);
  reader=new(load('postgres').PostgresDatabase)(new pg.Pool(readerConfig));
  const stagedPath=join(outputRoot,prepared.directory,'archive.tar.gz');

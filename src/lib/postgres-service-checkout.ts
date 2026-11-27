@@ -6,6 +6,7 @@ import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type 
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseServiceCheckout,ServiceCheckoutConflictError,ServiceCheckoutUnavailableError,type PaidServiceKind,type ServiceCheckoutInput} from './service-checkout-contract.ts';
 import type {ListingCheckoutConfig} from './postgres-listing-checkout';
+import {isPublicationRestricted} from './publication-restriction-eligibility';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 type Event={date:string;endsAt:string};
 type Offer={id:string;name:string;amount:string;durationDays:number|null};
@@ -44,6 +45,7 @@ export class PostgresServiceCheckoutStore{
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<{tariff:Offer;fairEvent:Event|null}>{
   const {snapshot,issues}=await this.forms.inspectInTransaction(tx,owner,this.kind,id,revision);
   if(issues.length||snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt!==null||snapshot.expiresAt!==null)throw new ServiceCheckoutUnavailableError();
+  if(await isPublicationRestricted(tx,this.kind,id))throw new ServiceCheckoutUnavailableError();
   const phone=(await tx.query<{ready:boolean}>('select app.phone_is_confirmed($1) ready',[owner])).rows[0];if(!phone?.ready)throw new ServiceCheckoutUnavailableError();
   if((await tx.query("select id from app.service_moderation where publication_id=$1 and revision=$2::bigint and state='approved' for share",[id,revision])).rowCount!==1)throw new ServiceCheckoutUnavailableError();
   const tariff=(await tx.query<Offer>(`select id,name,price::text amount,duration_days as "durationDays" from app.tariffs where id=$1 and action=$2 and active and price>0

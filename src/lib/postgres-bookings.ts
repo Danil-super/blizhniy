@@ -4,7 +4,7 @@ import {parseBookingRequest,quoteBookingRequest,BookingRequestInputError,Booking
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
 import {parseListingFormDraft,type ListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {maxListingMediaTotalSize} from './media-limits.ts';import {enqueueNotificationInTransaction} from './postgres-notification-inbox';
-import {publicListingSource,publicListingLive,publicListingPhotos,postmoderationListingSource,postmoderationListingLive} from './listing-public-eligibility';
+import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {BookingDetails} from './types';
 import {parseBookingCancellation,BookingLifecycleInputError,type BookingLifecycle} from './booking-lifecycle.ts';
 export class BookingAccessError extends Error{constructor(){super('Booking unavailable');this.name='BookingAccessError';}}
@@ -12,16 +12,17 @@ export class BookingConflictError extends Error{constructor(){super('Booking cha
 export class BookingAvailabilityError extends Error{constructor(){super('Booking capacity unavailable');this.name='BookingAvailabilityError';}}
 export class BookingBusyError extends Error{constructor(){super('Booking participant busy');this.name='BookingBusyError';}}
 export class BookingHoldLimitError extends Error{constructor(){super('Too many pending bookings');this.name='BookingHoldLimitError';}}
-type Options={postmoderation?:boolean;lifecycle?:boolean};
+type Options=ListingVisibilityPolicy&{lifecycle?:boolean};
 const liveHold=(lifecycle:boolean,alias='b')=>lifecycle?`(${alias}.status='accepted' or (${alias}.status='pending' and ${alias}.expires_at>clock_timestamp()))`:`${alias}.status in ('pending','accepted')`;
 type Bookable={id:string;author:string;revision:string;title:string;booking:BookingDetails;today:string};
 /** Shared public eligibility gate; private form/contact columns are validated, never returned. Caller locks separately for writes. */
-export async function readBookableListing(tx:PostgresQueries,id:string,postmoderation=false):Promise<Bookable|null>{
+export async function readBookableListing(tx:PostgresQueries,id:string,policy:ListingVisibilityPolicy={}):Promise<Bookable|null>{
+ const {source,eligible}=listingVisibility(policy);
  const row=(await tx.query<ListingFormDraft&{id:string;author:string;revision:string;today:string}>(`select l.id,l.author_id as author,l.revision::text as revision,l.title,l.description,l.price::text as price,
   coalesce(parent.slug,c.slug) as "categorySlug",case when c.parent_id is not null then c.name end as "subcategoryName",city.name as "cityName",
   l.district,l.address,l.latitude::float8 as latitude,l.longitude::float8 as longitude,l.show_exact_address as "showExactAddress",l.contact_phone as "contactPhone",l.messenger_url as "messengerUrl",l.booking,
   to_char(clock_timestamp() at time zone 'Europe/Moscow','YYYY-MM-DD') as today
-  ${postmoderation?postmoderationListingSource:publicListingSource} where l.id=$1 and l.listing_type='rent' and ${postmoderation?postmoderationListingLive:publicListingLive} and ${publicListingPhotos}`,[id,maxListingMediaTotalSize])).rows[0];
+  ${source} where l.id=$1 and l.listing_type='rent' and ${eligible}`,[id,maxListingMediaTotalSize])).rows[0];
  if(!row)return null;
  try{const {id,author,revision,today,...fields}=row,form=parseListingFormDraft({...fields,kind:'arenda',photoIds:[]});
   if(!form.booking||checkListingFormContent(form,true).length)return null;return{id,author,revision,title:form.title,booking:form.booking,today};
@@ -33,7 +34,7 @@ export type BookingInventory={listing:{id:string;revision:string;title:string};b
 export class PostgresBookingAvailabilityStore{
  constructor(private readonly db:PostgresQueries,private readonly options:Options={}){}
  async read(value:unknown):Promise<BookingInventory|null>{
-  const id=parseListingDraftId(value),listing=await readBookableListing(this.db,id,this.options.postmoderation===true);if(!listing)return null;
+  const id=parseListingDraftId(value),listing=await readBookableListing(this.db,id,this.options);if(!listing)return null;
   let occupiedDates:string[]=[],tourSeatsRemaining:number|null=null;
   if(listing.booking.mode==='stay'){
    occupiedDates=(await this.db.query<{day:string}>(`select distinct to_char(day,'YYYY-MM-DD') as day from app.booking_requests b
@@ -44,7 +45,7 @@ export class PostgresBookingAvailabilityStore{
    const occupied=(await this.db.query<{occupied:string}>(`select coalesce(sum(guests),0)::text as occupied from app.booking_requests where listing_id=$1 and mode='tour' and status='accepted' and start_date=$2::date`,[id,listing.booking.tourDate])).rows[0].occupied;
    const remaining=BigInt(listing.booking.maxGuests!)-BigInt(occupied);tourSeatsRemaining=remaining>BigInt(0)?Number(remaining):0;
   }
-  const current=await readBookableListing(this.db,id,this.options.postmoderation===true);
+  const current=await readBookableListing(this.db,id,this.options);
   if(!current)return null;if(current.revision!==listing.revision||current.today!==listing.today||JSON.stringify(current.booking)!==JSON.stringify(listing.booking))throw new BookingConflictError();
   return{listing:{id,title:listing.title,revision:listing.revision},booking:listing.booking,today:listing.today,occupiedDates,tourSeatsRemaining};
  }
@@ -73,7 +74,7 @@ export class PostgresBookingStore{
  private async current(tx:PostgresQueries,actor:string,id:string){
   const initial=(await tx.query<{author:string}>('select author_id as author from app.listings where id=$1',[id])).rows[0];if(!initial||initial.author===actor)throw new BookingAccessError();
   await this.peer(tx,initial.author,true);const locked=(await tx.query<{author:string}>('select author_id as author from app.listings where id=$1 for update',[id])).rows[0];
-  if(!locked||locked.author!==initial.author)throw new BookingAccessError();const result=await readBookableListing(tx,id,this.options.postmoderation===true);if(!result)throw new BookingAccessError();return result;
+  if(!locked||locked.author!==initial.author)throw new BookingAccessError();const result=await readBookableListing(tx,id,this.options);if(!result)throw new BookingAccessError();return result;
  }
  private async available(tx:PostgresQueries,input:BookingRequestInput,booking:BookingDetails,exclude:string|null=null){
   if(input.mode==='stay'){
@@ -97,7 +98,7 @@ export class PostgresBookingStore{
   if(this.options.lifecycle)await expireBookingRequests(tx,listingId,id);
  }
  private async locate(tx:PostgresQueries,actor:string,id:string){const initial=await this.row(tx,actor,id,false);await tx.query('select id from app.listings where id=$1 for update',[initial.listingId]);return this.row(tx,actor,id);}
- private async finish(tx:PostgresQueries,id:string,input:BookingRequestInput){const listing=await readBookableListing(tx,id,this.options.postmoderation===true);if(!listing)throw new BookingAccessError();quoteBookingRequest(listing.booking,input,listing.today);
+ private async finish(tx:PostgresQueries,id:string,input:BookingRequestInput){const listing=await readBookableListing(tx,id,this.options);if(!listing)throw new BookingAccessError();quoteBookingRequest(listing.booking,input,listing.today);
   if(this.options.lifecycle){const row=(await tx.query<{future:boolean}>('select app.booking_start_time($1,$2::date,$3::jsonb)>clock_timestamp() as future',[input.mode,input.startDate,JSON.stringify({booking:listing.booking})])).rows[0];if(!row.future)throw new BookingConflictError();}
  }
  preview(token:string,owner:string,value:unknown){const input=parseBookingRequest(value);return this.owner(token,owner,async(tx,actor)=>{
@@ -125,7 +126,7 @@ export class PostgresBookingStore{
    await this.expire(tx,row.listingId,id);const fresh=await this.row(tx,actor,id);if(fresh.status==='expired')return null;
    if(row.host!==actor)throw new BookingAccessError();if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return display(row,actor);
    if(row.status!=='pending'||row.revision!==revision)throw new BookingConflictError();let accepting:BookingRequestInput|null=null;
-   if(state==='accepted'){const listing=await readBookableListing(tx,row.listingId,this.options.postmoderation===true);if(!listing)throw new BookingAccessError();accepting={listingId:row.listingId,creationKey:row.creationKey,expectedListingRevision:listing.revision,mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests};
+   if(state==='accepted'){const listing=await readBookableListing(tx,row.listingId,this.options);if(!listing)throw new BookingAccessError();accepting={listingId:row.listingId,creationKey:row.creationKey,expectedListingRevision:listing.revision,mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests};
     quoteBookingRequest(listing.booking,accepting,listing.today);await this.available(tx,accepting,listing.booking,id);}
    const changed=await tx.query('update app.booking_requests set status=$2,revision=revision+1,decided_at=clock_timestamp(),updated_at=clock_timestamp() where id=$1 and revision=$3::bigint and revision<9223372036854775807',[id,state,revision]);if(changed.rowCount!==1)throw new BookingConflictError();
    await enqueueNotificationInTransaction(tx,row.guest,{eventKey:`booking_decision:${id}:${state}`,category:'booking',tone:state==='accepted'?'success':'warning',title:state==='accepted'?'Бронирование подтверждено':'Бронирование отклонено',body:'Владелец ответил на вашу заявку. Условия доступны в личном кабинете.',actionHref:'/cabinet/bronirovaniya',bookingRequestId:id});

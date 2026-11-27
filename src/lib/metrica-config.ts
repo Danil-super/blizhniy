@@ -14,3 +14,15 @@ export function parseMetricaCounterId(value: unknown): number | null {
 export function getMetricaCounterId(): number | null {
   return parseMetricaCounterId(getPublicRuntimeSetting("metrica-id"));
 }
+
+export type MetricaTransport = "sdk" | "measurement-protocol";
+
+export function getMetricaTransport(env: NodeJS.ProcessEnv = process.env): MetricaTransport | null {
+  const mode = env.BLIZHNIY_YANDEX_METRICA_MODE;
+  const token = env.BLIZHNIY_YANDEX_METRICA_MEASUREMENT_TOKEN;
+  if (mode === undefined && token === undefined) return "sdk";
+  if (mode === "measurement-protocol" && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(token ?? "")) {
+    return "measurement-protocol";
+  }
+  return null;
+}

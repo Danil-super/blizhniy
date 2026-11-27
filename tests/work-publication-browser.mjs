@@ -257,14 +257,20 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.getByRole('link',{name:chosen[kind].title,exact:true}).waitFor();
     assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,1);assert.equal(state.workCalls.filter(row=>row.body.action==='intent').length,1);
     assert.equal(state.uploads.length,1);assert.ok(state.workCalls.some(row=>row.body.action==='list'));
+    const original=collection().get(chosen[kind].id);
+    const privateLocation={showExactAddress:false,address:'Стендовый адрес',latitude:45.1,longitude:38.9};
+    collection().set(original.id,{...original,form:{...original.form,...privateLocation}});
     await page.getByRole('link',{name:chosen[kind].title,exact:true}).click();
     await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),chosen[kind].title);
+    assert.equal(await page.getByRole('radio',{name:'Только город'}).isChecked(),true);
+    assert.equal(await page.locator('input[name="address"]').getAttribute('type'),'hidden');
     const nextTitle=chosen[kind].title+' исправлена';await page.locator('input[name="title"]').fill(nextTitle);
     const updated=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().postDataJSON()?.action==='update')
      .then(async response=>{await page.waitForURL(origin+chosen[kind].cabinet);return response;});
     await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();assert.equal((await updated).status(),200);await render(page);
     assert.equal(state.workCalls.find(row=>row.body.action==='update').body.expectedRevision,'9007199254740993');
     assert.equal(collection().get(chosen[kind].id).revision,'9007199254740994');assert.equal(collection().get(chosen[kind].id).form.title,nextTitle);
+    for(const [field,value] of Object.entries(privateLocation))assert.equal(collection().get(original.id).form[field],value,field);
     await page.reload();await page.getByRole('link',{name:nextTitle,exact:true}).click();await page.locator('input[name="title"]').waitFor();
     assert.equal(await page.locator('input[name="title"]').inputValue(),nextTitle);await checkLayout(page,'form');
     await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();await page.getByText('На модерации',{exact:true}).waitFor();

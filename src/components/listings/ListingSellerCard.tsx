@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, CalendarDays, CheckCircle2, ClipboardList, Flag, ShieldCheck } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, ClipboardList, ShieldCheck } from "lucide-react";
+import { PublicationComplaintLink } from "@/components/PublicationComplaintLink";
 import { sellerInitial } from "@/lib/seller-profile";
 
 type ListingSellerCardProps = {
@@ -8,14 +9,9 @@ type ListingSellerCardProps = {
   listingCount?: number;
   soldCount?: number;
   hasContacts?: boolean;
-  listingTitle: string;
+  listingSlug: string;
   profileHref?: string;
 };
-
-function supportMailHref(listingTitle: string) {
-  const subject = encodeURIComponent(`Жалоба на объявление: ${listingTitle}`);
-  return `mailto:prostova04@yandex.ru?subject=${subject}`;
-}
 
 function pluralListings(count: number) {
   const mod10 = count % 10;
@@ -32,7 +28,7 @@ function pluralListings(count: number) {
   return "объявлений";
 }
 
-export function ListingSellerCard({ sellerName, registeredSince, listingCount = 1, soldCount = 0, hasContacts = false, listingTitle, profileHref }: ListingSellerCardProps) {
+export function ListingSellerCard({ sellerName, registeredSince, listingCount = 1, soldCount = 0, hasContacts = false, listingSlug, profileHref }: ListingSellerCardProps) {
   const name = sellerName?.trim() || "Продавец";
   const safeListingCount = Math.max(1, listingCount);
 
@@ -93,10 +89,7 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
       </div>
 
       <div className="mt-4">
-        <a href={supportMailHref(listingTitle)} className="inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600">
-          <Flag className="h-4 w-4 shrink-0" />
-          Пожаловаться
-        </a>
+        <PublicationComplaintLink section="obyavlenie" slug={listingSlug} />
       </div>
     </section>
   );

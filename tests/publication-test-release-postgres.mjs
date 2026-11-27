@@ -766,6 +766,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
        try{await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions));}
        finally{await admin.query('revoke execute on function app.specialist_repeat_basis(uuid,uuid,bigint,text) from blizhniy_runtime');}
       };
+      await admin.query(await readFile(new URL('../database/candidates/0093-publication-restrictions.sql',import.meta.url),'utf8'));
       await testHostedSpecialistRepeat({admin,config,load,reconciler:workerDb,refundOperator:operator.db,refundWorker:worker.db,upgrade});
       await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,verifyOptions);
      });
@@ -1001,6 +1002,24 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      if(webCompatibility)await t.test('previous web build rolls back on the restored expanded schema and keeps the profile',async()=>{
       const {testWebReleaseCompatibility}=await import('./web-release-compatibility.mjs');
       await testWebReleaseCompatibility({admin,config,docker,container,phase:'expanded',evidence:webCompatibility});
+     });
+     await t.test('packaged finance preflights accept the complete passkey extension alongside the 0087 journal',async passkeys=>{
+      const {testHostedPasskeyFinance}=await import('./hosted-passkey-finance-postgres.mjs');
+      const profiles=[{
+       role:rolePlan.role,password:workerPassword,verify:(connection,database)=>copiedGuard.verifyPaymentReconciliationDatabase(
+        connection,{database,publicationTest:true,specialistAccountTest:true}),
+      }];
+      for(const entry of entries){
+       const api=await import(pathToFileURL(join(artifactDirectory,'notifications-'+entry.kind,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       profiles.push({...entry,verify:(connection,database)=>api[entry.verify](connection,{database,hostedRefunds:true,
+        merchant:{shopId:'900000001',isTest:true,marqueeRefunds:true,specialistRefunds:true}})});
+      }
+      await testHostedPasskeyFinance(passkeys,{admin,config,docker,container,PostgresDatabase,profiles,load});
+     });
+     const passkeyWebCompatibility=process.env.BLIZHNIY_TEST_PASSKEY_WEB_COMPATIBILITY_DIR;
+     if(passkeyWebCompatibility)await t.test('same-host web resumes with guarded actions paused and retains the migrated schema',async()=>{
+      const {testRetainedPasskeyWeb}=await import('./web-release-compatibility.mjs');
+      await testRetainedPasskeyWeb({admin,config,docker,container,evidence:passkeyWebCompatibility});
      });
     }finally{for(const entry of entries)await entry.db?.close();}
    });

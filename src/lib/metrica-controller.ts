@@ -48,7 +48,8 @@ export function createMetricaController(id: number, dependencies: {
     try {
       if (!initialized) {
         initialized = true;
-        command(id, 'init', metricaInitOptions);
+        // The SDK requests settings at init even with defer and reads the document URL unless overridden.
+        command(id, 'init', { ...metricaInitOptions, url: state.page.url, referrer: state.page.referer || state.page.url });
       }
       const latest = dependencies.snapshot();
       if (disposed || !latest.consent || !latest.page) { stop(); return; }
@@ -56,7 +57,8 @@ export function createMetricaController(id: number, dependencies: {
       const previous = lastUrl;
       lastUrl = latest.page.url;
       lastViewKey = latest.viewKey;
-      command(id, 'hit', latest.page.url, { referer: previous ?? latest.page.referer, title: latest.page.title });
+      // A blank referrer falls back to document.referrer. The SDK omits a same-URL referrer.
+      command(id, 'hit', latest.page.url, { referer: previous ?? (latest.page.referer || latest.page.url), title: latest.page.title });
     } catch { failed = true; stop(); }
   }
   return { refresh, dispose() { disposed = true; stop(); } };

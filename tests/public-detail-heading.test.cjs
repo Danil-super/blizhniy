@@ -60,9 +60,36 @@ for(const status of ['published','blocked','archived','expired','sold'])test(`ca
 });
 test('seller labels and profile link use readable foregrounds in the unified detail sidebar',()=>{
  const Seller=runtime()('src/components/listings/ListingSellerCard.tsx').ListingSellerCard;
- const html=renderToStaticMarkup(React.createElement(Seller,{sellerName:'Продавец',listingTitle:'Комод',profileHref:'/prodavets/synthetic'}));
+ const html=renderToStaticMarkup(React.createElement(Seller,{sellerName:'Продавец',listingSlug:'synthetic',profileHref:'/prodavets/synthetic'}));
  assert.doesNotMatch(html,/text-slate-400/);
  assert.match(html,/<a[^>]+text-blue-800[^>]*>[\s\S]*?Профиль продавца/);
+});
+
+test('listing complaints identify the exact public card without copying its title', () => {
+ const load = runtime({'@/lib/site-url': {getPublicSiteUrl: () => 'https://fixture.example'}});
+ const {ListingSellerCard} = load('src/components/listings/ListingSellerCard.tsx');
+ const html = renderToStaticMarkup(React.createElement(ListingSellerCard, {
+  listingSlug: '22222222-2222-4222-8222-222222222222', listingTitle: 'Заголовок пользователя',
+ }));
+ const href = html.match(/href="(mailto:[^"]+)"/)?.[1]?.replace(/&amp;/g, '&');
+ assert.ok(href);
+ const mail = new URL(href);
+ assert.equal(mail.pathname, 'prostova04@yandex.ru');
+ assert.equal(mail.searchParams.get('body')?.split('\r\n')[0], 'Публикация: https://fixture.example/obyavlenie/22222222-2222-4222-8222-222222222222');
+ assert.equal(mail.searchParams.get('subject'), 'Жалоба на публикацию БЛИЖНИЙ');
+ assert.doesNotMatch(decodeURIComponent(href), /Заголовок пользователя/);
+});
+
+test('each public complaint link uses its own route and encodes the publication identifier', () => {
+ const load = runtime({'@/lib/site-url': {getPublicSiteUrl: () => 'https://fixture.example'}});
+ const {PublicationComplaintLink} = load('src/components/PublicationComplaintLink.tsx');
+ for (const section of ['obyavlenie', 'vakansiya', 'rabota/zakazy', 'specialist']) {
+  const html = renderToStaticMarkup(React.createElement(PublicationComplaintLink, {section, slug: 'id&sample'}));
+  const href = html.match(/href="(mailto:[^"]+)"/)?.[1]?.replace(/&amp;/g, '&');
+  assert.ok(href);
+  assert.equal(new URL(href).searchParams.get('body')?.split('\r\n')[0], `Публикация: https://fixture.example/${section}/id%26sample`);
+  assert.match(html, /Пожаловаться по почте/);
+ }
 });
 
 test('public photo galleries start on the first slide without inline CSS', () => {

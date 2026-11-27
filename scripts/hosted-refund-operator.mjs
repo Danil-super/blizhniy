@@ -1,15 +1,20 @@
+import {constants} from 'node:fs';
+import {access} from 'node:fs/promises';
 import {createHostedRefundOperatorRuntime} from './local-refund-operator-runtime.mjs';
 import {startLocalRefundOperatorServer} from './local-refund-operator-server.mjs';
 import {readActivatedOperatorSocket} from './hosted-operator-socket.mjs';
 
-const socketPath='/run/blizhniy-refund-operator/operator.sock';
 const status=value=>JSON.stringify({event:'hosted_refund_operator',status:value});
 
 async function main(args,env){
  const check=args.length===1&&args[0]==='--check';
  const [major,minor]=process.versions.node.split('.').map(Number);
  if((args.length&&!check)||process.platform!=='linux'||major!==22||minor<18||process.getuid?.()===0)throw Error();
+ const guarded=env.BLIZHNIY_REFUND_OPERATOR==='hosted-passkey-test-v1';
+ const socketPath=guarded?
+  '/run/blizhniy-refund-operator-passkey/operator.sock':'/run/blizhniy-refund-operator/operator.sock';
  const activation=check?undefined:await readActivatedOperatorSocket(env,socketPath);
+ if(guarded)await access('/run/blizhniy-admin-passkey/operator.sock',constants.W_OK);
  const runtime=await createHostedRefundOperatorRuntime(env);
  let server;
  const stop=()=>{void server?.close().catch(()=>{process.exitCode=1;});};

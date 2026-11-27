@@ -4,21 +4,23 @@ import {dirname,isAbsolute,join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 import {getUserAccessRolePlan} from './user-access-role.mjs';
-import {paymentMigrationDirectory} from './publication-test-release-plan.mjs';
+import {getAdminPasskeyUpgradeSql} from './admin-user-access-release.mjs';
+import {getHostedPublicationRestrictionMigrations,paymentMigrationDirectory} from './publication-test-release-plan.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 /** Offline source package only; no credentials, role installation or connection. */
 export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}={}){
- if(typeof tariffs!=='boolean'||![false,true,'tariffs'].includes(hosted)||hosted&&tariffs||typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid user operator destination');
+ if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid user operator destination');
+ const plan=getUserAccessRolePlan('blizhniy_prod',{tariffs,hosted});
  const program=ts.createProgram(['postgres-admin-user-access.ts','admin-user-access-contract.ts','postgres-admin-tariffs.ts','admin-operator-contract.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,moduleResolution:ts.ModuleResolutionKind.Node10,
   strict:true,esModuleInterop:true,skipLibCheck:true,noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),paths:{'@/*':[join(root,'src/*')]},
  });
  if(ts.getPreEmitDiagnostics(program).length)throw Error('User operator compilation failed');
  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>({name:relative(root,file.fileName),sha256:createHash('sha256').update(file.text).digest('hex')}));
- const plan=getUserAccessRolePlan('blizhniy_prod',{tariffs,hosted});
  const available=hosted?plan:getUserAccessRolePlan('blizhniy_prod',{tariffs:true});
- const migrations=[...plan.appJournal,...available.journal].map(row=>{
-  const folder=/^(0058|0061|0062|0088)-/.test(row.name)?'candidates':paymentMigrationDirectory(row.name);
+ const appUpgrade=hosted?getHostedPublicationRestrictionMigrations().map(({name,sha256})=>({name,sha256})):[];
+ const migrations=[...plan.appJournal,...appUpgrade,...available.journal,...(plan.passkeyMigrations??[])].map(row=>{
+  const folder=/^(0058|0061|0062|008[89]|009[012])-/.test(row.name)?'candidates':paymentMigrationDirectory(row.name);
   const bytes=readFileSync(join(root,'database',folder,row.name));
   if(createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw Error('User operator migration drift');return {...row,folder,bytes};
  });
@@ -26,7 +28,7 @@ export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}
  mkdirSync(destination,{mode:0o700});writeFileSync(join(destination,'package.json'),'{"private":true,"type":"commonjs"}\n',{flag:'wx',mode:0o600});
  if(program.emit().emitSkipped)throw Error('User operator compilation failed');
  for(const folder of ['scripts','database','database/migrations','database/candidates'])mkdirSync(join(destination,folder));
- for(const name of ['admin-user-access-release.mjs','admin-tariff-release.mjs','user-access-role.mjs','local-user-access-runtime.mjs','local-primary-refund-target.mjs','local-primary-config.mjs',
+ for(const name of ['admin-user-access-release.mjs','admin-tariff-release.mjs','admin-passkey-verifier-role.mjs','user-access-role.mjs','local-user-access-runtime.mjs','local-primary-refund-target.mjs','local-primary-config.mjs',
   'financial-catalog-privileges.mjs','refund-worker-schema.mjs','refund-worker-role.mjs','publication-test-release-plan.mjs','paid-response-schema.mjs','postgres-migration-plan.mjs','cabinet-release-plan.mjs','media-retention-release.mjs','specialist-checkout-release.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  const server=readFileSync(join(root,'scripts/local-user-access-operator.mjs'),'utf8'),dependency="'../src/lib/admin-user-access-contract.ts'";
@@ -39,8 +41,16 @@ export function buildUserAccessOperator(destination,{tariffs=false,hosted=false}
   if(createHash('sha256').update(readFileSync(file)).digest('hex')!==row.sha256)throw Error('User operator copied migration drift');}
  if(hosted)for(const name of ['hosted-user-access-operator.mjs','hosted-operator-socket.mjs','hosted-postgres-location.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+ if(plan.passkeyMigrations){
+  writeFileSync(join(destination,'database','admin-passkey-upgrade.sql'),getAdminPasskeyUpgradeSql(),{flag:'wx',mode:0o600});
+  mkdirSync(join(destination,'ops'));
+  for(const name of ['blizhniy-user-access-passkey.socket','blizhniy-user-access-passkey.service'])
+   copyFileSync(join(root,'ops/systemd',name),join(destination,'ops',name));
+ }
  const verifierFiles=['admin-user-access-schema-v1.json',...(!hosted?['refund-schema-local-primary-0060.json','admin-user-access-schema-v2.json']:[])];
  for(const name of verifierFiles)copyFileSync(join(root,'database',name),join(destination,'database',name));
- const manifest={version:1,typescript:ts.version,sources,appJournal:plan.appJournal,adminJournal:available.journal};
+ const manifest={version:1,typescript:ts.version,sources,appJournal:plan.appJournal,adminJournal:available.journal,
+  ...(hosted?{appUpgrade}:{}),
+  ...(plan.passkeyMigrations?{passkeyMigrations:plan.passkeyMigrations}:{})};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});return manifest;
 }

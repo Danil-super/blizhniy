@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Only release assets belong in the image cache. Publication photos have live access checks.
+  images: {
+    localPatterns: [
+      { pathname: "/_next/static/media/**", search: "" },
+      { pathname: "/images/**", search: "" },
+      { pathname: "/brand/message.jpg", search: "" },
+      { pathname: "/brand/phone.jpg", search: "" },
+      { pathname: "/policy/no-tattoo.png", search: "" },
+    ],
+  },
   // The release probe runs outside Next's server module graph.
   outputFileTracingIncludes: {
     "/": [

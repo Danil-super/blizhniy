@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@fastify/busboy": "3.2.4",
+    "@simplewebauthn/server": "14.1.0",
     "@supabase/supabase-js": "^2.106.2",
     "lottie-web": "^5.13.0",
     "lucide-react": "^0.468.0",

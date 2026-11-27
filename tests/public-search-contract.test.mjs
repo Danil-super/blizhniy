@@ -143,6 +143,7 @@ test('runtime retains two physical leases while a third expires in the bounded q
  }
  assert.equal(f.calls.db,2);assert.equal(f.calls.config,2);
  assert.equal(f.calls.constructors[0].db,f.db);assert.deepEqual(f.calls.constructors[0].options,{postmoderation:true,specialistProfileIdentity:true});
+ assert.equal(f.calls.searches[0].options.verifyListingBlocks,true);
  f.finish(0);f.finish(1);await Promise.all([a,b]);
  const c=f.search(input);await flush();assert.equal(f.calls.searches.length,3);f.finish(2);await c;
 });

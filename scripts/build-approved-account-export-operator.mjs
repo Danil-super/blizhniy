@@ -9,7 +9,7 @@ const scripts=['account-export-snapshot.mjs','local-account-export-delivery.mjs'
  'prepare-approved-account-export.mjs','stage-approved-account-export.mjs'];
 const entrypoints=['account-deletion-contract','identity','listing-view-history','media-files','media-runtime-policy',
  'postgres','postgres-profile','service-publication-contract','work-publication-contract','auth-http','trusted-proxy-ip',
- 'account-cookie','data-subject-cookie'];
+ 'account-cookie','data-subject-cookie','admin-passkey-contract','admin-passkey-operator-client'];
 const json=path=>JSON.parse(readFileSync(path,'utf8'));
 
 export function buildApprovedAccountExportOperator(destination,browserCache){
@@ -55,6 +55,9 @@ export function buildApprovedAccountExportOperator(destination,browserCache){
   assert.ok(!emitted.emitSkipped&&emitted.diagnostics.length===0);
   mkdirSync(join(destination,'scripts'));
   for(const name of scripts)copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  mkdirSync(join(destination,'ops'));
+  for(const name of ['blizhniy-account-export-prepare.socket','blizhniy-account-export-prepare@.service'])
+   copyFileSync(join(root,'deploy',name),join(destination,'ops',name));
   writeFileSync(join(destination,'scripts/local-primary-modules.cjs'),
    `const approved=new Set(${JSON.stringify(entrypoints)});
 module.exports.loadLocalPrimaryModule=name=>{

@@ -1,0 +1,16 @@
+[Unit]
+Description=Blizhniy private user access socket with passkey confirmation
+
+[Socket]
+ListenStream=/run/blizhniy-user-access-passkey/operator.sock
+SocketUser=root
+SocketGroup=blizhniy-web
+SocketMode=0660
+DirectoryMode=0755
+FileDescriptorName=operator
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

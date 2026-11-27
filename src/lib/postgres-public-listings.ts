@@ -1,4 +1,4 @@
-import {mapPublicListing,type PublicListingRow} from './public-listings';import {publicListingSource,publicListingLive,publicListingPhotos,postmoderationListingSource,postmoderationListingLive} from './listing-public-eligibility';
+import {mapPublicListing,type PublicListingRow} from './public-listings';import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
 export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
@@ -32,11 +32,12 @@ export class PostgresPublicListingStore{
  private readonly postmoderation:boolean;
  private readonly source:string;
  private readonly eligible:string;
- constructor(private readonly db:PostgresQueries,options:{postmoderation?:boolean}={}){
+ constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy={}){
   if(typeof window!=='undefined'||options.postmoderation!==undefined&&typeof options.postmoderation!=='boolean')throw Error('Public listing storage is server-only');
   this.postmoderation=options.postmoderation===true;
-  this.source=`${this.postmoderation?postmoderationListingSource:publicListingSource} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
-  this.eligible=`${this.postmoderation?postmoderationListingLive:publicListingLive} and ${publicListingPhotos}`;
+  const {source,eligible}=listingVisibility(options);
+  this.source=`${source} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
+  this.eligible=eligible;
  }
  private project(row:Row):Listing|null{return mapPublicListing({...row,form:{...row.form,photoIds:row.mediaIds}},Date.now(),{postmoderation:this.postmoderation});}
  async read(value:unknown):Promise<Listing|undefined>{

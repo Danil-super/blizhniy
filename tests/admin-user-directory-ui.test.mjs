@@ -19,6 +19,7 @@ function harness(){
     if(name==='@/components/auth/AccountAuthProvider')return {usePrimaryAccountAuth:()=>auth};
     if(name==='@/lib/local-account')return {notifyAccountSessionChange:()=>changes++};
     if(name==='./AdminUserAccessPanel')return {AdminUserAccessPanel:'access-panel'};
+    if(name==='./AdminPasskeyEnrollmentForm')return {AdminPasskeyEnrollmentForm:'passkey-enrollment'};
     if(name==='@/lib/client-admin-user-directory')return {AdminUserDirectoryClientError:ClientError,adminUserDirectory:{list(input,options){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});requests.push({input,options,resolve,reject});return promise;}}};
     throw Error('Unexpected directory UI import: '+name);
   }});

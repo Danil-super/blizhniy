@@ -52,6 +52,13 @@ test('schema 0087 operator archive ships a socket-activated TEST command and rej
  const owned=mkdtempSync(join(tmpdir(),'blizhniy-hosted-refund-operator-'));
  try{
   const artifact=join(owned,'artifact');buildRefundOperator(artifact,{schema:87});
+  const unit=readFileSync(join(artifact,'ops/blizhniy-refund-operator-passkey.service'),'utf8');
+  const socket=readFileSync(join(artifact,'ops/blizhniy-refund-operator-passkey.socket'),'utf8');
+  const acl=readFileSync(join(artifact,'ops/blizhniy-admin-passkey.socket.d/refund-operator.conf'),'utf8');
+  assert.match(unit,/^Group=blizhniy-refund-operator$/m);
+  assert.doesNotMatch(unit,/^SupplementaryGroups=/m);
+  assert.match(socket,/^Conflicts=blizhniy-refund-operator.socket blizhniy-refund-operator.service$/m);
+  assert.match(acl,/^ExecStartPost=-\/usr\/bin\/setfacl -m u:blizhniy-refund-operator:rw \/run\/blizhniy-admin-passkey\/operator.sock$/m);
   const cli=join(artifact,'scripts/hosted-refund-operator.mjs');
   const env={PATH:process.env.PATH,NODE_ENV:'production',BLIZHNIY_REFUND_OPERATOR:'hosted-test-v1',BLIZHNIY_DB_PASSWORD:'private-synthetic'};
   const imported=spawnSync(process.execPath,['--input-type=module','-e',`await import(process.argv[1])`,cli],{cwd:artifact,env,encoding:'utf8',timeout:10000});

@@ -9,6 +9,8 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
  try{
   const key=join(directory,'key'),ca=join(directory,'ca'),fixture=join(directory,'rows.json'),photo='10000000-0000-4000-8000-000000000004';
   await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
+  const webp=await sharp({create:{width:40,height:20,channels:3,background:'green'}}).webp().toBuffer();
+  const avatarDataUrl='data:image/webp;base64,'+webp.toString('base64');
   const secrets=['+79990000000','private@example.invalid','@private_fixture','Приватная улица','55.123456','Приватный комментарий'];
   const rows=['specialist','fair','marquee'].map((kind,index)=>({id:`10000000-0000-4000-8000-00000000000${index+1}`,kind,mediaIds:kind==='marquee'?[]:[photo],...(kind==='specialist'?{professionId:'10000000-0000-4000-8000-000000000005'}:{}),form:parseServicePublicationForm(kind,{title:'Синтетический публичный '+kind,placementRightConfirmed:true,
    ...(kind==='marquee'?{href:'https://example.invalid/'}:{description:'Подробное описание синтетического материала.',cityName:'Краснодар',contactPhone:secrets[0],email:secrets[1],messengerUrl:secrets[2],address:secrets[3],latitude:55.123456,longitude:37.123456,showExactAddress:false,photoIds:[photo],
@@ -21,7 +23,7 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
   app.stdout.on('data',chunk=>{output=(output+chunk).slice(-16000);});app.stderr.on('data',chunk=>{output=(output+chunk).slice(-16000);});const deadline=Date.now()+20000;
   for(;;){assert.equal(app.exitCode,null);let ready=false;try{ready=(await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)})).ok;}catch(error){assert.ok(error.cause?.code==='ECONNREFUSED'||error.name==='TimeoutError');}if(ready)break;assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,100));}
   browser=await chromium.launch({headless:true});const context=await browser.newContext(),page=await context.newPage(),foreign=[],unexpected=[],errors=[];page.setDefaultTimeout(7000);
-  const webp=await sharp({create:{width:40,height:20,channels:3,background:'green'}}).webp().toBuffer();page.on('pageerror',error=>errors.push(error.message));
+  page.on('pageerror',error=>errors.push(error.message));
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
    if(url.pathname==='/api/account/session')return route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});
@@ -35,6 +37,28 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
     if(path.startsWith('/specialist/')){const image=page.locator(`img[src="/api/service-publications/${rows[0].id}/photos/${photo}"]`).first();await image.waitFor();await image.evaluate(node=>node.decode());assert.equal(await image.evaluate(node=>node.naturalWidth>0),true);}
     for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);}
    }
+  });
+  await suite.test('fresh requests stop showing a previously visited publication after restriction',async()=>{
+   const withAvatar=rows.map(row=>row.kind==='specialist'?{...row,profileIdentity:{name:row.form.title,avatarDataUrl}}:row);
+   await writeFile(fixture,JSON.stringify(withAvatar),{mode:0o600});
+   try{
+    const detail='/specialist/'+rows[0].id;
+    assert.equal((await page.goto(origin+detail)).status(),200);
+    const avatar=page.locator(`img[src="${avatarDataUrl}"]`).first();
+    await avatar.waitFor();
+    await avatar.evaluate(image=>image.decode());
+    await writeFile(fixture,JSON.stringify(withAvatar.map(row=>({...row,restricted:true}))),{mode:0o600});
+    for(const path of ['/rabota/specialisty','/yarmarka-masterov','/',`/specialist/${rows[0].id}`]){
+     const response=await page.goto(origin+path);
+     assert.equal(response.status(),path.startsWith('/specialist/')?404:200,path);
+     assert.match(response.headers()['cache-control']??'',/\bno-store\b/,path);
+     const text=await page.locator('main').textContent();
+     for(const row of rows)assert.equal(text.includes(row.form.title),false,path);
+    }
+    const api=await fetch(origin+'/api/fair-applications');
+    assert.match(api.headers.get('cache-control')??'',/\bno-store\b/);
+    assert.deepEqual(await api.json(),{applications:[]});
+   }finally{await writeFile(fixture,JSON.stringify(rows),{mode:0o600});}
   });
   await suite.test('fair cards/API and home marquee read new eligible records without serializing private fields',async()=>{
    const response=await page.goto(origin+'/yarmarka-masterov');assert.equal(response.status(),200);const html=await response.text();for(const value of secrets)assert.equal(html.includes(value),false);

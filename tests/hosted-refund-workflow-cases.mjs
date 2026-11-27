@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {enableRefundFixtureTls} from './local-refund-runtime-cases.mjs';
 import {provider} from './refund-worker-role-cases.mjs';
+import {restrictPlacementFixture,verifyRestrictedPlacementCheckout} from './publication-restriction-checkout-cases.mjs';
 
 export async function testHostedRefundWorkflow(suite,{admin,config,load,operator,worker,docker,container,directory}){
  const ca=join(directory,'refund-ca.crt'),key=join(directory,'refund-key.pem');
@@ -589,6 +590,11 @@ export async function testHostedSpecialistRepeat({admin,config,load,reconciler,r
   assert.deepEqual(refundedHistory.fulfillment,originalHistory.fulfillment);
   assert.deepEqual((await checkout.readOrder(payer.token,payer.id,next.id)).fulfillment,settled[0].period);
   assert.equal(remote.posts(),1);
+  await new PostgresDatabase(admin).transaction(tx=>expireSpecialistFixture(tx,targetId,next.id));
+  assert.equal((await preview()).activePayment,null);
+  await verifyRestrictedPlacementCheckout({admin,db:web,load,merchant,store:checkout,kind:'specialist',
+   owner:payer.id,token:payer.token,input:{...input,creationKey:randomUUID()},
+   unavailable:'ListingCheckoutUnavailableError',alreadyAuthorized:true});
  }finally{
   for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
   await web.close();
@@ -617,21 +623,22 @@ export async function testHostedPlacementRenewals({admin,config,load,reconciler,
  const previous=Object.fromEntries(Object.keys(flags).map(key=>[key,process.env[key]]));
  Object.assign(process.env,flags);
  const stamp=column=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+ async function workDraft(kind,targetId){
+  const form=load('work-publication-contract').parseWorkPublicationForm(kind,{title:'Синтетическое размещение',
+   description:'Подробное описание синтетической публикации для проверки продления.',cityName:'Стендовый город',
+   professionName:'Стендовая профессия',professionId:profession,
+   ...(kind==='vacancy'?{employerType:'person',organization:name,salary:'3500'}:{budget:'3500'}),
+   contactPhone:phone,placementRightConfirmed:true});
+  await admin.query('insert into app.work_publications(id,author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,$3,$4,$5,$6,$7)',
+   [targetId,payer.id,kind,randomUUID(),form,city,profession]);
+ }
  try{
   for(const [kind,tariffId,expired] of [['listing','listing-publication',false],['vacancy','vacancy-publication',true],['workRequest','work-request-publication',false]]){
    const targetId=randomUUID(),table=kind==='listing'?'listings':'work_publications';
    if(kind==='listing'){
     await admin.query(`insert into app.listings(id,author_id,listing_type,category_id,city_id,title,description,price,contact_phone)
      values($1,$2,'sell',$3,$4,'Тестовое продление объявления','Подробное описание синтетического объявления.',500,$5)`,[targetId,payer.id,category,city,phone]);
-   }else{
-    const form=load('work-publication-contract').parseWorkPublicationForm(kind,{title:'Синтетическое размещение',
-     description:'Подробное описание синтетической публикации для проверки продления.',cityName:'Стендовый город',
-     professionName:'Стендовая профессия',professionId:profession,
-     ...(kind==='vacancy'?{employerType:'person',organization:name,salary:'3500'}:{budget:'3500'}),
-     contactPhone:phone,placementRightConfirmed:true});
-    await admin.query('insert into app.work_publications(id,author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,$3,$4,$5,$6,$7)',
-     [targetId,payer.id,kind,randomUUID(),form,city,profession]);
-   }
+   }else await workDraft(kind,targetId);
    const initial=await captureHostedPlacement({admin,load,merchant,origin,payer,targetId,targetType:kind,tariffId});
    const window=async()=>(await admin.query(`select status,is_paid,${stamp('published_at')} as "publishedAt",${stamp('expires_at')} as "expiresAt"
     from app.${table} where id=$1`,[targetId])).rows[0];
@@ -702,6 +709,11 @@ export async function testHostedPlacementRenewals({admin,config,load,reconciler,
    }
    capturedAt=(await admin.query(`select ${stamp('clock_timestamp()')} as stamp`)).rows[0].stamp;
    status='succeeded';
+   if(kind==='vacancy'){
+    await restrictPlacementFixture(admin,kind,targetId);
+    assert.deepEqual(await window(),before);
+    assert.equal((await payments.dispatch(payer.token,payer.id,order.id)).confirmationUrl,null);
+   }
    process.env.BLIZHNIY_PLACEMENT_RENEWALS='disabled';
    try{assert.deepEqual(await worker.tick(),{state:'completed'});}
    finally{process.env.BLIZHNIY_PLACEMENT_RENEWALS=flags.BLIZHNIY_PLACEMENT_RENEWALS;}
@@ -732,6 +744,15 @@ export async function testHostedPlacementRenewals({admin,config,load,reconciler,
     const history=await checkout.readOrder(payer.token,payer.id,order.id);
     assert.equal(history.order.status,'refunded');assert.deepEqual(history.fulfillment,readback.fulfillment);
     assert.equal(remote.posts(),1);
+   }
+   if(kind!=='listing'){
+    const newTarget=randomUUID();
+    await workDraft(kind,newTarget);
+    const {tariff}=await checkout.preview(payer.token,payer.id,newTarget,'1');
+    await verifyRestrictedPlacementCheckout({admin,db:web,load,merchant,store:checkout,kind,
+     owner:payer.id,token:payer.token,input:{...input,listingId:newTarget,creationKey:randomUUID(),
+      expectedTariffId:tariff.id,expectedAmount:tariff.amount,expectedDurationDays:tariff.durationDays},
+     unavailable:'ListingCheckoutUnavailableError',concurrent:kind==='vacancy'});
    }
   }
   await assert.rejects(web.query('select * from app.apply_hosted_placement_renewal($1,$2)',[randomUUID(),randomUUID()]),{code:'42501'});

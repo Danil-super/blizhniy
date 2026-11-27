@@ -7,6 +7,7 @@ import { getProductionAccountDatabase } from "./production-auth-runtime";
 import { readProductionAuthConfig } from "./production-auth-config";
 import { getTrustedProxyIp } from "./trusted-proxy-ip";
 import { readPostmoderationEnabled } from "./listing-workflow-config";
+import { readListingVisibilityPolicy } from "./listing-public-eligibility";
 import { PostgresPublicListingStore } from "./postgres-public-listings";
 import type { PostgresQueries } from "./postgres";
 import { listingViewDigest } from "./listing-view-history";
@@ -55,7 +56,7 @@ export async function handlePrimaryListingView(request: Request, listingId: stri
       );
       if (row?.views == null) throw new AuthRequestError(404, "NOT_FOUND");
       // Validate the full public projection under the listing lock. Rejection rolls back the count.
-      const store = new PostgresPublicListingStore(tx, { postmoderation });
+      const store = new PostgresPublicListingStore(tx, await readListingVisibilityPolicy(tx, postmoderation));
       if (!await store.read(listingId)) throw new AuthRequestError(404, "NOT_FOUND");
       return row.views;
     };

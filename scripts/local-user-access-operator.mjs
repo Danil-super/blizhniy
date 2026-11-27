@@ -4,11 +4,12 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {parseUserAccessEnvelope,parseAdminUserAccessResult,userAccessErrorStatus} from '../src/lib/admin-user-access-contract.ts';
 /** Explicit owned runtime only. Import never connects, installs a role or starts a listener. */
-export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseUserAccessEnvelope,parseResult=parseAdminUserAccessResult,errorStatus=userAccessErrorStatus,activation}={}){
+export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseUserAccessEnvelope,parseResult=parseAdminUserAccessResult,errorStatus=userAccessErrorStatus,activation,requestLimit=4096}={}){
   let directory,server,closed=false,closing,resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const unavailable=()=>Error('User access operator unavailable');
   try{
-    if(typeof process.getuid!=='function'||typeof runtime?.execute!=='function'||typeof runtime?.close!=='function')throw unavailable();
+    if(typeof process.getuid!=='function'||typeof runtime?.execute!=='function'||typeof runtime?.close!=='function'||
+      !Number.isSafeInteger(requestLimit)||requestLimit<1||requestLimit>65536)throw unavailable();
     if(!activation){directory=await mkdtemp(join(tmpdir(),'blizhniy-user-operator-'));await chmod(directory,0o700);}
     const socketPath=activation?.socketPath??join(directory,'operator.sock');if(Buffer.byteLength(socketPath)>100)throw unavailable();
     server=createServer({maxHeaderSize:4096,requestTimeout:3000,headersTimeout:3000},async(req,res)=>{
@@ -17,9 +18,9 @@ export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseU
       const lifetime=setTimeout(()=>{abort();res.destroy();},15000);let bodyTimer;
       try{
         if(closed||req.method!=='POST'||req.url!=='/command'||req.headers.host!=='user-operator.invalid'||req.headers.origin||req.headers['content-type']!=='application/json'||
-          req.headers['content-length']!==undefined&&(!/^\d+$/.test(req.headers['content-length'])||Number(req.headers['content-length'])>4096))throw unavailable();
+          req.headers['content-length']!==undefined&&(!/^\d+$/.test(req.headers['content-length'])||Number(req.headers['content-length'])>requestLimit))throw unavailable();
         bodyTimer=setTimeout(()=>req.destroy(),2000);let size=0,text='';const decoder=new TextDecoder('utf-8',{fatal:true});
-        for await(const chunk of req){size+=chunk.length;if(size>4096)throw unavailable();text+=decoder.decode(chunk,{stream:true});}
+        for await(const chunk of req){size+=chunk.length;if(size>requestLimit)throw unavailable();text+=decoder.decode(chunk,{stream:true});}
         clearTimeout(bodyTimer);text+=decoder.decode();if(closed||req.aborted||res.destroyed)throw unavailable();
         const {token,command}=parseEnvelope(JSON.parse(text));
         const result=parseResult(command,await runtime.execute(token,command,controller.signal)),body=JSON.stringify(result);
@@ -29,7 +30,13 @@ export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseU
         reply(errorStatus[code],JSON.stringify({error:{code}}));
       }finally{clearTimeout(bodyTimer);clearTimeout(lifetime);res.removeListener('close',abort);req.removeListener('aborted',abort);}
     });
-    server.maxConnections=8;server.timeout=16000;server.on('timeout',socket=>socket.destroy());server.on('clientError',(_error,socket)=>socket.destroy());
+    server.maxConnections=8;
+    // Cover partial headers as well, including while the HTTP server drains.
+    server.on('connection',socket=>{
+      const lifetime=setTimeout(()=>socket.destroy(),16000);
+      socket.once('close',()=>clearTimeout(lifetime));
+    });
+    server.on('clientError',(_error,socket)=>socket.destroy());
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(activation?{fd:activation.fd}:socketPath,()=>{server.removeListener('error',reject);resolve();});});
     server.on('error',()=>{closed=true;resolveDone(1);});server.once('close',()=>resolveDone(0));if(directory)await chmod(socketPath,0o600);
     return {socketPath,done,close:()=>closing??=(async()=>{

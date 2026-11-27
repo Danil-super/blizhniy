@@ -1752,7 +1752,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
               listingCount={sellerStats.listingCount}
               soldCount={sellerStats.soldCount}
               hasContacts={Boolean(listing.phone || listing.email || listing.messengerUrl)}
-              listingTitle={listing.title}
+              listingSlug={listing.slug}
               profileHref={sellerProfileHref(listing)}
             />
             {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}

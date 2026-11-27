@@ -59,7 +59,7 @@ async function http(socketPath,path,{method='GET',body,token}={}) {
   });
 }
 
-async function exerciseWeb(root,fixture,{token,owner,readsAs,writesAs,peer,bookingId}) {
+async function exerciseWeb(root,fixture,{token,owner,readsAs,writesAs,peer,bookingId,guarded=false}) {
   const build=(await readFile(join(root,'.next/BUILD_ID'),'utf8')).trim();
   assert.match(build,/^[a-f0-9]{40}$/);
   const {commit,buildId}=JSON.parse(await readFile(join(root,'release-manifest.json'),'utf8'));
@@ -79,9 +79,13 @@ exec "$2" server.js
     BLIZHNIY_AUTH_MAIL_KEY_FILE:join(fixture.directory,'mail-key'),
     BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@'+canonicalHost,BLIZHNIY_SMTP_PASSWORD:'synthetic-fixture-only',
     TURNSTILE_SECRET_KEY:'synthetic-fixture-only-captcha',
-    BLIZHNIY_DB_HOST:dbHost,BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:database,BLIZHNIY_DB_USER:role,
+    BLIZHNIY_DB_HOST:fixture.dbHost??dbHost,BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:database,BLIZHNIY_DB_USER:role,
     BLIZHNIY_DB_PASSWORD:fixture.password,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:fixture.ca,
     BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_BOOKING_LIFECYCLE:'production-v1',
+    ...(fixture.sameHost?{BLIZHNIY_DB_PLACEMENT:'same-host'}:{}),
+    ...(guarded?{BLIZHNIY_USER_ACCESS_OPERATOR:'hosted-passkey-v1',BLIZHNIY_ADMIN_PASSKEYS:'hosted-v1',
+      BLIZHNIY_REFUND_ADMIN:'hosted-passkey-test-v1',BLIZHNIY_ADMIN_PAYMENT_JOURNAL:'test-v1',
+      BLIZHNIY_PAYMENT_SHOP_ID:'synthetic-fixture'}:{}),
   };
   const isolatedApp=join(fixture.directory,'app'),isolatedNode=join(fixture.directory,'node');
   const web=await start('/usr/bin/bwrap',[
@@ -122,7 +126,19 @@ exec "$2" server.js
     const tls=(await fixture.ownerDb.query(`select exists(select 1 from pg_stat_activity join pg_stat_ssl using(pid)
       where datname=$1 and usename=$2 and ssl) as admitted`,[database,role])).rows[0].admitted;
     assert.equal(tls,true);
-    return {build,tls,readRoutes:5,authenticatedProfile:true,deniedGuest:true,deniedWrongOwner:true,profileWrite:true,bookingRead:true};
+    let passkeyStatus,refundStatus;
+    if(fixture.sameHost){
+      const options=await http(socketPath,'/api/admin/passkey',{method:'POST',token,
+        body:{action:'enroll-options',code:randomBytes(32).toString('base64url')}});
+      passkeyStatus=options.status;
+      assert.equal(passkeyStatus,guarded?503:404);
+      const refundRead=await http(socketPath,'/api/admin/refunds',{method:'POST',token,
+        body:{action:'read',expectedAdminId:owner,input:randomUUID()}});
+      refundStatus=refundRead.status;
+      assert.equal(refundStatus,guarded?503:404);
+    }
+    return {build,tls,readRoutes:5,authenticatedProfile:true,deniedGuest:true,deniedWrongOwner:true,profileWrite:true,bookingRead:true,
+      ...(passkeyStatus===undefined?{}:{guarded,passkeyStatus,refundStatus})};
   } finally {
     await web.stop();
     await rm(socketPath,{force:true});
@@ -138,6 +154,20 @@ export async function testWebReleaseCompatibility({admin,config,docker,container
   const newWeb=await realpath(join(evidence,'new-web'));
   const oldWeb=await realpath(join(evidence,'old-web'));
   assert.equal((await readFile(join(oldWeb,'.next/BUILD_ID'),'utf8')).trim(),previousBuild);
+  return testWebAgainstRestoredDatabase({admin,config,docker,container,phase,evidence,newWeb,oldWeb});
+}
+
+export async function testRetainedPasskeyWeb({admin,config,docker,container,evidence}) {
+  assert.equal(config.host,'127.0.0.1');
+  assert.equal(config.database,'blizhniy_test');
+  assert.match(container,/^[a-f0-9]{64}$/);
+  assert.ok(isAbsolute(evidence)&&await realpath(evidence)===evidence);
+  const newWeb=await realpath(join(evidence,'new-web'));
+  return testWebAgainstRestoredDatabase({admin,config,docker,container,phase:'expanded',evidence,newWeb,sameHost:true});
+}
+
+async function testWebAgainstRestoredDatabase({admin,config,docker,container,phase,evidence,newWeb,oldWeb,sameHost=false}) {
+  const evidencePhase=sameHost?'retained-passkeys':phase;
   const password=randomBytes(32).toString('hex'),directory=await mkdtemp(join(tmpdir(),'blizhniy-web-rollback-'));
   const ca=join(directory,'pg-ca.crt'),key=join(directory,'pg-key');
   let relay,ownerDb,created=false,roleChanged=false,originalLogin;
@@ -159,8 +189,11 @@ export async function testWebReleaseCompatibility({admin,config,docker,container
     assert.equal(before.length,phase==='baseline'?43:78);
     assert.equal(before.at(-1).name,phase==='baseline'?'0067-paid-response-test.sql':'0087-push-delivery.sql');
     const adminJournal=async()=>(await ownerDb.query('select name,sha256 from app_admin.migrations order by name')).rows;
-    const restoredAdmin=phase==='expanded'?await adminJournal():[];
+    const restoredAdmin=phase==='baseline'?[]:await adminJournal();
     if(phase==='expanded')assert.equal(restoredAdmin.at(-1).name,'0088-hosted-tariff-policy.sql');
+    const passkeyCount=async()=>(await ownerDb.query('select count(*)::int as count from app_admin_passkey.credentials')).rows[0].count;
+    const retained=sameHost?await passkeyCount():null;
+    if(sameHost)assert.ok(retained>0);
     // Match the restricted production auth/profile grants for the paths exercised here.
     await ownerDb.query(`revoke create on schema public from public;
       grant usage on schema app to ${role};
@@ -196,19 +229,27 @@ export async function testWebReleaseCompatibility({admin,config,docker,container
         return result.rows[0].id;
       }catch(error){await ownerDb.query('rollback');throw error;}
     })();
-    await enableRefundFixtureTls(admin,{docker,container},ca,key,dbHost);
-    await writeFile(join(directory,'hosts'),`127.0.0.1 localhost ${dbHost}\n`,{mode:0o600});
+    await enableRefundFixtureTls(admin,{docker,container},ca,key,sameHost?undefined:dbHost);
+    await writeFile(join(directory,'hosts'),`127.0.0.1 localhost${sameHost?'':' '+dbHost}\n`,{mode:0o600});
     await writeFile(join(directory,'mail-key'),randomBytes(32),{mode:0o600});
     relay=await start('/usr/bin/socat',[`UNIX-LISTEN:${join(directory,'pg.sock')},mode=0600,fork`,`TCP4:127.0.0.1:${config.port}`],
-      {cwd:directory,env:{PATH:'/usr/bin:/bin'},log:join(evidence,phase+'-relay.log')});
-    const fixture={directory,ca,evidence,phase,password,ownerDb,rateSecret:randomBytes(32).toString('hex')};
+      {cwd:directory,env:{PATH:'/usr/bin:/bin'},log:join(evidence,evidencePhase+'-relay.log')});
+    const fixture={directory,ca,evidence,phase:evidencePhase,password,ownerDb,sameHost,...(sameHost?{dbHost:'127.0.0.1'}:{}),
+      rateSecret:randomBytes(32).toString('hex')};
     const customer={token,owner,peer,bookingId};
-    const results=[await exerciseWeb(newWeb,fixture,{...customer,readsAs:baseline,writesAs:changed})];
-    if(phase==='expanded')results.push(await exerciseWeb(oldWeb,fixture,{...customer,readsAs:changed,writesAs:baseline}));
+    const results=[await exerciseWeb(newWeb,fixture,{...customer,readsAs:baseline,writesAs:changed,guarded:sameHost})];
+    if(oldWeb&&phase==='expanded')results.push(await exerciseWeb(oldWeb,fixture,{...customer,readsAs:changed,writesAs:baseline}));
     assert.deepEqual(await journal(),before);
+    if(sameHost){
+      results.push(await exerciseWeb(newWeb,fixture,{...customer,readsAs:changed,writesAs:baseline}));
+      assert.equal(await passkeyCount(),retained);
+      assert.deepEqual(await journal(),before);
+      assert.deepEqual(await adminJournal(),restoredAdmin);
+    }
     if(phase==='expanded')assert.deepEqual(await adminJournal(),restoredAdmin);
-    await writeFile(join(evidence,phase+'-web-compatibility.json'),JSON.stringify({
-      phase,journal:before,adminJournal:restoredAdmin,web:results,networkNamespace:true,synthetic:true,
+    await writeFile(join(evidence,evidencePhase+'-web-compatibility.json'),JSON.stringify({
+      phase:evidencePhase,journal:before,adminJournal:restoredAdmin,web:results,networkNamespace:true,synthetic:true,
+      ...(sameHost?{retainedPasskeys:retained}:{}),
     },null,2)+'\n',{mode:0o600,flag:'wx'});
   } finally {
     await relay?.stop();

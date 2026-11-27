@@ -11,7 +11,7 @@ export async function handleAdminUserAccessRequest(request:Request){
     return await createAdminUserAccessHandler(config,async()=>{
       const {limiter}=await getProductionAccountDatabase(config);
       return {limiter,execute:(token,command,signal)=>operator.mode==='hosted'
-        ? callHostedUserAccessOperator(token,command,signal)
+        ? callHostedUserAccessOperator(token,command,signal,operator.socketPath)
         : callLocalUserAccessOperator(operator.socketPath,token,command,signal)};
     })(request);
   }catch{return authJson({error:{code:'ACCESS_UNAVAILABLE'}},503);}

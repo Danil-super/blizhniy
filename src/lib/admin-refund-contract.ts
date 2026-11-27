@@ -4,6 +4,7 @@ import type {AdminRefundPage,AdminRefundPayment} from './postgres-admin-refund-j
 export type RefundApprovalCommand={id:string;paymentIntentId:string;reason:string};
 export type RefundRecoveryCommand={id:string;operationId:string;providerRefundId:string;reason:string};
 export type AdminRefundCommand={expectedAdminId:string}&({action:'list';input:string|null}|{action:'read';input:string}|{action:'approve';input:RefundApprovalCommand}|{action:'recover';input:RefundRecoveryCommand});
+export type AdminRefundMutation=Extract<AdminRefundCommand,{action:'approve'|'recover'}>;
 export type AdminRefundApproval={id:string;paymentIntentId:string;reason:string;amount:string;approvedAt:string};
 export type AdminRefundRecovery={actionId:string;operationId:string;providerRefundId:string;status:'pending'|'succeeded'|'canceled';state:'pending'|'applied'|'canceled'};
 export class AdminRefundRejectedError extends Error{constructor(){super('Refund the latest purchase first');this.name='AdminRefundRejectedError';}}
@@ -29,6 +30,11 @@ export function parseAdminRefundCommand(value:unknown):AdminRefundCommand{
   const input=object(row.input,['id','operationId','providerRefundId','reason']);return{action:'recover',expectedAdminId,input:{id:id(input.id),operationId:id(input.operationId),providerRefundId:id(input.providerRefundId),reason:reason(input.reason)}};
  }
  return fail();
+}
+export function parseAdminRefundMutation(value:unknown):AdminRefundMutation{
+ const command=parseAdminRefundCommand(value);
+ if(command.action!=='approve'&&command.action!=='recover')fail();
+ return command;
 }
 export function parseAdminRefundPage(value:unknown):AdminRefundPage{
  const page=object(value,['items','nextAfter']);if(!Array.isArray(page.items)||page.items.length>50)fail();

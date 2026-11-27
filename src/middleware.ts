@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCspNonce, createHtmlCsp, htmlCspMode } from "./lib/html-csp";
 import { getPublicRuntimeSetting } from "./lib/public-runtime-config";
-import { getMetricaCounterId } from "./lib/metrica-config";
+import { getMetricaCounterId, getMetricaTransport } from "./lib/metrica-config";
 
 /** HTML/Flight only. Never authorizes a user; resource/API guards remain independent. */
 export function middleware(request: NextRequest) {
@@ -18,7 +18,7 @@ export function middleware(request: NextRequest) {
     const nonce = createCspNonce();
     const policy = createHtmlCsp(nonce, { development: process.env.NODE_ENV === "development",
       mapEnabled,
-      metricaEnabled: getMetricaCounterId() !== null,
+      metricaEnabled: getMetricaTransport() === "sdk" && getMetricaCounterId() !== null,
       legacyOrigin: legacy ? getPublicRuntimeSetting("legacy-url") : undefined });
     const headers = new Headers(request.headers);
     // Best effort for adapters exposing these headers. Next 15 hides/replays
