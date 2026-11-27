@@ -9,6 +9,7 @@ import {createListingFormSave,getListingEditor} from '@/lib/listing-form-save';
 import {createListingFormModeration} from '@/lib/listing-form-moderation';
 import {listingModeration} from '@/lib/client-listing-moderation';
 import {checkListingFormContent} from '@/lib/listing-publication-check';
+import {bookingTodayKey} from '@/lib/booking-availability';
 import {readListingFormData} from '@/lib/listing-form-data';
 import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
 import {ListingDraftInputError} from '@/lib/listing-draft-contract';
@@ -96,7 +97,7 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     if(!draft&&postmoderation&&!form.querySelector<HTMLInputElement>('input[name="publicOfferAccepted"]')?.checked)throw new Error('Примите условия публичной оферты, чтобы перейти к оплате.');
     const data=new FormData(form),files=data.getAll('photos').filter((item):item is File=>item instanceof File&&item.size>0);
     const input=readListingFormData(data);
-    if(!draft){const issues=checkListingFormContent(input,true);if(issues.length)throw Error(issues.map(issue=>issue.message).join(' '));}
+    if(!draft){const issues=checkListingFormContent(input,true,bookingTodayKey());if(issues.length)throw Error(issues.map(issue=>issue.message).join(' '));}
     const editor=getListingEditor(form,owner!,existing);
     attempt.current=createListingFormSave(owner!,input,files,{create:productionDrafts.createEmpty,upload:async(user,intent,file,options)=>{
      const cached=editor.readyFiles.get(file);if(cached)return cached;

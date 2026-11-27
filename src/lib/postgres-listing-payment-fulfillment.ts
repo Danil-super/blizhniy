@@ -128,7 +128,7 @@ export class PostgresListingPaymentFulfillmentStore{
     const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[intent.targetId,intent.targetRevision]);
     if(approval.rowCount!==1)return{state:'blocked',reason:'approval_required'};
    }
-   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision,renewals);
+   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision,{allowPlaced:renewals});
    // Price and duration were accepted in the original immutable order; a new tariff is not a new consent.
    if(check.issues.some(issue=>issue.field!=='tariff'))return{state:'blocked',reason:'content_unavailable'};
    if(renewals&&listing.paid)return this.renew(tx,intent);

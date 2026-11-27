@@ -25,3 +25,16 @@ test('missing/inactive/wrong-action or invalid tariff cannot masquerade as an av
   const report=checkListingPublication(snapshot,true,value);assert.equal(report.checksPassed,false);assert.equal(report.tariff,null);assert.ok(report.issues.some(issue=>issue.field==='tariff'));
  }
 });
+
+test('new placement checks the Moscow day, while saved content remains readable after that day',()=>{
+ const today='2026-11-27';
+ const check=(booking,day)=>checkListingPublication({...snapshot,form:parseListingFormDraft({...snapshot.form,kind:'arenda',booking})},true,tariff,day);
+ const tour={mode:'tour',pricePerPerson:1000,maxGuests:5,tourDate:'2026-11-26'};
+ assert.equal(check(tour,today).issues[0]?.field,'booking');
+ assert.equal(check({...tour,tourDate:today},today).checksPassed,true);
+ assert.equal(check({...tour,tourDate:'2026-11-28'},today).checksPassed,true);
+ assert.equal(check(tour).checksPassed,true);
+ const stay={mode:'stay',priceWeekday:1200,priceWeekend:1500,minNights:1,includedGuests:2,maxGuests:4,availableTo:'2026-11-26'};
+ assert.equal(check(stay,today).issues[0]?.field,'booking');
+ assert.equal(check({...stay,availableTo:today},today).checksPassed,true);
+});

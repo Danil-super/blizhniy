@@ -23,8 +23,8 @@ test('private person has no company requisites and needs a real name; salary is 
 
 test('profile defaults do not convert incompatible tax identifiers or foreign numbers into employer data',()=>{
  const profile=createDefaultCabinetProfile({name:'Анна Тестовая',email:'fixture@example.invalid'});
- const partial=vacancyEmployerPrefill({...profile,organizationName:'Мастерская',organizationOgrn:'1234567890123',phone:'8 (999) 000-12-34'});
- assert.equal(partial.organization.ogrn,'1234567890123');
+ const partial=vacancyEmployerPrefill({...profile,organizationName:'Мастерская',organizationOgrn:'1000000000000',phone:'8 (999) 000-12-34'});
+ assert.equal(partial.organization.ogrn,'1000000000000');
  assert.equal(partial.organization.inn,undefined);
  assert.equal(partial.organization.phone,'+79990001234');
  assert.equal(partial.ip.organization,undefined);
@@ -39,4 +39,12 @@ test('profile defaults do not convert incompatible tax identifiers or foreign nu
   assert.equal(ambiguous[kind].website,undefined);
   assert.equal(ambiguous[kind].phone,undefined);
  }
+});
+
+test('old requisites with invalid check digits are excluded from vacancy defaults',()=>{
+ const profile=createDefaultCabinetProfile({name:'Анна Тестовая',email:'fixture@example.invalid'});
+ const defaults=vacancyEmployerPrefill({...profile,organizationName:'Мастерская',organizationInn:'1000000003',organizationOgrn:'1000000000002'});
+ assert.equal(defaults.organization.inn,undefined);
+ assert.equal(defaults.organization.ogrn,undefined);
+ assert.equal(defaults.organization.organization,'Мастерская');
 });

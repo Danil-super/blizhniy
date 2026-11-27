@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useId,useState,type FormEvent} from "react";
 import type {CabinetProfile,OrganizationField} from "@/lib/cabinet-profile";
+import {cabinetFieldIssue} from "@/lib/cabinet-form-validation";
 import {CabinetFormValidation} from "@/components/CabinetFormValidation";
 import {CabinetProfileFailure,useCookieCabinetProfile} from "./CookieCabinetProfileProvider";
 import type {CabinetProfileData} from "./CabinetProfileBar";
@@ -79,7 +80,9 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
   }
 
   const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
-  const completionLabel = completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
+  const innIssue = cabinetFieldIssue("organizationInn", form.organizationInn);
+  const ogrnIssue = cabinetFieldIssue("organizationOgrn", form.organizationOgrn);
+  const completionLabel = innIssue || ogrnIssue ? "Проверьте реквизиты" : completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,29 +97,20 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
     }
 
     const organizationName = form.organizationName.trim();
-    const organizationInn = form.organizationInn.replace(/\D/g, "");
-    const organizationOgrn = form.organizationOgrn.replace(/\D/g, "");
 
     if (!organizationName) {
       setMessage("Укажите название организации или ИП.");
       return;
     }
 
-    if (organizationInn && organizationInn.length !== 10 && organizationInn.length !== 12) {
-      setMessage("ИНН должен содержать 10 цифр для организации или 12 цифр для ИП.");
-      return;
-    }
-
-    if (organizationOgrn && organizationOgrn.length !== 13 && organizationOgrn.length !== 15) {
-      setMessage("ОГРН должен содержать 13 цифр, ОГРНИП — 15 цифр.");
+    if (innIssue || ogrnIssue) {
+      setMessage(innIssue || ogrnIssue);
       return;
     }
 
     const nextProfile: CabinetProfile = {
       ...form,
       organizationName: organizationName.slice(0, 120),
-      organizationInn,
-      organizationOgrn,
       organizationAddress: form.organizationAddress.trim().slice(0, 160),
       organizationWebsite: form.organizationWebsite.trim().slice(0, 120),
       organizationDescription: form.organizationDescription.trim().slice(0, 500),
@@ -210,12 +204,15 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               maxLength={120}
             />
           </label>
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            ИНН
+          <div className="grid gap-1.5 text-sm font-bold text-slate-700">
+            <label htmlFor={`${descriptionId}-inn`}>ИНН</label>
             <input
+              id={`${descriptionId}-inn`}
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationInn}
               name="organizationInn"
+              aria-invalid={innIssue ? true : undefined}
+              aria-describedby={innIssue ? `${descriptionId}-inn-error` : undefined}
               pattern="([0-9]{10}|[0-9]{12})"
               onChange={(event) => changeField("organizationInn", event.target.value.replace(/\D/g, "").slice(0, 12))}
               disabled={saving}
@@ -223,13 +220,17 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               inputMode="numeric"
               maxLength={12}
             />
-          </label>
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            ОГРН / ОГРНИП
+            {innIssue && <p id={`${descriptionId}-inn-error`} className="text-sm text-red-700">{innIssue}</p>}
+          </div>
+          <div className="grid gap-1.5 text-sm font-bold text-slate-700">
+            <label htmlFor={`${descriptionId}-ogrn`}>ОГРН / ОГРНИП</label>
             <input
+              id={`${descriptionId}-ogrn`}
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationOgrn}
               name="organizationOgrn"
+              aria-invalid={ogrnIssue ? true : undefined}
+              aria-describedby={ogrnIssue ? `${descriptionId}-ogrn-error` : undefined}
               pattern="([0-9]{13}|[0-9]{15})"
               onChange={(event) => changeField("organizationOgrn", event.target.value.replace(/\D/g, "").slice(0, 15))}
               disabled={saving}
@@ -237,7 +238,8 @@ export function CabinetOrganizationView({data}: {data: CabinetProfileData}) {
               inputMode="numeric"
               maxLength={15}
             />
-          </label>
+            {ogrnIssue && <p id={`${descriptionId}-ogrn-error`} className="text-sm text-red-700">{ogrnIssue}</p>}
+          </div>
         </div>
         <label className="grid gap-1.5 text-sm font-bold text-slate-700">
           Адрес

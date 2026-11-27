@@ -64,6 +64,31 @@ test("organization description retains the existing multiline editing contract",
   assert.equal(parseProductionProfile({ organizationDescription: description }).organizationDescription, description);
 });
 
+test("profile updates reject new invalid requisites but let an existing profile be read and repaired", async () => {
+  let saved = { ...parseProductionProfile({}), organizationInn: "0000000000", organizationOgrn: "0000000000000" };
+  let writes = 0;
+  const db = { transaction: work => work({ query: async (sql, values) => {
+    if (sql.startsWith("select u.id")) return { rowCount: 1, rows: [{ id: owner, role: "user", isBlocked: false, verified: true, authVersion: "0" }] };
+    if (sql.startsWith("select email")) return { rowCount: 1, rows: [{ email: "owner@example.invalid" }] };
+    if (sql.startsWith("select profile")) return { rowCount: 1, rows: [{ profile: saved }] };
+    if (sql.startsWith("update app.cabinet_profiles")) { writes++; saved = JSON.parse(values[1]); }
+    return { rowCount: 1, rows: [] };
+  } }) };
+  const store = new PostgresProfileStore(db);
+  const { profile, revision } = await store.read(token, owner);
+  assert.equal(profile.organizationInn, "0000000000");
+  assert.equal(profile.organizationOgrn, "0000000000000");
+  for (const requisites of [{ organizationInn: "1000000003" }, { organizationOgrn: "1000000000002" }]) {
+    await assert.rejects(store.write(token, owner, { ...saved, ...requisites }, revision), ProfileInputError);
+  }
+  assert.equal(writes, 0);
+  const unchanged = await store.write(token, owner, { ...saved, city: "Анапа" }, revision);
+  assert.equal(unchanged.profile.organizationInn, "0000000000");
+  const repaired = await store.write(token, owner, { ...saved, organizationInn: "1000000002", organizationOgrn: "" }, unchanged.revision);
+  assert.equal(repaired.profile.organizationInn, "1000000002");
+  assert.equal(repaired.profile.organizationOgrn, "");
+});
+
 function fixture(options = {}) {
   const calls = { factories: 0, reads: [], writes: [], limits: [], events: [] };
   const store = { read: async (...args) => { calls.reads.push(args); if (options.ownerChanged) throw new ProfileOwnerChangedError(); return { exists: false, profile: { name: "Synthetic" } }; },

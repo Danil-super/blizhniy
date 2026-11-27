@@ -42,3 +42,15 @@ export function validWebUrl(value:string):boolean {
 export function validMoneyInput(value:string):boolean {
  return !value||/^(0|[1-9]\d{0,9})(?:[.,]\d{1,2})?$/.test(value);
 }
+
+const checksum=(value:string,weights:number[])=>weights.reduce((sum,weight,index)=>sum+weight*Number(value[index]),0)%11%10;
+export function validInn(value:string,length=value.length):boolean {
+ if((length!==10&&length!==12)||value.length!==length||!/^\d+$/.test(value)||/^0+$/.test(value))return false;
+ return length===10?checksum(value,[2,4,10,3,5,9,4,6,8])===Number(value[9]):
+  checksum(value,[7,2,4,10,3,5,9,4,6,8])===Number(value[10])&&checksum(value,[3,7,2,4,10,3,5,9,4,6,8])===Number(value[11]);
+}
+
+export function validRegistrationNumber(value:string,length=value.length):boolean {
+ return (length===13||length===15)&&value.length===length&&/^\d+$/.test(value)&&!/^0+$/.test(value)&&
+  Number(BigInt(value.slice(0,-1))%BigInt(length===13?11:13)%BigInt(10))===Number(value.at(-1));
+}

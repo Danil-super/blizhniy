@@ -1,4 +1,4 @@
-import {PROFILE_NAME_ISSUE,normalizeProfileName,validPlainText,validPersonName,validPhone,validEmail,validWebUrl,validMoneyInput} from './cabinet-field-validation.ts';
+import {PROFILE_NAME_ISSUE,normalizeProfileName,validPlainText,validPersonName,validPhone,validEmail,validWebUrl,validMoneyInput,validInn,validRegistrationNumber} from './cabinet-field-validation.ts';
 import {normalizeMessengerHref} from './messenger-url.ts';
 import {professions} from './data.ts';
 /** Explicit field semantics: never apply text restrictions to passwords, files or tokens. */
@@ -18,6 +18,8 @@ export function cabinetFieldIssue(name:string,value:string,multiline=false):stri
  if(['inn','ogrn','ogrnip','organizationInn','organizationOgrn'].includes(name)){
   const lengths=name.toLowerCase().includes('inn')?[10,12]:name==='ogrn'?[13]:name==='ogrnip'?[15]:[13,15];
   if(!/^\d+$/.test(value)||!lengths.includes(value.length))return `Нужны только цифры: ${lengths.join(' или ')}.`;
+  if(name==='organizationInn'&&!validInn(value))return 'Проверьте контрольные цифры ИНН.';
+  if(name==='organizationOgrn'&&!validRegistrationNumber(value))return 'Проверьте контрольную цифру ОГРН или ОГРНИП.';
  }
  if(/^booking(?:MinNights|IncludedGuests|MaxGuests)$/.test(name)&&(!/^[1-9]\d*$/.test(value)||Number(value)>9999999999))return 'Введите положительное целое число.';
  if(name==='profession'&&!professions.some(item=>item.active&&item.name===value))return 'Выберите профессию из списка.';

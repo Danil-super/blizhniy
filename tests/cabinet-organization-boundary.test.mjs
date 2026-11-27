@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import test from 'node:test';
 import vm from 'node:vm';
+import * as formValidation from '../src/lib/cabinet-form-validation.ts';
 const require=createRequire(import.meta.url),ts=require('typescript');
 const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const jsx=(type,props,key)=>({type,props,key});
@@ -17,6 +18,7 @@ function harness(data){
    if(name==='react/jsx-runtime')return {jsx,jsxs:jsx};
    if(name==='./CookieCabinetProfileProvider')return {CabinetProfileFailure:'failure',useCookieCabinetProfile:()=>data.cookie??null};
    if(name==='@/components/CabinetFormValidation')return {CabinetFormValidation:'validation'};
+   if(name==='@/lib/cabinet-form-validation')return formValidation;
    throw Error('Unexpected organization dependency: '+name);
   }});
  return {state,render(){index=0;effectIndex=0;const tree=module.exports.CabinetOrganizationView({data});scheduled.splice(0).forEach(work=>work());return tree;},cookie:()=>module.exports.CookieCabinetOrganization()};
@@ -29,10 +31,15 @@ const change=(h,name,value)=>{const input=nodes(h.render()).find(node=>node.prop
 test('organization keeps existing identifier validation and saves all profile fields through its supplied owner-bound callback',async()=>{
  const input=data(),calls=[];input.saveProfile=async value=>{calls.push(value);return value;};const h=harness(input);
  await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('Укажите название'));
- change(h,'organizationName','  ИП Тест  ');change(h,'organizationInn','123');await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('ИНН должен'));
- change(h,'organizationInn','123456789012');change(h,'organizationOgrn','123');await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('ОГРН должен'));
- change(h,'organizationOgrn','123456789012345');change(h,'organizationDescription','Описание\nВторая строка');await submit(h.render());
- assert.equal(calls.length,1);assert.equal(calls[0].organizationName,'ИП Тест');assert.equal(calls[0].organizationInn,'123456789012');assert.equal(calls[0].organizationOgrn,'123456789012345');assert.equal(calls[0].organizationDescription,'Описание\nВторая строка');assert.equal(calls[0].email,profile.email);assert.equal(calls[0].phone,profile.phone);
+ change(h,'organizationName','  ИП Тест  ');change(h,'organizationInn','123');await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('10 или 12'));
+ change(h,'organizationInn','100000000075');await submit(h.render());assert.equal(calls.length,0);
+ const invalidInn = nodes(h.render()).find(node=>node.props?.name==='organizationInn');
+ assert.equal(invalidInn.props['aria-invalid'],true);
+ assert.ok(text(nodes(h.render()).find(node=>node.props?.id===invalidInn.props['aria-describedby'])).includes('контрольные цифры ИНН'));
+ change(h,'organizationInn','100000000074');change(h,'organizationOgrn','123');await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('13 или 15'));
+ change(h,'organizationOgrn','100000000000001');await submit(h.render());assert.equal(calls.length,0);assert.ok(text(h.render()).includes('контрольную цифру ОГРН'));
+ change(h,'organizationOgrn','100000000000000');change(h,'organizationDescription','Описание\nВторая строка');await submit(h.render());
+ assert.equal(calls.length,1);assert.equal(calls[0].organizationName,'ИП Тест');assert.equal(calls[0].organizationInn,'100000000074');assert.equal(calls[0].organizationOgrn,'100000000000000');assert.equal(calls[0].organizationDescription,'Описание\nВторая строка');assert.equal(calls[0].email,profile.email);assert.equal(calls[0].phone,profile.phone);
  assert.ok(text(h.render()).includes('Профиль организации сохранен.'));
  const fields=nodes(h.render());
  const description=fields.find(node=>node.type==='textarea'&&node.props.name==='organizationDescription');

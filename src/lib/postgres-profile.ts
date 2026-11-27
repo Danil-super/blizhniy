@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createDefaultCabinetProfile, type CabinetProfile } from "./cabinet-profile";
 import { withAppSessionTransaction } from "./app-session-transaction";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
-import {normalizeProfileName,validPlainText,validWebUrl} from './cabinet-field-validation.ts';
+import {normalizeProfileName,validPlainText,validWebUrl,validInn,validRegistrationNumber} from './cabinet-field-validation.ts';
 import {normalizeProfilePhone} from './phone-verification-contract.ts';
 
 export class ProfileInputError extends Error {
@@ -127,6 +127,10 @@ export class PostgresProfileStore {
       const email = await profileEmail(tx, user.id);
       const current = (await tx.query<{ profile: StoredCabinetProfile }>("select profile from app.cabinet_profiles where user_id=$1 for update", [user.id])).rows[0];
       if ((current ? profileRevision(current.profile) : null) !== expectedRevision) throw new ProfileConflictError();
+      const { organizationInn, organizationOgrn } = profile;
+      // Legacy values can survive an unrelated edit but cannot be introduced or changed to another invalid number.
+      if ((organizationInn && organizationInn !== current?.profile.organizationInn && !validInn(organizationInn)) ||
+          (organizationOgrn && organizationOgrn !== current?.profile.organizationOgrn && !validRegistrationNumber(organizationOgrn))) throw new ProfileInputError();
       const saved = await tx.query(current
         ? "update app.cabinet_profiles set profile=$2::jsonb,updated_at=clock_timestamp() where user_id=$1 returning user_id"
         : "insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb) on conflict(user_id) do nothing returning user_id",
