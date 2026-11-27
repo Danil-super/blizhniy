@@ -97,7 +97,7 @@ jobs:
       - name: Upload Gitleaks SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/gitleaks.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: security-reports/gitleaks.sarif
           category: gitleaks
@@ -105,7 +105,7 @@ jobs:
       - name: Upload Semgrep SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/semgrep.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: security-reports/semgrep.sarif
           category: semgrep
@@ -113,7 +113,7 @@ jobs:
       - name: Upload Trivy SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/trivy.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: security-reports/trivy.sarif
           category: trivy
