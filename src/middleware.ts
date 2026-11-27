@@ -3,8 +3,11 @@ import { createCspNonce, createHtmlCsp, htmlCspMode } from "./lib/html-csp";
 import { getPublicRuntimeSetting } from "./lib/public-runtime-config";
 import { getMetricaCounterId, getMetricaTransport } from "./lib/metrica-config";
 
-/** HTML/Flight only. Never authorizes a user; resource/API guards remain independent. */
+/** HTML/Flight security and admission to the static image cache. */
 export function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === "/_next/image") {
+    return new NextResponse(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
   try {
     const mode = htmlCspMode({ BLIZHNIY_CSP_MODE: process.env.BLIZHNIY_CSP_MODE });
     const authMode = process.env.BLIZHNIY_AUTH_MODE;
@@ -52,6 +55,17 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // No missing/has rule: a client-selected prefetch header must not bypass HTML CSP.
-  matcher: ["/((?!api(?:/|$)|_next/|images/|fonts/|assets/|favicon\\.ico$|robots\\.txt$|sitemap(?:-[0-9]+)?\\.xml$|icon\\.(?:svg|png)$|apple-icon\\.png$).*)"],
+  // Apply the document matcher to prefetch requests too.
+  matcher: [
+    "/((?!api(?:/|$)|_next/|images/|fonts/|assets/|favicon\\.ico$|robots\\.txt$|sitemap(?:-[0-9]+)?\\.xml$|icon\\.(?:svg|png)$|apple-icon\\.png$).*)",
+    {
+      source: "/_next/image",
+      // Keep Next's image glob matchers inactive. Only release assets can reach the optimizer.
+      missing: [{
+        type: "query",
+        key: "url",
+        value: "(?:/(?:images|_next/static/media)/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*|/brand/(?:message|phone)\\.jpg|/policy/no-tattoo\\.png)(?![\\s\\S])",
+      }],
+    },
+  ],
 };

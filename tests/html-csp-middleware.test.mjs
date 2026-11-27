@@ -286,6 +286,21 @@ test('Next matcher excludes API, immutable assets and metadata without an extens
   }
 });
 
+test('only canonical release assets can pass through to Next image optimization', () => {
+  const path = source => `/_next/image?url=${encodeURIComponent(source)}&w=256&q=75`;
+  const matches = incoming => unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: incoming.url });
+  for (const source of ['/images/categories/home-dacha.webp', '/_next/static/media/logo.123abc.webp', '/brand/message.jpg', '/brand/phone.jpg', '/policy/no-tattoo.png']) {
+    assert.equal(matches(request(path(source))), false, source);
+  }
+  for (const url of ['/_next/image', path('/api/health'), path('/robots.txt'), path('/images/photo.webp?v=1'), path('/images/photo.webp\n'), path('/other/photo.webp')]) {
+    const incoming = request(url);
+    assert.equal(matches(incoming), true, url);
+    const response = middleware(incoming);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+});
+
 test('document prefetch hints cannot force the renderer into an incomplete Flight tree', { concurrency: false }, async () => {
   await withEnvironment({}, () => {
     const hints = { 'next-router-prefetch': '1', 'next-router-segment-prefetch': '/synthetic', purpose: 'prefetch' };
