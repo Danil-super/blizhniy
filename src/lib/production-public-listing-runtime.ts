@@ -3,12 +3,14 @@ import {PostgresPublicListingStore} from './postgres-public-listings';import {au
 import {createProductionPublicWorkPhotoHandler} from './production-public-work-photo-http';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {readListingVisibilityPolicy} from './listing-public-eligibility';
+import {hasLocationWithdrawalSchema} from './publication-location-withdrawal';
 
 /** Same restricted pool and no owner credential, legacy request or successful-empty fallback. */
 export async function getProductionPublicListingStore(){
  const config=readProductionAuthConfig();if(!config)throw Error('Public listings unavailable');
  const {db}=await getProductionAccountDatabase(config);
- return new PostgresPublicListingStore(db,await readListingVisibilityPolicy(db,readPostmoderationEnabled()));
+ const visibility=await readListingVisibilityPolicy(db,readPostmoderationEnabled());
+ return new PostgresPublicListingStore(db,{...visibility,enforceLocationWithdrawals:await hasLocationWithdrawalSchema(db)});
 }
 export async function handleProductionPublicListingPhoto(request:Request,listingId:unknown,fileId:unknown){
  try{

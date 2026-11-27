@@ -4,6 +4,7 @@ const id='10000000-0000-4000-8000-000000000001',file='10000000-0000-4000-8000-00
 function fixture({enabled=true,failed=false,blocksInstalled=false,catalogFailed=false,postmoderation=false}={}){
  let catalogChecks=0;
  const admission={reads:0},db={query:async(text,_values,mode)=>{
+  if(text.includes("to_regnamespace('app_publication_privacy')"))return{rows:[{installed:false}]};
   catalogChecks++;
   assert.match(text,/to_regclass\('app\.listing_blocks'\)/);
   assert.equal(mode,'bounded-read');

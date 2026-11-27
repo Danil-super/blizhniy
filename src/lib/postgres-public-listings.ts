@@ -1,6 +1,7 @@
 import {mapPublicListing,type PublicListingRow} from './public-listings';import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
+import {locationWithdrawalColumn} from './publication-location-withdrawal';
 export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
 export type PublicListingPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
@@ -32,17 +33,19 @@ export class PostgresPublicListingStore{
  private readonly postmoderation:boolean;
  private readonly source:string;
  private readonly eligible:string;
- constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy={}){
+ private readonly privacyColumn:string;
+ constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy&{enforceLocationWithdrawals?:boolean}={}){
   if(typeof window!=='undefined'||options.postmoderation!==undefined&&typeof options.postmoderation!=='boolean')throw Error('Public listing storage is server-only');
   this.postmoderation=options.postmoderation===true;
   const {source,eligible}=listingVisibility(options);
   this.source=`${source} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
   this.eligible=eligible;
+  this.privacyColumn=locationWithdrawalColumn('l',options.enforceLocationWithdrawals);
  }
  private project(row:Row):Listing|null{return mapPublicListing({...row,form:{...row.form,photoIds:row.mediaIds}},Date.now(),{postmoderation:this.postmoderation});}
  async read(value:unknown):Promise<Listing|undefined>{
   let id:string;try{id=parseListingDraftId(value);}catch{return undefined;}
-  const row=(await this.db.query<Row>(`select ${columns(false,this.postmoderation)} ${this.source} where l.id=$1 and ${this.eligible} limit 1`,[id,maxListingMediaTotalSize])).rows[0];
+  const row=(await this.db.query<Row>(`select ${columns(false,this.postmoderation)}${this.privacyColumn} ${this.source} where l.id=$1 and ${this.eligible} limit 1`,[id,maxListingMediaTotalSize])).rows[0];
   return row?this.project(row)??undefined:undefined;
  }
  private async listRows(options:PublicListingQuery){
@@ -52,7 +55,7 @@ export class PostgresPublicListingStore{
    select id,published_at,created_at from app.listings where status='published' and is_paid
    order by published_at desc,created_at desc,id desc offset 0
   ) ordered join app.listings l on l.id=ordered.id`);
-  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${source} where ${this.eligible}
+  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)}${this.privacyColumn} ${source} where ${this.eligible}
    and ($1::text is null or l.listing_type=$1) and ($3::uuid is null or l.author_id=$3)
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
@@ -68,7 +71,7 @@ export class PostgresPublicListingStore{
  async readMany(values:unknown[]):Promise<Listing[]>{
   if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
   const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
-  const rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${this.source}
+  const rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)}${this.privacyColumn} ${this.source}
    where l.id=any($1::uuid[]) and ${this.eligible} limit 25`,[ids,maxListingMediaTotalSize])).rows;
   return rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
  }

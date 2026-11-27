@@ -27,6 +27,7 @@ for(const kind of ['listing','work','service']){
    './listing-workflow-config':{readPostmoderationEnabled:()=>false},
    './profession-reference':loadLocalPrimaryModule('profession-reference'),
    './publication-restriction-eligibility':loadLocalPrimaryModule('publication-restriction-eligibility'),
+   './publication-location-withdrawal':loadLocalPrimaryModule('publication-location-withdrawal'),
    './public-listings':{mapPublicListing:mapper},
    './public-work-publications.ts':{mapPublicWorkPublication:mapper},
    './public-service-publications.ts':{mapPublicServicePublication:mapper},

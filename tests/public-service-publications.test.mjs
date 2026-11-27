@@ -27,6 +27,16 @@ test('public service exact location requires explicit opt-in and never exposes p
  assert.equal(visible.address,'Приватная улица');assert.equal(visible.lat,45.123456);assert.equal(visible.lng,39.123456);assert.equal(visible.phone,'');assert.equal(visible.email,'');assert.equal(Object.hasOwn(visible,'comment'),false);
 });
 
+test('a location withdrawal keeps the service card public and removes the stored point',()=>{
+ for(const kind of ['specialist','fair']){
+  const base=row(kind);
+  const visible=mapPublicServicePublication({...base,locationWithdrawn:true,form:{...base.form,showExactAddress:true}},now);
+  assert.ok(visible);
+  assert.equal(visible.showExactAddress,false);
+  for(const key of ['address','lat','lng','locationWithdrawn'])assert.equal(Object.hasOwn(visible,key),false);
+ }
+});
+
 test('search engines can identify a TEST publication from the payment flag independently of its title',()=>{
  for(const kind of ['specialist']){
   const base=row(kind);

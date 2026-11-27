@@ -25,6 +25,16 @@ test('public exact location appears only after the author explicitly opts in',()
  assert.equal(Object.hasOwn(visible,'email'),false);
 });
 
+test('a location withdrawal overrides the stored public-address choice while retaining the work card',()=>{
+ for(const kind of ['vacancy','workRequest']){
+  const base=row(kind);
+  const visible=mapPublicWorkPublication({...base,locationWithdrawn:true,form:{...base.form,showExactAddress:true}},now);
+  assert.equal(visible.id,base.id);
+  assert.equal(visible.showExactAddress,false);
+  for(const key of ['address','lat','lng','locationWithdrawn'])assert.equal(Object.hasOwn(visible,key),false);
+ }
+});
+
 test('search engines can identify a TEST publication from the payment flag independently of its title',()=>{
  for(const kind of ['vacancy', 'workRequest']){
   const base=row(kind);

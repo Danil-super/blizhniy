@@ -7,11 +7,13 @@ import {getProductionMediaFileReader} from './production-media-runtime';
 import {createProductionPublicWorkPhotoHandler} from './production-public-work-photo-http';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {hasPublicationRestrictionSchema} from './publication-restriction-eligibility';
+import {hasLocationWithdrawalSchema} from './publication-location-withdrawal';
 
 /** The same verified limited pool; no owner credentials or old service fallback. */
 export async function getProductionPublicWorkStore(){
  const config=readProductionAuthConfig();if(!config)throw Error('Public work unavailable');
- const {db}=await getProductionAccountDatabase(config);return new PostgresPublicWorkStore(db,{vacancyPostmoderation:readPostmoderationEnabled(),enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db)});
+ const {db}=await getProductionAccountDatabase(config);return new PostgresPublicWorkStore(db,{vacancyPostmoderation:readPostmoderationEnabled(),
+  enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db),enforceLocationWithdrawals:await hasLocationWithdrawalSchema(db)});
 }
 export async function handleProductionPublicWorkPhoto(request:Request,publicationId:unknown,fileId:unknown){
  try{

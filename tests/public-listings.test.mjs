@@ -43,3 +43,11 @@ test('search engines can identify a TEST publication from the payment flag indep
   assert.equal(mapPublicListing({...base,testPublication:true},now)?.testPublication,true);
  }
 });
+test('a withdrawn address stays hidden without changing the public listing',()=>{
+ const base=row();
+ const visible=mapPublicListing({...base,locationWithdrawn:true,form:{...base.form,showExactAddress:true}},now);
+ assert.equal(visible.id,base.id);
+ assert.equal(visible.showExactAddress,false);
+ assert.equal(visible.hasMapPoint,false);
+ for(const key of ['address','lat','lng','locationWithdrawn'])assert.equal(Object.hasOwn(visible,key),false);
+});

@@ -4,6 +4,7 @@ import type {ServicePublicationKind} from './service-publication-contract';impor
 import type {MediaFileRecord} from './media-files';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
+import {locationWithdrawalColumn} from './publication-location-withdrawal';
 const source=`from app.service_publications s
  join app.users author on author.id=s.author_id and not author.is_blocked and author.email_verified_at is not null
  left join app.cities city on city.id=s.city_id and city.name=s.form->>'cityName'
@@ -21,7 +22,8 @@ const columns=`s.id,s.kind,${professionFormSql('s')} as form,s.profession_id as 
 function checkKind(kind:ServicePublicationKind){if(!['specialist','fair','marquee'].includes(kind))throw new ListingDraftInputError();}
 /** Only current approved, paid, live rows; private editor reads never authorize public output. */
 export class PostgresPublicServiceStore{
- constructor(private readonly db:PostgresQueries,private readonly options:{specialistProfileIdentity?:boolean;testPublicationLabels?:boolean;enforcePublicationRestrictions?:boolean}={}){if(typeof window!=='undefined')throw Error('Public service storage is server-only');}
+ constructor(private readonly db:PostgresQueries,private readonly options:{specialistProfileIdentity?:boolean;testPublicationLabels?:boolean;enforcePublicationRestrictions?:boolean;enforceLocationWithdrawals?:boolean}={}){if(typeof window!=='undefined')throw Error('Public service storage is server-only');}
+ private get privacyColumn(){return locationWithdrawalColumn('s',this.options.enforceLocationWithdrawals);}
  private get eligible(){return live+publicationRestrictionEligibility('s',this.options.enforcePublicationRestrictions);}
  private get identityColumn(){return this.options.specialistProfileIdentity?`,case when s.kind='specialist' then
   (select json_build_object('name',profile->>'name','avatarDataUrl',coalesce(profile->>'avatarDataUrl','')) from app.cabinet_profiles where user_id=s.author_id)
@@ -44,7 +46,7 @@ export class PostgresPublicServiceStore{
  private async listRows(kind:ServicePublicationKind,limit:number,offset:number){
   checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>(kind==='marquee'?5:1000)||!Number.isSafeInteger(offset)||offset<0||offset>1000000||kind==='marquee'&&offset!==0)throw new ListingDraftInputError();
   const order=kind==='marquee'?'s.published_at,s.created_at,s.id':'s.published_at desc,s.created_at desc,s.id desc';
-  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.testLabel(kind)} ${source} where ${this.eligible} and s.kind=$1 order by ${order} limit $2 offset $3`,[kind,limit,offset], "bounded-read")).rows;
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.privacyColumn}${this.identityColumn}${await this.testLabel(kind)} ${source} where ${this.eligible} and s.kind=$1 order by ${order} limit $2 offset $3`,[kind,limit,offset], "bounded-read")).rows;
   return rows;
  }
  list(kind:'specialist',limit?:number,offset?:number):Promise<SpecialistProfile[]>;
@@ -59,7 +61,7 @@ export class PostgresPublicServiceStore{
   if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
   const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
   const kinds=kind==='fair'?"s.kind='fair'":"s.kind in ('specialist','fair')";
-  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.testLabel(kind)} ${source}
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.privacyColumn}${this.identityColumn}${await this.testLabel(kind)} ${source}
    where s.id=any($1::uuid[]) and ${kinds} and ${this.eligible} limit 25`,[ids])).rows;
   return rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile|FairApplication=>row!==null&&('profession'in row||'participantName'in row));
  }
@@ -72,7 +74,7 @@ export class PostgresPublicServiceStore{
  async professionPage(professionId:unknown,limit=24,offset=0){
   const id=parseListingDraftId(professionId);
   if(!Number.isSafeInteger(limit)||limit<1||limit>100||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
-  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.testLabel('specialist')} ${source}
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.privacyColumn}${this.identityColumn}${await this.testLabel('specialist')} ${source}
    where ${this.eligible} and s.kind='specialist' and s.profession_id=$1 order by s.published_at desc,s.created_at desc,s.id desc limit $2 offset $3`,[id,limit+1,offset])).rows;
   return{items:rows.slice(0,limit).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row),hasMore:rows.length>limit};
  }
@@ -82,7 +84,7 @@ export class PostgresPublicServiceStore{
  read(kind:ServicePublicationKind,id:unknown):Promise<PublicServiceMaterial|undefined>;
  async read(kind:ServicePublicationKind,publication:unknown):Promise<PublicServiceMaterial|undefined>{
   checkKind(kind);let id:string;try{id=parseListingDraftId(publication);}catch{return undefined;}
-  const row=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.testLabel(kind)} ${source} where ${this.eligible} and s.kind=$1 and s.id=$2 limit 1`,[kind,id])).rows[0];
+  const row=(await this.db.query<PublicServiceRow>(`select ${columns}${this.privacyColumn}${this.identityColumn}${await this.testLabel(kind)} ${source} where ${this.eligible} and s.kind=$1 and s.id=$2 limit 1`,[kind,id])).rows[0];
   return row?mapPublicServicePublication(row,Date.now())??undefined:undefined;
  }
  async photoRecord(publication:unknown,file:unknown):Promise<{record:MediaFileRecord;revision:string;expiresAt:string}|undefined>{
