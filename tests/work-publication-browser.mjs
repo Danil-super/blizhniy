@@ -325,12 +325,12 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.getByRole('button',{name:'Сохранить профиль организации',exact:true}).click();
     await page.getByText('Профиль организации сохранен.',{exact:true}).waitFor();
    };
-   await saveOrganization('Синтетическая мастерская','1234567890','1234567890123','https://first.example.invalid');
+   await saveOrganization('Синтетическая мастерская','1000000002','1000000000000','https://first.example.invalid');
    await page.goto(origin+chosen.vacancy.path);
    await selectEmployer(page,/^Организация/);
    await page.waitForFunction(()=>document.querySelector('input[name="organization"]')?.value==='Синтетическая мастерская');
-   assert.equal(await employerField(page,'inn').inputValue(),'1234567890');
-   assert.equal(await employerField(page,'ogrn').inputValue(),'1234567890123');
+   assert.equal(await employerField(page,'inn').inputValue(),'1000000002');
+   assert.equal(await employerField(page,'ogrn').inputValue(),'1000000000000');
    assert.equal(await employerField(page,'contactPerson').inputValue(),'Анна Тестовая');
    assert.equal(await employerField(page,'emailOrMessenger').inputValue(),'first@example.invalid');
    assert.equal((await employerField(page,'phone').inputValue()).replace(/\D/g,''),'79990001234');
@@ -343,12 +343,12 @@ test('work publication production pages preserve complete forms and use Russian 
    await page.waitForURL(origin+chosen.vacancy.cabinet);
    const saved=collection().get(chosen.vacancy.id);
    assert.equal(saved.form.organization,'Синтетическая мастерская');
-   assert.equal(saved.form.inn,'1234567890');
-   assert.equal(saved.form.ogrn,'1234567890123');
+   assert.equal(saved.form.inn,'1000000002');
+   assert.equal(saved.form.ogrn,'1000000000000');
    assert.equal(saved.form.email,'first@example.invalid');
    assert.equal(state.workCalls.filter(row=>row.body.action==='create').length,1);
    assert.equal(state.workCalls.filter(row=>row.body.action==='intent').length,1);
-   await saveOrganization('Обновлённая мастерская','2234567890','2234567890123','https://updated.example.invalid');
+   await saveOrganization('Обновлённая мастерская','2000000004','2000000000009','https://updated.example.invalid');
    await page.goto(origin+chosen.vacancy.cabinet);
    await page.getByRole('link',{name:chosen.vacancy.title,exact:true}).click();
    assert.equal(await employerField(page,'organization').inputValue(),'Синтетическая мастерская');
@@ -357,12 +357,12 @@ test('work publication production pages preserve complete forms and use Russian 
    await page.goto(origin+chosen.vacancy.path);
    await selectEmployer(page,/^Организация/);
    await page.waitForFunction(()=>document.querySelector('input[name="organization"]')?.value==='Обновлённая мастерская');
-   assert.equal(await employerField(page,'inn').inputValue(),'2234567890');
+   assert.equal(await employerField(page,'inn').inputValue(),'2000000004');
   });
   await run('late profile data fills only untouched employer fields for the selected employer type','vacancy',async({page,state})=>{
    const gate=deferred();
    state.profiles.set(owner,{...createDefaultCabinetProfile({name:'Анна Тестовая',email:'first@example.invalid'}),
-    organizationName:'Тестовый предприниматель',organizationInn:'123456789012',organizationOgrn:'123456789012345',organizationWebsite:'https://ip.example.invalid'});
+    organizationName:'Тестовый предприниматель',organizationInn:'100000000074',organizationOgrn:'100000000000000',organizationWebsite:'https://ip.example.invalid'});
    state.profileGates.set(owner,gate);
    try{
     await page.goto(origin+chosen.vacancy.path);
@@ -371,9 +371,9 @@ test('work publication production pages preserve complete forms and use Russian 
     await employerField(page,'emailOrMessenger').fill('temporary@example.invalid');
     await employerField(page,'emailOrMessenger').fill('');
     gate.resolve();
-    await page.waitForFunction(()=>document.querySelector('input[name="inn"]')?.value==='123456789012');
+    await page.waitForFunction(()=>document.querySelector('input[name="inn"]')?.value==='100000000074');
     assert.equal(await employerField(page,'organization').inputValue(),'Имя введено вручную');
-    assert.equal(await employerField(page,'ogrnip').inputValue(),'123456789012345');
+    assert.equal(await employerField(page,'ogrnip').inputValue(),'100000000000000');
     assert.equal(await employerField(page,'website').inputValue(),'https://ip.example.invalid');
     assert.equal(await employerField(page,'emailOrMessenger').inputValue(),'');
     assert.equal(await employerField(page,'phone').inputValue(),'');

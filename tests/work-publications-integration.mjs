@@ -101,12 +101,12 @@ export async function testWorkPublications(suite,admin,config,credentials){
    };
    const initial=await profiles.read(token,owner);
    const profile=await profiles.write(token,owner,parseProductionProfile({name:'Анна Тестовая',organizationName:'Мастерская до изменений',
-    organizationInn:'1234567890',organizationOgrn:'1234567890123',phone:'+79990001234',organizationWebsite:'https://first.example.invalid'}),initial.revision);
+    organizationInn:'1000000002',organizationOgrn:'1000000000000',phone:'+79990001234',organizationWebsite:'https://first.example.invalid'}),initial.revision);
    const key=randomUUID(),form=createForm(profile.profile);
    const [first,concurrent]=await Promise.all([store.create(token,owner,'vacancy',key,form),store.create(token,owner,'vacancy',key,form)]);
    assert.deepEqual(concurrent,first);
    assert.equal(first.form.organization,'Мастерская до изменений');
-   assert.equal(first.form.ogrn,'1234567890123');
+   assert.equal(first.form.ogrn,'1000000000000');
    const updated=await profiles.write(token,owner,parseProductionProfile({...profile.profile,organizationName:'Мастерская после изменений',
     organizationWebsite:'https://second.example.invalid'}),profile.revision);
    assert.deepEqual(await store.readIntent(token,owner,'vacancy',key),first);

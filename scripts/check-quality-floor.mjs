@@ -157,6 +157,10 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/cabinet-organization-boundary.test.mjs", "before": "46abe0b3def1e1ba41edd58c434738e2c0d15fafd5d499cc217915960d35cb4f", "after": "384b2c5946b2f97207d8dbd3b9730cbe146bd8490215dc807c6be96c1421e388"},
+  {"file": "tests/vacancy-checkout-validation.test.mjs", "before": "474aa9dfd6812b993a23103d87a9b0cc28c68867f3d7497b6039bf8fbcb6e54a", "after": "1ab841fe6264617bec36be34f8af859a6f722869c7a6be89331eeeb33a411af9"},
+  {"file": "tests/work-publication-browser.mjs", "before": "8333bf6464756b37c7cfe4e4d52cd80a13a814efe683892a2c621986303474cf", "after": "8ec5085ccce8c67dd58200466db5a4a784eb13d2505d353aad55570b84fe2f85"},
+  {"file": "tests/work-publications-integration.mjs", "before": "0975b2a2110dc63a66f832cca93e0ce2e3bda90dd36e9f47faf4a52b31d420ed", "after": "ce32417e76f67feab095a85913d9b0cb18f9def68f65a2dfe3edb32b02c93740"},
   {"file": "tests/public-work-browser.mjs", "before": "58a7f25622c5d5662f705f45f4d7d1d45004b5dab7f6767bdbc08730a05e9d60", "after": "322b9e2b738a1a62357e6cbe1115bb6478022d71673552a64ef7be187d9d7a2b"},
   {"file": "tests/service-publication-browser.mjs", "before": "645d8a27a96241cba837aa0b70b0ed6b53e2fbdb67a6eb7da819a513fe9c3c35", "after": "a940da30150d347496dd8897d75ae69900b182bded7f971140f44f8e61640af6"},
   {"file": "tests/local-primary-refund-composition-cases.mjs", "before": "fa13ec1b3ed85c01d4f8a2c09d15aaa18807d5dd6c8d1e52a2876945cebe9102", "after": "75aec2e99a1d35505843e4f76e5b2df9d2645a70a00efc7f6adbda1f417778ce"},

@@ -1,5 +1,5 @@
 import type {CabinetProfile} from './cabinet-profile';
-import {validEmail,validPersonName,validPlainText,validWebUrl} from './cabinet-field-validation.ts';
+import {validEmail,validPersonName,validPlainText,validWebUrl,validInn,validRegistrationNumber} from './cabinet-field-validation.ts';
 import {normalizeProfilePhone} from './phone-verification-contract.ts';
 import type {VacancyEmployerType} from './vacancy-requisites';
 
@@ -34,9 +34,11 @@ export function vacancyEmployerPrefill(profile: CabinetProfile): VacancyEmployer
   };
   const isOrganization = (!inn || /^\d{10}$/.test(inn)) && (!registration || /^\d{13}$/.test(registration));
   const isEntrepreneur = (!inn || /^\d{12}$/.test(inn)) && (!registration || /^\d{15}$/.test(registration));
+  const verifiedInn = validInn(inn) ? inn : undefined;
+  const verifiedRegistration = validRegistrationNumber(registration) ? registration : undefined;
   return {
-    organization: isOrganization ? {...contacts,...business,inn:inn || undefined,ogrn:registration || undefined} : contacts,
-    ip: isEntrepreneur ? {...contacts,...business,inn:inn || undefined,ogrnip:registration || undefined} : contacts,
+    organization: isOrganization ? {...contacts,...business,inn:verifiedInn,ogrn:verifiedRegistration} : contacts,
+    ip: isEntrepreneur ? {...contacts,...business,inn:verifiedInn,ogrnip:verifiedRegistration} : contacts,
     person: {organization: name && name.length <= 60 ? name : undefined, phone},
   };
 }
