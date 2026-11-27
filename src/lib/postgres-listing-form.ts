@@ -6,6 +6,7 @@ import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import type {ListingDraftPhoto} from './listing-photo-contract';
 import {checkListingPublication,checkListingFormContent,type PublicationTariffRow} from './listing-publication-check';
+import {bookingTodayKey} from './booking-availability.ts';
 const kinds={sell:'prodam',buy:'kuplyu',free:'otdam-darom',rent:'arenda'} as const;
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
 type Row=ListingFormDraft&{id:string;revision:string;listingType:keyof typeof kinds};
@@ -46,10 +47,10 @@ export class PostgresListingFormStore{
   if(!row)throw new ListingDraftAccessError();return{snapshot:await this.snapshot(tx,owner,id),placed:row.status!=='draft'};
  });}
  checkPublication(token:string,owner:string,listingId:unknown,expectedRevision:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new ListingDraftAccessError();return (await this.inspectInTransaction(tx,owner,listingId,expectedRevision)).check;
+  if(user.id!==owner)throw new ListingDraftAccessError();return (await this.inspectInTransaction(tx,owner,listingId,expectedRevision,{checkBookingDates:true})).check;
  });}
  /** Trusted repository composition only: caller must authorize identity and hold the app-session transaction. */
- async inspectInTransaction(tx:PostgresQueries,owner:string,listingId:unknown,expectedRevision:unknown,allowPlaced=false){
+ async inspectInTransaction(tx:PostgresQueries,owner:string,listingId:unknown,expectedRevision:unknown,{allowPlaced=false,checkBookingDates=false}={}){
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
   const current=(await tx.query<{revision:string}>(`select revision::text as revision from app.listings where id=$1 and author_id=$2 and ${allowPlaced?"status in ('draft','published','archived','expired')":"status='draft'"} for update`,[id,owner])).rows[0];
   if(!current)throw new ListingDraftAccessError();if(current.revision!==revision)throw new ListingDraftConflictError();
@@ -58,7 +59,7 @@ export class PostgresListingFormStore{
    from app.listings l join app.categories c on c.id=l.category_id left join app.categories parent on parent.id=c.parent_id where l.id=$1`,[id])).rows[0];
   const offer=(await tx.query<PublicationTariffRow>(`select id,action,name,price::text as amount,duration_days as "durationDays",active
    from app.tariffs where action='listing_publication' limit 1`)).rows[0]??null;
-  return {snapshot,check:checkListingPublication(snapshot,category?.active===true,offer)};
+  return {snapshot,check:checkListingPublication(snapshot,category?.active===true,offer,checkBookingDates?bookingTodayKey():undefined)};
  }
  async update(token:string,owner:string,listingId:unknown,expectedRevision:unknown,input:unknown){
   try{return await withAppSessionTransaction(this.db,token,async(tx,user)=>{

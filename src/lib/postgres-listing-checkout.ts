@@ -119,7 +119,7 @@ export class PostgresListingCheckoutStore{
     this.targetType==='vacancy'?['vacancy-publication','vacancy_publication']:['work-request-publication','work_request_publication'])).rows[0];
    if(!offer)throw new ListingCheckoutUnavailableError();await this.renewalBasis(tx,owner,id);return offer;
   }
-  const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision,this.policy.renewals===true);
+  const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision,{allowPlaced:this.policy.renewals===true,checkBookingDates:true});
   if(!check.checksPassed||!check.tariff||check.tariff.amount==='0.00')throw new ListingCheckoutUnavailableError();
   if(this.policy.postmoderation){
    const blocked=await tx.query('select listing_id from app.listing_blocks where listing_id=$1',[id]);
