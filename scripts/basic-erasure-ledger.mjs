@@ -9,23 +9,23 @@ export class ErasureLedgerValidationError extends Error{constructor(){super('Inv
 function secret(key){assert.ok(Buffer.isBuffer(key)&&key.length===32);return key;}
 function normalizedRecord(value,version){
  const keys=['operationId','requestId','subjectId','actorId','authVersion','requestRevision','completedAt'];
- if(version===2)keys.push('mediaIds');
+ if(version!==1)keys.push('mediaIds');
  const row=deletionObject(value,keys);
  const input=parseBasicErasure({operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision});
  assert.ok(typeof row.completedAt==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(row.completedAt)&&new Date(row.completedAt).toISOString()===row.completedAt);
  const record={operationId:input.operationId,requestId:input.requestId,subjectId:input.expectedOwnerId,actorId:deletionId(row.actorId),authVersion:input.expectedAuthVersion,requestRevision:input.expectedRevision,completedAt:row.completedAt};
- if(version===2){
+ if(version!==1){
   assert.ok(Array.isArray(row.mediaIds)&&row.mediaIds.length<=100);
   record.mediaIds=Array.from(row.mediaIds,deletionId).sort();
  }
  return record;
 }
 function payload(records,sourceId,version){
- assert.ok(version===1||version===2);
+ assert.ok([1,2,3].includes(version));
  assert.ok(Array.isArray(records)&&records.length<=1000);
  const rows=Array.from(records,row=>normalizedRecord(row,version));
  for(const name of ['operationId','requestId','subjectId'])assert.equal(new Set(rows.map(row=>row[name])).size,rows.length);
- if(version===2){
+ if(version!==1){
   const ids=rows.flatMap(row=>row.mediaIds);
   assert.equal(new Set(ids).size,ids.length);
  }
@@ -46,14 +46,14 @@ export function verifyBasicErasureLedger(document,key,trustedCheckpoint){
  }catch{throw new ErasureLedgerValidationError();}
 }
 export async function exportBasicErasureLedger(db,key,sourceId,version=1,containerId){
- assert.equal(process.env.NODE_ENV,'test');secret(key);deletionId(sourceId);assert.ok(version===1||version===2);
- const mediaErasure=version===2;
+ assert.equal(process.env.NODE_ENV,'test');secret(key);deletionId(sourceId);assert.ok([1,2,3].includes(version));
+ const mediaErasure=version!==1;
  const fixture=mediaErasure?await inspectBasicErasureFixture(containerId):null;
  const fixtureFields=fixture?",current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port":'';
  return db.readTransaction(async tx=>{
   const context=(await tx.query(`select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation${fixtureFields}`)).rows[0];
   assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'on',isolation:'repeatable read',...fixture});
-  await assertBasicErasureProfile(tx,context.database,mediaErasure);
+  await assertBasicErasureProfile(tx,context.database,version);
   const mediaColumns=mediaErasure?`,
    array(select em.media_id from app_admin.account_erasure_media em where em.operation_id=e.operation_id order by em.media_id limit 101) as "mediaIds"`:'';
   const rows=(await tx.query(`select e.operation_id as "operationId",e.request_id as "requestId",e.subject_id as "subjectId",e.actor_id as "actorId",
@@ -87,7 +87,7 @@ export async function prepareBasicErasurePhotos(db,document,key,checkpoint,actor
 async function processBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId,preparePhotos){
  try{
  assert.equal(process.env.NODE_ENV,'test');const body=verifyBasicErasureLedger(document,key,checkpoint);assert.ok(actorSessions instanceof Map);
- if(preparePhotos)assert.equal(body.version,2);
+ if(preparePhotos)assert.ok(body.version===2||body.version===3);
  const sessions=new Map();for(const row of body.records){const token=actorSessions.get(row.actorId);assert.ok(hex(token));sessions.set(row.actorId,token);}
  await db.readTransaction(async tx=>{
   const context=(await tx.query("select current_database() as database,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
@@ -101,9 +101,9 @@ async function processBasicErasureLedger(db,document,key,checkpoint,actorSession
   }
  },{timeoutMs:5000});
  const records=preparePhotos?body.records.filter(row=>row.mediaIds.length):body.records,receipts=[];
- const apply=preparePhotos?detachRestoredDraftPhotos:body.version===2?eraseAccountWithRetiredMedia:eraseBasicAccount;
+ const apply=preparePhotos?detachRestoredDraftPhotos:body.version===1?eraseBasicAccount:eraseAccountWithRetiredMedia;
  for(const row of records){
-  try{receipts.push(await apply(db,sessions.get(row.actorId),row.actorId,{operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision},containerId,row.mediaIds));}
+  try{receipts.push(await apply(db,sessions.get(row.actorId),row.actorId,{operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision},containerId,row.mediaIds,body.version));}
   catch{throw new ErasureRestoreIncompleteError(receipts.length);}
  }
  if(preparePhotos)return{listedOperations:records.length,photos:receipts,reopenAuthorized:false};

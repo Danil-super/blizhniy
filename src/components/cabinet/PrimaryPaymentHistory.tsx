@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useEffect,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+import {useLocalPaymentSimulation,useServiceCheckout,useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {paymentHistory,PaymentHistoryClientError} from '@/lib/client-payment-history';
 import type {PaymentHistoryCursor,PaymentHistoryPage,PaymentHistoryReceipt} from '@/lib/payment-history-contract';
@@ -21,6 +22,13 @@ export function PrimaryPaymentHistory({receipt}:{receipt?:PaymentHistoryReceipt}
  return owner?<History key={receipt?`${owner}:${receipt.targetType}:${receipt.id}`:owner} owner={owner} receipt={receipt}/>:<p role="status">Проверяем доступ к платежам…</p>;
 }
 function History({owner,receipt}:{owner:string;receipt?:PaymentHistoryReceipt}){
+ const auth=usePrimaryAccountAuth(),simulation=useLocalPaymentSimulation();
+ const specialist=useSpecialistCheckout(),services=useServiceCheckout(),marquee=useServiceCheckout('marquee');
+ const canContinue={
+  listing:simulation||!!(auth?.workPublicationTest||auth?.listingVerificationTest),
+  vacancy:simulation||!!auth?.workPublicationTest,workRequest:simulation||!!auth?.workPublicationTest,
+  specialist,application:simulation||!!auth?.applicationTest,ad_marquee:marquee,fair_application:services,
+ };
  const [page,setPage]=useState<PaymentHistoryPage|null>(null),[cursor,setCursor]=useState<PaymentHistoryCursor|null>(null);
  const [busy,setBusy]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{
@@ -42,12 +50,17 @@ function History({owner,receipt}:{owner:string;receipt?:PaymentHistoryReceipt}){
   {page?.items.length===0&&!error&&!busy&&<div className="mt-4 rounded-xl border border-slate-200 bg-white p-5"><p className="font-semibold text-slate-950">{receipt?'Платёж недоступен':'Платежей пока нет'}</p><p className="mt-2 text-sm text-slate-600">{receipt?'Проверьте ссылку и аккаунт, из которого оформляли заказ.':'Они появятся здесь после оформления размещения или отклика.'}</p>{receipt&&<Link className={`${button} mt-3`} href={targets[receipt.targetType].href}>Перейти в раздел</Link>}</div>}
   {page&&page.items.length>0&&<ul className="mt-4 grid gap-3">{page.items.map(item=>{
    const target=targets[item.targetType],status=statuses[item.status];
+   const serviceType=item.targetType==='ad_marquee'?'marquee':item.targetType==='fair_application'?'fair':null;
+   const orderLink=serviceType?`/oplata/uslugi/${item.id}?type=${serviceType}`:
+    `/oplata/${item.id}${item.targetType==='listing'?'':'?type='+item.targetType}`;
+   const resumable=!receipt&&item.isTest&&canContinue[item.targetType]&&['created','pending'].includes(item.status);
+   const marqueeStatus=!receipt&&item.targetType==='ad_marquee'&&item.status==='succeeded'&&marquee&&item.isTest;
    return <li key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card">
     <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-bold text-slate-950">{receipt?'Сумма платежа':target.label}</h3><p className="text-lg font-bold text-slate-950">{money.format(Number(item.amount))}</p></div>
     <div className="mt-2 flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${status.tone}`}>{status.label}</span>{item.isTest&&<span className="text-xs font-bold text-slate-600">TEST · без списания денег</span>}</div>
     <time dateTime={item.createdAt} className="mt-3 block text-sm text-slate-600">{date.format(new Date(item.createdAt))}</time>
     <p className="mt-1 break-all text-xs text-slate-500">Заказ {item.id}</p>
-    <Link href={target.href} className={`${button} mt-3`}>Перейти в раздел</Link>
+    <Link href={resumable||marqueeStatus?orderLink:target.href} prefetch={false} className={`${button} mt-3`}>{resumable?'Продолжить':marqueeStatus?'Проверить размещение':'Перейти в раздел'}</Link>
    </li>;
   })}</ul>}
   {page?.nextCursor&&!error&&<button type="button" className={`${button} mt-4`} disabled={busy} onClick={()=>setCursor(page.nextCursor)}>Показать ещё</button>}

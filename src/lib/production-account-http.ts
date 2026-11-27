@@ -22,7 +22,7 @@ export type ProductionAccountRuntime = {
   store: Pick<RegistrationStore, "register" | "resendConfirmation" | "confirmEmail">;
   recovery: Pick<PasswordRecoveryStore, "requestRecovery" | "resetPassword">;
   identity: Pick<IdentityStore, "login" | "resolveSession" | "revokeSession">;
-  limiter: Pick<AuthRateLimiter, "allowProduction" | "allowProductionAttempt" | "allowProductionEmail">;
+  limiter: Pick<AuthRateLimiter, "allowProduction" | "allowProductionAttempt" | "allowProductionCaptchaCheck" | "allowProductionVerifiedCredential">;
   verifyCaptcha: (token: unknown, ip: string) => Promise<boolean>;
 };
 type AuthEvent = { event: "account_request"; requestId: string; operation: string; status: number; durationMs: number; code?: string };
@@ -68,7 +68,7 @@ function view(user: IdentityUser): IdentityUser {
  * Valid recovery is committed before acceptance; no volatile fire-and-forget job or SMTP in HTTP. */
 export function createProductionAccountHandler(config: ProductionAuthConfig, getRuntime: () => ProductionAccountRuntime | Promise<ProductionAccountRuntime>,
   audit: (event: AuthEvent) => void = event => console.info(JSON.stringify(event)), canShowSpecialistTest?: (ownerId:string)=>boolean,
-  canShowWorkPublicationTest?: (ownerId:string)=>boolean, canShowListingVerificationTest?: (ownerId:string)=>boolean) {
+  canShowWorkPublicationTest?: (ownerId:string)=>boolean, canShowListingVerificationTest?: (ownerId:string)=>boolean, canShowMarqueeTest?: (ownerId:string)=>boolean) {
   if (typeof window !== "undefined" || config.origin !== productionAuthOrigin) throw new Error("Invalid production account boundary");
   return async (request: Request, operation: string): Promise<Response> => {
     const requestId = randomUUID();
@@ -120,22 +120,20 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       const allowed = proofBoundary
         ? await state.limiter.allowProductionAttempt(action as CredentialAction, ip)
         : await state.limiter.allowProduction(action === "session" ? "session" : "credential", ip, email);
-      if (!allowed) {
-        code = "RATE_LIMITED";
-        return respond({ error: { code } }, 429, { "Retry-After": "900" });
-      }
+      if (!allowed) throw new AuthRequestError(429, "RATE_LIMITED");
       if (credential) {
         proofExpiry = proofBoundary ? readBrowserProof(request.headers, config.rateSecret, ip) || undefined : undefined;
         if (!proofExpiry) {
-          if (!input.captchaToken || await state.verifyCaptcha(input.captchaToken, ip) !== true) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+          if (!input.captchaToken) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+          if (proofBoundary && !await state.limiter.allowProductionCaptchaCheck()) throw new AuthRequestError(429, "RATE_LIMITED");
+          if (await state.verifyCaptcha(input.captchaToken, ip) !== true) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
           if (proofBoundary) {
             const issued = issueBrowserProof(config.rateSecret, ip, request.headers.get("user-agent") ?? "");
             proofCookie = issued.cookie; proofExpiry = issued.expiresAt;
           }
         }
-        if (proofBoundary && email && !await state.limiter.allowProductionEmail(action as CredentialAction, email)) {
-          code = "RATE_LIMITED";
-          return respond({ error: { code } }, 429, { "Retry-After": "900" });
+        if (proofBoundary && !await state.limiter.allowProductionVerifiedCredential(action as CredentialAction, email)) {
+          throw new AuthRequestError(429, "RATE_LIMITED");
         }
       }
       if (action === "session") {
@@ -146,6 +144,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
         }
         const headers: Record<string,string> = {};
         if (await state.canBuyResponse?.(user.id,presented!)) headers["X-Blizhniy-Application-Test"] = "1";
+        if (canShowMarqueeTest?.(user.id)) headers["X-Blizhniy-Marquee-Test"] = "1";
         if (canShowSpecialistTest?.(user.id)) headers["X-Blizhniy-Specialist-Test"] = "1";
         if (canShowWorkPublicationTest?.(user.id)) headers["X-Blizhniy-Work-Publication-Test"] = "1";
         else if (canShowListingVerificationTest?.(user.id)) headers["X-Blizhniy-Listing-Verification-Test"] = "1";
@@ -182,7 +181,10 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       }
       return respond({ status: "accepted" }, 202);
     } catch (error) {
-      if (error instanceof AuthRequestError) { code = error.code; return respond({ error: { code } }, error.status); }
+      if (error instanceof AuthRequestError) {
+        code = error.code;
+        return respond({ error: { code } }, error.status, error.status === 429 ? { "Retry-After": "900" } : undefined);
+      }
       if (error instanceof RegistrationInputError || error instanceof RecoveryInputError || (error instanceof Error && error.message === "Invalid password")) {
         code = "INVALID_INPUT";
         return respond({ error: { code } }, 422);

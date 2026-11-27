@@ -36,7 +36,7 @@
 
 Выбор аналитики отделен от технических cookie. Старое нажатие «Понятно» в информационном сообщении о cookie не означает согласие на новый счетчик. Проверять загрузку и остановку аналитики вместе с актуальным пользовательским выбором.
 
-При валидном ID CSP добавляет только `https://mc.yandex.ru` в `script-src`, `connect-src` и `img-src`. Сохраняются nonce, `strict-dynamic`, запрет inline-обработчиков, прежние ограничения frame/style/worker и режим CSP. Библиотека должна получить nonce исходного документа, в том числе после SPA-перехода. Настройки `unsafe-inline`, `unsafe-eval`, общие `https:` или `*.yandex.ru` для запуска счетчика не нужны.
+При валидном ID CSP добавляет только `https://mc.yandex.ru` в `script-src`, `connect-src` и `img-src`. Сохраняются nonce, `strict-dynamic`, запрет inline-обработчиков, прежние ограничения frame/style/worker и режим CSP. Библиотека должна получить nonce исходного документа, в том числе после SPA-перехода. Запрос `tag.js` выполняется с `crossorigin=anonymous`. Это позволяет браузеру применить CORS к ответу Яндекса при строгом `COEP: require-corp`. Настройки `unsafe-inline`, `unsafe-eval`, общие `https:` или `*.yandex.ru` для запуска счетчика не нужны.
 
 Официальная документация описывает [nonce и CSP](https://yandex.ru/support/metrica/ru/code/install-counter-csp), [параметры инициализации](https://yandex.ru/support/metrica/ru/code/counter-initialize) и [SPA: defer, hit, destruct](https://yandex.ru/support/metrica/ru/code/counter-spa-setup). Полный список адресов в справке охватывает дополнительные возможности и регионы. Если реальный базовый счетчик обращается к другому origin, сначала установить назначение запроса; дополнительное разрешение должно быть точечным и проверенным.
 

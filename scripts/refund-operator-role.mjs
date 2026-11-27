@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
+import {assertHostedRefundRelease} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_refund_operator',locks=['users','payment_checkout_intents','payment_orders'];
 const cols=text=>text.split(',');
@@ -31,7 +32,7 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
 const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:[58,60].includes(schema)}).journal;
 
 export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||!validDatabase(database)||![55,56,57,58,60].includes(schema))throw Error('Invalid refund database');
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||([75,76,78,79,80,81,82,83,84,87].includes(schema)&&localPrimary)||!validDatabase(database)||![55,56,57,58,60,75,76,78,79,80,81,82,83,84,87].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
@@ -41,11 +42,11 @@ export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false
 /** Trusted TEST operator: session/source reads and audited approval/recovery, no send capabilities.
  * Read-only exact PG18/schema55 admission; never an untrusted-SQL or per-merchant isolation boundary.
  */
-export async function verifyRefundOperatorDatabase(db,{database,merchant,localPrimary=false}={}){
+export async function verifyRefundOperatorDatabase(db,{database,merchant,localPrimary=false,hostedRefunds=false}={}){
  try{
-  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
-  const expectedJournal=journal();
+  if(!validDatabase(database)||typeof localPrimary!=='boolean'||typeof hostedRefunds!=='boolean'||(localPrimary&&(hostedRefunds||database!=='blizhniy_prod'))||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
   await db.transaction(async tx=>{
+   if(hostedRefunds)await tx.query('set transaction isolation level repeatable read');
    await tx.query("set local statement_timeout='5s'");
    await tx.query("set local lock_timeout='1s'");
    await tx.query('set local search_path=pg_catalog');
@@ -61,9 +62,16 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant,localPr
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
-   if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=56?journal(schema):expectedJournal))throw Error('Invalid refund journal');
-   await assertRefundSchema(tx,schema,{localPrimary});
+   if(hostedRefunds){
+    const hostedSchema=await assertHostedRefundRelease(tx,actualJournal);
+    if(merchant.marqueeRefunds!==undefined&&merchant.marqueeRefunds!==(hostedSchema>=78))throw Error('Marquee refund configuration does not match schema');
+    if(merchant.specialistRefunds!==undefined&&merchant.specialistRefunds!==(hostedSchema>=80))throw Error('Specialist refund configuration does not match schema');
+   }
+   else{
+    const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
+    if(JSON.stringify(actualJournal)!==JSON.stringify(journal(schema)))throw Error('Invalid refund journal');
+    await assertRefundSchema(tx,schema,{localPrimary});
+   }
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

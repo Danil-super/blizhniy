@@ -45,6 +45,8 @@ test('publishes both verified static directories before a switch and keeps the p
 test('the Caddy route selects an incoming file before its unconditional running root', () => {
   const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
   assert.match(template, /root @incoming \/var\/www\/blizhniy-static\/incoming\s+root \* \/var\/www\/blizhniy-static\/running/);
+  const fileHeaders = template.match(/route @available \{([\s\S]*?)\bfile_server\b/)?.[1];
+  assert.match(fileHeaders ?? '', /^\s+Cross-Origin-Resource-Policy same-origin$/m);
 });
 
 test('both Next build manifests remain available across a release switch', () => {
@@ -57,4 +59,15 @@ test('both Next build manifests remain available across a release switch', () =>
     assert.equal(versioned.test(`/_next/static/current/${name}`), false);
   }
   assert.equal(versioned.test(`/_next/static/${build}/other.js`), false);
+});
+
+test('Caddy limits the public image resource policy to successful image-route reads', () => {
+  const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
+  assert.match(template, /@public_images \{\s+method GET HEAD\s+path \/_next\/image \/images\/\*\s+\}/);
+  assert.match(template, /header @public_images \{\s+Cross-Origin-Resource-Policy same-origin\s+match status 2xx 304\s+\}/);
+});
+
+test('Caddy isolates the sitemap document while leaving its cache and fetch policies to Next', () => {
+  const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
+  assert.match(template, /header \/sitemap\.xml \{\s+Cross-Origin-Embedder-Policy require-corp\s+Cross-Origin-Opener-Policy same-origin\s+match status 2xx 304\s+\}/);
 });

@@ -18,10 +18,20 @@ const draftTables=new Set(['listings','work_publications','service_publications'
 const draftPhotoLinks=[['listings','listing_photos','listing_id'],['work_publications','work_publication_photos','publication_id'],
  ['service_publications','service_publication_photos','publication_id']];
 const mediaMigration='0068-erasure-retired-media.sql';
+const notificationRoles=['blizhniy_runtime','blizhniy_business_email','blizhniy_push_worker'];
+
+export async function assertNotificationRolesOffline(tx){
+ const {rows:[offline]}=await tx.query("select count(*)::int=$2 as ready from pg_roles r "+
+  "where r.rolname=any($1) and not(r.rolcanlogin or r.rolsuper or r.rolcreaterole or r.rolcreatedb or r.rolreplication or r.rolbypassrls) "+
+  "and not exists(select 1 from pg_auth_members m where r.oid in (m.roleid,m.member)) "+
+  "and not exists(select 1 from pg_stat_activity a where a.usename=r.rolname and a.datname=current_database())",
+  [notificationRoles,notificationRoles.length]);
+ assert.equal(offline?.ready,true);
+}
 function receipt(row,input){return{requestId:input.requestId,operationId:input.operationId,subjectId:input.expectedOwnerId,
  requestRevision:row.revision,completedAt:row.completedAt,primaryAccountErased:true,completeErasure:false,retained:['pseudonymous-case-audit','erasure-receipt','external-copies-unverified']};}
 
-export async function readBasicErasureSchema(tx){
+export async function readBasicErasureSchema(tx,notifications=false){
  const app=await readRefundSchema(tx),admin=await readRefundSchema(tx,{namespace:'app_admin'});
  const local=(await tx.query(`with objects as (
   select 'relation' kind,c.relname name,jsonb_build_array(c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relowner=n.nspowner) definition
@@ -36,26 +46,41 @@ export async function readBasicErasureSchema(tx){
   union all select 'type',t.typname,jsonb_build_array(t.typtype,t.typcategory,t.typnotnull,t.typdefault) from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='local_primary'
   union all select 'rule',c.relname||'.'||r.rulename,jsonb_build_array(pg_get_ruledef(r.oid,false),r.ev_enabled) from pg_rewrite r join pg_class c on c.oid=r.ev_class join pg_namespace n on n.oid=c.relnamespace where n.nspname='local_primary'
  ) select kind,name,definition from objects order by kind collate "C",name collate "C",definition::text collate "C" limit 1001`)).rows;
- assert.ok(local.length>0&&local.length<1001);return{app,admin,local:{count:local.length,sha256:createHash('sha256').update(JSON.stringify(local)).digest('hex')}};
+ const delivery=notifications?{
+  email:await readRefundSchema(tx,{namespace:'notification_delivery'}),
+  push:await readRefundSchema(tx,{namespace:'app_push'}),
+ }:{};
+ assert.ok(local.length>0&&local.length<1001);return{app,admin,local:{count:local.length,sha256:createHash('sha256').update(JSON.stringify(local)).digest('hex')},...delivery};
 }
 
-export async function assertBasicErasureProfile(tx,database,mediaErasure){
+export async function assertBasicErasureProfile(tx,database,version,rawRestore=false){
+ assert.ok([1,2,3].includes(version));
  const plan=getUserAccessRolePlan(database,{tariffs:true});
- assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
+ const notifications=version===3;
+ const profile=notifications?JSON.parse(await readFile(new URL('../database/basic-erasure-notification-profile.json',import.meta.url),'utf8')):null;
+ if(notifications){
+  await assertNotificationRolesOffline(tx);
+  for(const {name,sha256} of profile.migrations){
+   const bytes=await readFile(new URL('../database/candidates/'+name,import.meta.url));
+   assert.equal(createHash('sha256').update(bytes).digest('hex'),sha256);
+  }
+ }
+ assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,[...plan.appJournal,...(profile?.migrations??[])]);
  const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));
  const expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));
  assert.equal(createHash('sha256').update(migration).digest('hex'),expected.migrationSha256);
  const journal=(await tx.query('select name,sha256 from app_admin.migrations order by name')).rows;
  const expectedJournal=[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}];
  let schema=expected.schema;
- if(mediaErasure){
+ if(version!==1){
   const addon=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema68.json',import.meta.url),'utf8'));
   const bytes=await readFile(new URL('../database/candidates/'+mediaMigration,import.meta.url));
   assert.equal(createHash('sha256').update(bytes).digest('hex'),addon.migrationSha256);
   expectedJournal.push({name:mediaMigration,sha256:addon.migrationSha256});schema=addon.schema;
  }
  assert.deepEqual(journal,expectedJournal);
- assert.deepEqual(await readBasicErasureSchema(tx),schema);
+ if(profile)schema=rawRestore?profile.restored:profile.schema;
+ assert.deepEqual(await readBasicErasureSchema(tx,notifications),schema);
 }
 
 export async function verifiedRetiredMedia(tx,containerId,{subjectId,operationId,mediaIds}){
@@ -83,16 +108,18 @@ export async function verifiedRetiredMedia(tx,containerId,{subjectId,operationId
 }
 
 export async function eraseBasicAccount(db,token,expectedAdminId,value,containerId){
- return eraseAccount(db,token,expectedAdminId,value,containerId,false);
+ return eraseAccount(db,token,expectedAdminId,value,containerId,1);
 }
 
-export async function eraseAccountWithRetiredMedia(db,token,expectedAdminId,value,containerId,expectedMediaIds){
- return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds);
+export async function eraseAccountWithRetiredMedia(db,token,expectedAdminId,value,containerId,expectedMediaIds,version=2){
+ assert.ok(version===2||version===3);
+ return eraseAccount(db,token,expectedAdminId,value,containerId,version,expectedMediaIds);
 }
 
-export async function detachRestoredDraftPhotos(db,token,expectedAdminId,value,containerId,expectedMediaIds){
+export async function detachRestoredDraftPhotos(db,token,expectedAdminId,value,containerId,expectedMediaIds,version=2){
+ assert.ok(version===2||version===3);
  assert.ok(Array.isArray(expectedMediaIds)&&expectedMediaIds.length>0&&expectedMediaIds.length<=100);
- return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds,true);
+ return eraseAccount(db,token,expectedAdminId,value,containerId,version,expectedMediaIds,true);
 }
 
 export async function inspectBasicErasureFixture(containerId){
@@ -109,7 +136,9 @@ export async function inspectBasicErasureFixture(containerId){
  return{fixture,address,port:5432};
 }
 
-async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds,preparePhotos=false){
+async function eraseAccount(db,token,expectedAdminId,value,containerId,version,expectedMediaIds,preparePhotos=false){
+ const mediaErasure=version!==1,notifications=version===3;
+ const schemas=notifications?['app','app_admin','local_primary','app_push','notification_delivery']:['app','app_admin','local_primary'];
  const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
  if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
  const fixture=await inspectBasicErasureFixture(containerId);
@@ -118,10 +147,10 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
   await tx.query("select set_config('lock_timeout','2s',true),set_config('statement_timeout','3s',true),set_config('transaction_timeout','10s',true)");
   const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port")).rows[0];
   assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'off',isolation:'read committed',...fixture});
-  const tables=(await tx.query("select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','app_admin','local_primary') and c.relkind='r' and c.relname not in ('sessions','cabinet_profiles','email_confirmations','password_recoveries','registration_legal','telegram_phone_attempts','telegram_phone_bindings','mail_outbox','notifications') order by 1,2")).rows;
+  const tables=(await tx.query("select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=any($1) and c.relkind='r' and c.relname not in ('sessions','cabinet_profiles','email_confirmations','password_recoveries','registration_legal','telegram_phone_attempts','telegram_phone_bindings','mail_outbox','notifications') order by 1,2",[schemas])).rows;
   // Confined/offline candidate: fence non-FK writers as well as normal user-locked callers.
   await tx.query('lock table '+tables.map(row=>pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.name)).join(',')+' in share row exclusive mode');
-  await assertBasicErasureProfile(tx,context.database,mediaErasure);
+  await assertBasicErasureProfile(tx,context.database,version);
   return withAppSessionTransaction({transaction:work=>work(tx)},token,async(_tx,admin)=>{
    if(admin.id!==adminId)throw new DeletionAccessError();
    // User -> request lock order also fences ordinary create/edit/checkout transactions.
@@ -148,6 +177,15 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    // Lock every owned mail row before checking state so a queued dispatch cannot cross erasure.
    const mail=(await tx.query('select state from app.mail_outbox where user_id=$1 order by id for update',[subject.id])).rows;
    if(mail.some(row=>['reserved','sending','unknown'].includes(row.state)))throw new BasicErasureReviewRequired();
+   if(notifications){
+    const {rows:[delivery]}=await tx.query(`select exists(
+     select 1 from notification_delivery.business_email d join app.notifications n on n.id=d.notification_id
+      where n.user_id=$1 and d.state in ('sending','unknown')
+     union all
+     select 1 from app_push.deliveries d join app.notifications n on n.id=d.notification_id
+      where n.user_id=$1 and d.state in ('sending','unknown')) as blocked`,[subject.id]);
+    if(delivery?.blocked!==false)throw new BasicErasureReviewRequired();
+   }
    const drafts=(await tx.query(`select id,status='draft' and not is_paid and published_at is null and expires_at is null and fresh as eligible
     from (
      select id,status,is_paid,published_at,expires_at,view_count=0 as fresh from app.listings where author_id=$1
@@ -183,8 +221,8 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    const historicalDraftPhotos=draftIds.length>0&&mediaIds.length>0;
    const columns=(await tx.query(`select n.nspname as schema,c.relname as relation,a.attname as column
     from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
-    where n.nspname in ('app','app_admin','local_primary') and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype
-    order by 1,2,3`)).rows;
+    where n.nspname=any($1) and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype
+    order by 1,2,3`,[schemas])).rows;
    assert.ok(columns.length>=150);
    const predicates=columns.flatMap(row=>{
     const table=pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.relation),column=pg.escapeIdentifier(row.column);

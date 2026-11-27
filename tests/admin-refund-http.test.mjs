@@ -24,10 +24,37 @@ test('local refund view flag never enables an operator on production or accepts 
  assert.equal(readLocalRefundAdminEnabled(env),true);
  for(const change of [{BLIZHNIY_REFUND_ADMIN:'enabled'},{BLIZHNIY_LOCAL_PRIMARY:undefined},{NODE_ENV:'test'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:1000'}])assert.throws(()=>readLocalRefundAdminEnabled({...env,...change}));
 });
+test('journal refund commands require the explicit local TEST configuration',()=>{
+ const {readLocalRefundJournalConfig}=load('local-refund-admin-config');
+ const env={NODE_ENV:'production',BLIZHNIY_REFUND_ADMIN:'journal-test',BLIZHNIY_LOCAL_PRIMARY:'enabled',
+  BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_ADMIN_PAYMENT_JOURNAL:'test-v1',
+  BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture',BLIZHNIY_REFUND_OPERATOR_SOCKET:'/tmp/refund-fixture.sock'};
+ assert.equal(readLocalRefundJournalConfig({}),null);
+ assert.equal(readLocalRefundJournalConfig({...env,BLIZHNIY_REFUND_ADMIN:'local-test'}),null);
+ assert.deepEqual(readLocalRefundJournalConfig(env),{shopId:'fixture',socketPath:'/tmp/refund-fixture.sock'});
+ for(const change of [{BLIZHNIY_ADMIN_PAYMENT_JOURNAL:undefined},{BLIZHNIY_PAYMENT_MODE:'live'},
+  {BLIZHNIY_REFUND_OPERATOR_SOCKET:undefined},{BLIZHNIY_LOCAL_PRIMARY:undefined},{BLIZHNIY_PAYMENT_SHOP_ID:'other shop'}]){
+  assert.throws(()=>readLocalRefundJournalConfig({...env,...change}));
+ }
+});
 test('only an authenticated definite approval rejection becomes 409, without private diagnostics',async()=>{
  const {createAdminRefundHandler}=load('admin-refund-http'),{AdminRefundRejectedError}=load('admin-refund-contract');let calls=0;
  const handler=createAdminRefundHandler({origin},()=>({limiter:{allowProduction:async()=>true},command:async()=>{calls++;throw new AdminRefundRejectedError();}}),()=>{});
  const approval={action:'approve',expectedAdminId:actor,input:{id:actor,paymentIntentId:actor,reason:'Возврат.'}};
  const reply=await handler(request(approval));assert.equal(reply.status,409);assert.deepEqual(await reply.json(),{error:{code:'REFUND_NOT_LATEST'}});
  assert.equal((await handler(request())).status,503);assert.equal((await handler(request(approval,{cookie:''}))).status,401);assert.equal(calls,2);
+});
+
+test('hosted refund actions require the TEST journal and the fixed private operator socket',()=>{
+ const {readLocalRefundAdminEnabled,readLocalRefundJournalConfig}=load('local-refund-admin-config');
+ const env={NODE_ENV:'production',BLIZHNIY_REFUND_ADMIN:'hosted-test-v1',BLIZHNIY_AUTH_MODE:'postgres',
+  BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_ADMIN_PAYMENT_JOURNAL:'test-v1',
+  BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture'};
+ assert.equal(readLocalRefundAdminEnabled(env),false);
+ assert.deepEqual(readLocalRefundJournalConfig(env),{hosted:true,shopId:'fixture',socketPath:'/run/blizhniy-refund-operator/operator.sock'});
+ for(const change of [{BLIZHNIY_AUTH_ORIGIN:'https://foreign.invalid'},{BLIZHNIY_AUTH_MODE:'local'},
+  {BLIZHNIY_LOCAL_PRIMARY:'enabled'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045'},
+  {BLIZHNIY_REFUND_OPERATOR_SOCKET:'/tmp/other.sock'},{BLIZHNIY_ADMIN_PAYMENT_JOURNAL:undefined},
+  {BLIZHNIY_PAYMENT_MODE:'live'},{BLIZHNIY_PAYMENT_SHOP_ID:undefined},{NODE_ENV:'test'}])
+  assert.throws(()=>readLocalRefundJournalConfig({...env,...change}));
 });

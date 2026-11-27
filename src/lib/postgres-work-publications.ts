@@ -1,3 +1,4 @@
+import type {CheckoutCancellationPolicy} from './checkout-cancellation-policy';
 import {withAppSessionTransaction} from './app-session-transaction';
 import {parseWorkPublicationForm,checkWorkPublicationForm,WorkPublicationInputError,type WorkPublicationKind,type WorkPublicationForm} from './work-publication-contract.ts';
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
@@ -11,8 +12,9 @@ import {resolveProfession,professionFormSql,ProfessionReferenceError} from './pr
 
 export class WorkPublicationAccessError extends Error{constructor(){super('Work publication not found');}}
 export class WorkPublicationConflictError extends Error{constructor(){super('Work publication changed');}}
+export type WorkActiveCheckout={paymentId:string;status:'created'|'pending'|'succeeded'};
 export type WorkPublicationSnapshot={id:string;kind:WorkPublicationKind;revision:string;status:string;paid:boolean;form:WorkPublicationForm;professionId?:string|null;
- photos:ListingDraftPhoto[];createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
+ photos:ListingDraftPhoto[];createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null;activeCheckout?:WorkActiveCheckout};
 type Row=Omit<WorkPublicationSnapshot,'photos'|'form'>&{form:unknown};
 const columns=`id,kind,revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,${professionFormSql()} as form,profession_id as "professionId",
  to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",
@@ -23,7 +25,7 @@ const validKind=(kind:WorkPublicationKind)=>{if(kind!=='vacancy'&&kind!=='workRe
 
 /** Cookie-owned forms only. No status, ownership, payment, date or automatic retry writes. */
 export class PostgresWorkPublicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){if(typeof window!=='undefined')throw Error('Work publication storage is server-only');}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly checkoutPolicy?:CheckoutCancellationPolicy|null){if(typeof window!=='undefined')throw Error('Work publication storage is server-only');}
  private async snapshot(tx:PostgresQueries,owner:string,kind:WorkPublicationKind,id:string):Promise<WorkPublicationSnapshot>{
   const row=(await tx.query<Row>(`select ${columns} from app.work_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null`,[id,owner,kind])).rows[0];
   if(!row)throw new WorkPublicationAccessError();
@@ -84,8 +86,20 @@ export class PostgresWorkPublicationStore{
    return this.snapshot(tx,owner,kind,existing.id);
   }));
  }
- read(token:string,owner:string,kind:WorkPublicationKind,publicationId:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new WorkPublicationAccessError();return this.snapshot(tx,owner,validKind(kind),parseListingDraftId(publicationId));
+ read(token:string,owner:string,kind:WorkPublicationKind,publicationId:unknown,includeCheckout=false){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
+  if(user.id!==owner)throw new WorkPublicationAccessError();
+  const id=parseListingDraftId(publicationId),saved=await this.snapshot(tx,owner,validKind(kind),id);
+  const admission=includeCheckout?this.checkoutPolicy?.[kind]:undefined;
+  if(!admission||(admission.ownerId!==undefined&&admission.ownerId!==owner))return saved;
+  const activeCheckout=(await tx.query<WorkActiveCheckout>(`select o.id as "paymentId",o.status from app.payment_orders o
+   join app.payment_checkout_intents i on i.id=o.id and i.owner_id=o.owner_id and i.target_type=o.target_type
+    and i.target_id=o.target_id and i.target_revision=o.target_revision
+   where o.owner_id=$1 and o.target_type=$2 and o.target_id=$3 and i.merchant_shop_id=$4 and i.is_test
+    and (i.request_body::jsonb#>>'{metadata,publicationMode}') is not distinct from $5::text
+    and (o.status in ('created','pending') or o.status='succeeded' and
+     not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))
+   order by o.created_at desc,o.id desc limit 1`,[owner,kind,id,admission.shopId,admission.publicationMode??null])).rows[0];
+  return activeCheckout?{...saved,activeCheckout}:saved;
  });}
  readIntent(token:string,owner:string,kind:WorkPublicationKind,creationKey:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new WorkPublicationAccessError();validKind(kind);

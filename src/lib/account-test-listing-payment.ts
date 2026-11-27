@@ -15,7 +15,7 @@ export function createAccountTestListingPayment(db:Pick<PostgresDatabase,'transa
   async dispatch(token:string,owner:string,paymentId:string){
    allowed(owner);
    const binding=await store.authorizeDispatch(token,owner,paymentId);
-   const result=await dispatcher.dispatch(binding,async()=>{await store.authorizeDispatch(token,owner,paymentId,true);});
+   const result=await dispatcher.dispatch(binding,attempt=>store.authorizeDispatch(token,owner,paymentId,true,attempt));
    await store.authorizeDispatch(token,owner,paymentId);
    return{confirmationUrl:result.confirmationUrl,isTest:true as const};
   },

@@ -72,7 +72,7 @@ export function rublesToKopecks(value: string) {
   return kopecks;
 }
 
-function validateConfirmationUrl(value: unknown) {
+export function validateConfirmationUrl(value: unknown) {
   if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u0020\u007f\s\\]/.test(value)) {
     throw new YooKassaBoundaryError("YooKassa confirmation URL is invalid");
   }

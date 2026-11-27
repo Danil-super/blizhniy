@@ -1,0 +1,44 @@
+"use client";
+
+import {createContext,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
+import {usePathname} from 'next/navigation';
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+
+const receiptMessages={
+ fulfilled:'Размещение выполнено',
+ 'verified-test':'Оплата подтверждена. TEST-платёж без списания денег.',
+ 'application-delivered':'Отклик доставлен',
+} as const;
+type Receipt = {owner:string;cabinet:string;result:keyof typeof receiptMessages};
+const Context = createContext<{receipt:Receipt|null;rememberReceipt:(receipt:Receipt)=>void}|null>(null);
+
+export function PlacementReturnNoticeProvider({children}:{children:ReactNode}){
+ const pathname=usePathname();
+ const account=usePrimaryAccountAuth();
+ const owner=account?.state==='signed-in'||account?.state==='admin'?account.userId:null;
+ const [receipt,rememberReceipt]=useState<Receipt|null>(null);
+ const [previousPath,setPreviousPath]=useState(pathname);
+ if(pathname!==previousPath){
+  setPreviousPath(pathname);
+  if(receipt&&receipt.cabinet!==pathname)rememberReceipt(null);
+ }
+ if(receipt&&receipt.owner!==owner)rememberReceipt(null);
+ return <Context.Provider value={{receipt,rememberReceipt}}>{children}</Context.Provider>;
+}
+
+export function usePlacementReturnNotice(){
+ const state=useContext(Context);
+ if(!state)throw new Error('Missing PlacementReturnNoticeProvider');
+ return state;
+}
+
+export function PlacementReturnNotice(){
+ const pathname=usePathname();
+ const {receipt}=usePlacementReturnNotice();
+ const heading=useRef<HTMLHeadingElement>(null);
+ const result=receipt?.cabinet===pathname?receipt.result:null;
+ const message=result?receiptMessages[result]:null;
+ useEffect(()=>{if(message)heading.current?.focus();},[message]);
+ if(!message)return null;
+ return <h2 ref={heading} tabIndex={-1} className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{message}</h2>;
+}

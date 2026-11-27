@@ -10,7 +10,7 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
   const key=join(directory,'key'),ca=join(directory,'ca'),fixture=join(directory,'rows.json'),photo='10000000-0000-4000-8000-000000000004';
   await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
   const secrets=['+79990000000','private@example.invalid','@private_fixture','Приватная улица','55.123456','Приватный комментарий'];
-  const rows=['specialist','fair','marquee'].map((kind,index)=>({id:`10000000-0000-4000-8000-00000000000${index+1}`,kind,mediaIds:kind==='marquee'?[]:[photo],form:parseServicePublicationForm(kind,{title:'Синтетический публичный '+kind,placementRightConfirmed:true,
+  const rows=['specialist','fair','marquee'].map((kind,index)=>({id:`10000000-0000-4000-8000-00000000000${index+1}`,kind,mediaIds:kind==='marquee'?[]:[photo],...(kind==='specialist'?{professionId:'10000000-0000-4000-8000-000000000005'}:{}),form:parseServicePublicationForm(kind,{title:'Синтетический публичный '+kind,placementRightConfirmed:true,
    ...(kind==='marquee'?{href:'https://example.invalid/'}:{description:'Подробное описание синтетического материала.',cityName:'Краснодар',contactPhone:secrets[0],email:secrets[1],messengerUrl:secrets[2],address:secrets[3],latitude:55.123456,longitude:37.123456,showExactAddress:false,photoIds:[photo],
    ...(kind==='specialist'?{professionName:'Сантехник',price:'1250.50',skills:'Монтаж'}:{category:'Посуда',comment:secrets[5]})})}),status:'published',paid:true,createdAt:'2026-01-01T00:00:00.123456Z',publishedAt:'2026-01-02T00:00:00.123456Z',expiresAt:'2099-01-01T00:00:00.123456Z'}));
   await writeFile(fixture,JSON.stringify(rows),{mode:0o600});const socket=createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));const origin=`http://127.0.0.1:${port}`;
@@ -41,6 +41,8 @@ test('public Russian service pages render eligible safe DTOs and local photos wi
    await page.getByRole('heading',{name:rows[1].form.title,exact:true}).waitFor();const image=page.locator(`img[src="/api/service-publications/${rows[1].id}/photos/${photo}"]`).first();await image.waitFor();await image.evaluate(node=>node.decode());assert.ok(await image.evaluate(node=>node.naturalWidth>0));
    const api=await fetch(origin+'/api/fair-applications'),payload=await api.json();assert.equal(api.status,200);assert.equal(payload.applications[0].participantName,rows[1].form.title);for(const value of secrets)assert.equal(JSON.stringify(payload).includes(value),false);
    assert.equal((await page.goto(origin+'/')).status(),200);await page.getByRole('region',{name:'Рекламная строка',exact:true}).getByText(rows[2].form.title,{exact:true}).waitFor();
+   const dates=page.getByRole('region',{name:'Рекламная строка',exact:true}).locator('time');
+   assert.deepEqual(await dates.evaluateAll(elements=>elements.map(element=>element.dateTime)),[rows[2].publishedAt,rows[2].expiresAt]);
   });
   await suite.test('expired service cards, detail and marquee disappear without an old-data fallback',async()=>{
    await writeFile(fixture,JSON.stringify(rows.map(row=>({...row,expiresAt:'2000-01-01T00:00:00.000001Z'}))),{mode:0o600});

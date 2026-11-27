@@ -13,7 +13,7 @@ function fail(): never { throw new RefundDispatchError(); }
 export function refundDispatchSourceKey(source: RefundDispatchSource): string {
   return createHash('sha256').update(JSON.stringify([source.request, source.payment, source.paymentCapturedAt])).digest('hex');
 }
-type Merchant = {shopId: string; isTest: boolean};
+type Merchant = ConstructorParameters<typeof PostgresRefundRequestStore>[1];
 /** Private TEST send history. An attempt is durable UNKNOWN, not proof of HTTP delivery.
  * No provider calls, automatic SQL retry, financial status or service changes.
  */

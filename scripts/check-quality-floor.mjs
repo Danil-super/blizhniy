@@ -157,6 +157,8 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/public-work-browser.mjs", "before": "58a7f25622c5d5662f705f45f4d7d1d45004b5dab7f6767bdbc08730a05e9d60", "after": "322b9e2b738a1a62357e6cbe1115bb6478022d71673552a64ef7be187d9d7a2b"},
+  {"file": "tests/service-publication-browser.mjs", "before": "645d8a27a96241cba837aa0b70b0ed6b53e2fbdb67a6eb7da819a513fe9c3c35", "after": "a940da30150d347496dd8897d75ae69900b182bded7f971140f44f8e61640af6"},
   {"file": "tests/local-primary-refund-composition-cases.mjs", "before": "fa13ec1b3ed85c01d4f8a2c09d15aaa18807d5dd6c8d1e52a2876945cebe9102", "after": "75aec2e99a1d35505843e4f76e5b2df9d2645a70a00efc7f6adbda1f417778ce"},
   {"file": "tests/local-primary-refund-activation-cases.mjs", "before": "2813fb003ebea562a78c97225c4b938c88fb1b9e4dc2c8566ee5442763f3a312", "after": "74fe6a803134d2aa35f66010b3b561527bca486e109c055ee61218d5a9eb9346"},
   {"file": "tests/specialist-checkout-refund-activation-cases.mjs", "before": "b924673663f56eec35fc8d0c0cb0a7bd851d639ced5a5192c9c70ae1c755de39", "after": "83f6cab95da8cd6c3691ad68f70f105b914c8436a9b0a6ca87f27ad8d9f09c56"},

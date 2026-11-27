@@ -67,6 +67,34 @@ export async function testLoginFocusScenarios({ run, origin, password }) {
     await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
   });
 
+  await run("a 429 focuses the rate-limit message, preserves email and makes no automatic retry", async ({ page, calls, state }) => {
+    let submits = 0;
+    state.override = (route, action) => {
+      if (action === "session") return route.fulfill(anonymous);
+      assert.equal(action, "login");
+      submits++;
+      return route.fulfill({ status: 429, headers: { "Retry-After": "900" }, json: { error: { code: "RATE_LIMITED" } } });
+    };
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(origin + "/auth");
+    const email = page.getByLabel("Email", { exact: true }), secret = page.getByLabel("Пароль", { exact: true });
+    await waitCaptcha(page);
+    await email.fill("owner@example.invalid");
+    await secret.fill(password);
+    await secret.press("Enter");
+    const alert = page.getByRole("alert").filter({ hasText: "Слишком много попыток входа" });
+    await alert.waitFor();
+    assert.equal(await alert.evaluate(node => node === document.activeElement), true);
+    await lifecycle(page);
+    await render(page);
+    assert.equal(await email.inputValue(), "owner@example.invalid");
+    assert.equal(await secret.inputValue(), "");
+    assert.equal(await alert.isVisible(), true);
+    assert.equal(submits, 1);
+    assert.equal(calls.filter(row => row.action === "login").length, 1);
+    assert.equal(page.url(), origin + "/auth");
+  });
+
   await run("anonymous login survives tab activation and repeated lifecycle checks without clearing fields or remounting CAPTCHA", async ({ page, context, calls, state }) => {
     await page.goto(origin + "/auth");await waitCaptcha(page);
     await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");

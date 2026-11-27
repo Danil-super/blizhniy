@@ -54,3 +54,11 @@ test('service HTTP directs legacy accounts with an invalid profile name to corre
  const response=await f.handler(f.request(value,{},'PUT'));
  assert.equal(response.status,422);assert.deepEqual(await response.json(),{error:{code:'INVALID_INPUT',reason:'PROFILE_NAME_REQUIRED'}});
 });
+
+test('service HTTP adds repeat availability only on an opted-in owner read',async()=>{
+ const f=fixture();
+ assert.equal((await f.handler(f.request())).status,200);
+ assert.deepEqual(f.calls.at(-1),['read',token,owner,'specialist',id]);
+ assert.equal((await f.handler(f.request(body,{'x-blizhniy-specialist-repeat':'1'}))).status,200);
+ assert.deepEqual(f.calls.at(-1),['read',token,owner,'specialist',id,true]);
+});

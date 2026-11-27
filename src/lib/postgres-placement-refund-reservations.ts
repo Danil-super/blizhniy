@@ -1,4 +1,4 @@
-import {servicePlacementRefundTarget} from './service-checkout-config.ts';
+import {servicePlacementRefundTarget,type ServiceRefundScope} from './service-checkout-config.ts';
 import {PostgresPaymentIntentStore,PaymentIntentError} from './postgres-payment-intents.ts';
 import type {PostgresDatabase} from './postgres.ts';
 
@@ -6,7 +6,7 @@ export class PlacementRefundReservationError extends Error{
  constructor(){super('Placement refund reservation requires verification');this.name='PlacementRefundReservationError';}
 }
 export type PlacementRefundReservation={id:string;paymentIntentId:string;providerPaymentId:string;amount:string;shopId:string;isTest:boolean;createdAt:string};
-type Merchant={shopId:string;isTest:boolean};
+type Merchant={shopId:string;isTest:boolean}&ServiceRefundScope;
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
 function fail():never{throw new PlacementRefundReservationError();}
 const columns=`id,payment_intent_id as "paymentIntentId",provider_payment_id as "providerPaymentId",amount::text,
@@ -30,7 +30,7 @@ export class PostgresPlacementRefundReservationStore{
    // Same order as fulfillment/session writers; immutable owner is not a request parameter.
    if((await tx.query('select id from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update',[paymentIntentId])).rowCount!==1)fail();
    const purchase=await this.intents.lockKnownInTransaction(tx,paymentIntentId).catch(error=>{if(error instanceof PaymentIntentError)fail();throw error;});
-   if(!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase))||!purchase.isTest||purchase.shopId!==this.merchant.shopId)fail();
+   if(!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase,this.merchant))||!purchase.isTest||purchase.shopId!==this.merchant.shopId)fail();
    const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[paymentIntentId])).rows[0];
    if(!order)fail();
    // A caller cannot reuse another purchase's key, even on an otherwise idempotent replay.

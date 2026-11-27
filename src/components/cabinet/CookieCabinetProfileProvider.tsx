@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 import type { AccountAuthSnapshot } from "@/lib/account-session-state";
-import type { CabinetProfile } from "@/lib/cabinet-profile";
+import type { CabinetProfile, OrganizationDraft } from "@/lib/cabinet-profile";
 import { CookieProfileError, productionProfile } from "@/lib/client-postgres-profile";
 import { notifyAccountSessionChange } from "@/lib/local-account";
 
@@ -12,6 +12,8 @@ type AvatarPreparation = {loading:boolean;message:string};
 type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void;
   refreshVerifiedPhone: () => Promise<void>;
   settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void; clearSavedSettings: (submitted: CabinetProfile) => void;
+  organizationDraft: OrganizationDraft | null;
+  updateOrganizationDraft: (update: (draft: OrganizationDraft) => OrganizationDraft) => void;
   avatarDraft: AvatarCropSelection|null; setAvatarDraft:(value:AvatarCropSelection|null)=>void;
   avatarPreparation:AvatarPreparation|null;
   prepareAvatarSelection:(prepare:()=>Promise<AvatarCropSelection>)=>Promise<AvatarCropSelection|null> };
@@ -27,6 +29,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   // Unsaved settings belong to this owner, not to the temporary form DOM. Never
   // persist private input in browser storage or carry it through a real logout.
   const [settings, setSettings] = useState<{ owner: string; profile: CabinetProfile; revision: string | null } | null>(null);
+  const [organization, setOrganization] = useState<{ owner: string; draft: OrganizationDraft } | null>(null);
   const [avatar, setAvatar] = useState<{owner:string;value:AvatarCropSelection}|null>(null);
   const [avatarPreparation, setAvatarPreparation] = useState<{owner:string;value:AvatarPreparation}|null>(null);
   const avatarEpoch = useRef(0), avatarOwner = useRef(owner);
@@ -38,6 +41,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     if (avatarPreparation) setAvatarPreparation(null);
   }
   if (settings && (auth.state === "signed-out" || (owner && owner !== settings.owner))) setSettings(null);
+  if (organization && (auth.state === "signed-out" || (owner && owner !== organization.owner))) setOrganization(null);
   if (avatar && (auth.state === "signed-out" || (owner && owner !== avatar.owner))) setAvatar(null);
   useEffect(() => {
     const generation = ++version.current;
@@ -82,6 +86,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   }
   // In-flight data is never displayed for a changed or unverified identity, even before effect cleanup.
   const visible = owner && snapshot.ownerId === owner ? snapshot : empty;
+  const organizationDraft = owner && organization?.owner === owner ? organization.draft : null;
   function clearSettingsDraft() {
     if (!owner || latestOwner.current !== owner) return;
     setSettings(null);
@@ -140,6 +145,14 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     clearSavedSettings: submitted => {
       setSettings(current => current?.owner === owner && current?.profile === submitted ? null : current);
     },
+    organizationDraft,
+    updateOrganizationDraft: update => {
+      if (!owner || latestOwner.current !== owner || visible.ownerId !== owner) return;
+      setOrganization(current => {
+        const draft = update(current?.owner === owner ? current.draft : {});
+        return Object.keys(draft).length ? { owner, draft } : null;
+      });
+    },
     // Selection is private, owner-scoped UI memory, never a saved profile or a
     // write authorization. Unknown writes still require a fresh profile read.
     avatarDraft: owner&&avatar?.owner===owner?avatar.value:null,
@@ -148,7 +161,9 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     }},
     avatarPreparation:owner&&avatarPreparation?.owner===owner?avatarPreparation.value:null,
     prepareAvatarSelection }}>
-    {visible.profile && conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
+    {visible.profile && conflict ? <CabinetProfileFailure message={organizationDraft
+      ? "Профиль изменён в другой вкладке. Скопируйте несохранённые изменения настроек и обновите профиль. Введённые реквизиты организации сохранятся."
+      : "Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль."} reload={reload} /> : null}
     {children}
   </Context.Provider>;
 }

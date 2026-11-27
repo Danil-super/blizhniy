@@ -9,8 +9,8 @@ export async function inspectSpecialistPurchase(db:Pick<PostgresDatabase,'transa
  const city=(await tx.query<{name:string}>(`select name from app.cities where id=$1${lock}`,[row.city])).rows[0];
  const profession=(await tx.query<{active:boolean}>(`select active from app.specialist_categories where id=$1${lock}`,[row.profession])).rows[0];
  const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1 for share",[owner])).rows[0];
- const {snapshot,issues}=await new PostgresServicePublicationStore(db,{specialistProfileIdentity:true}).inspectInTransaction(tx,owner,'specialist',id,revision);
- if(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt!==null||snapshot.expiresAt!==null)issues.push('Анкета уже не является неоплаченным черновиком.');
+ const {snapshot,issues}=await new PostgresServicePublicationStore(db,{specialistProfileIdentity:true}).inspectInTransaction(tx,owner,'specialist',id,revision,true);
+ if(!snapshot.canRepeat&&(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt!==null||snapshot.expiresAt!==null))issues.push('Анкета сейчас недоступна для оплаты.');
  if(snapshot.form.kind!=='specialist')throw new ServicePublicationAccessError();
  if(city?.name!==snapshot.form.cityName||!profession?.active||!profile?.name||profile.name!==snapshot.form.title)issues.push('Данные профиля, города или профессии изменились. Сохраните анкету заново.');
  if(snapshot.form.photoIds.length||snapshot.form.skills!==null||snapshot.form.experience!==null)issues.push('Сохраните анкету в текущем формате с единым полем «О себе».');

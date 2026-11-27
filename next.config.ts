@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     "/": [
       "./node_modules/parse5/package.json", "./node_modules/parse5/LICENSE", "./node_modules/parse5/dist/**/*.js",
       "./node_modules/entities/package.json", "./node_modules/entities/LICENSE", "./node_modules/entities/dist/**/*.js",
+      // The opt-in push worker runs from source outside the Next server graph.
+      "./node_modules/{web-push,agent-base,asn1.js,bn.js,buffer-equal-constant-time,debug,ecdsa-sig-formatter,http_ece,https-proxy-agent,inherits,jwa,jws,minimalistic-assert,minimist,ms,safe-buffer,safer-buffer}/**/*",
     ],
   },
   // Opt-in trusted-builder binding. Source deploys retain Next's default build ID.
@@ -62,9 +64,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/_next/static/:path*",
+        headers: [{ key: "Cross-Origin-Resource-Policy", value: "same-origin" }],
+      },
       ...["/robots.txt", "/sitemap.xml"].map((source) => ({
         source,
-        headers: [{ key: "Cache-Control", value: "no-store, no-cache, must-revalidate" }],
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
       })),
       // Next config headers override route response headers: put auth-specific privacy rules last.
       ...["/api/account/:path*", "/api/admin/local/:path*", "/auth/local/:path*", "/auth", "/auth/:path*"].map((source) => ({

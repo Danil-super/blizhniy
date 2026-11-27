@@ -46,3 +46,22 @@ test('local restart validates exact ownership and configured loopback before sta
  }
  assert.throws(()=>validateLocalPrimaryContainer({...metadata,NetworkSettings:{Ports:{}}},state));
 });
+
+test('a separate fixture directory is explicit, synthetic and private',async()=>{
+ const {resolveLocalPrimaryDirectory}=await import('../scripts/local-primary-config.mjs');
+ const directory=await mkdtemp(join(tmpdir(),'blizhniy-primary-isolated-')),alias=directory+'-alias';
+ const env={NODE_ENV:'test',BLIZHNIY_LOCAL_PRIMARY_FIXTURE_DIR:directory};
+ try{
+  assert.equal(resolveLocalPrimaryDirectory('/default',{}),'/default');
+  assert.equal(resolveLocalPrimaryDirectory('/default',env),directory);
+  assert.throws(()=>resolveLocalPrimaryDirectory('/default',{...env,NODE_ENV:'production'}));
+  assert.throws(()=>resolveLocalPrimaryDirectory('/default',{...env,BLIZHNIY_LOCAL_PRIMARY_FIXTURE_DIR:'relative'}));
+  await symlink(directory,alias);
+  assert.throws(()=>resolveLocalPrimaryDirectory('/default',{...env,BLIZHNIY_LOCAL_PRIMARY_FIXTURE_DIR:alias}));
+  await chmod(directory,0o750);
+  assert.throws(()=>resolveLocalPrimaryDirectory('/default',env));
+ }finally{
+  await rm(alias,{force:true});
+  await rm(directory,{recursive:true,force:true});
+ }
+});

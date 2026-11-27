@@ -12,8 +12,11 @@ import {serviceFormLabels} from './ServicePublicationForm';
 import {ServiceModerationStatus} from './ServiceModerationStatus';
 import {PrimaryServicePublicationEditor} from './PrimaryServicePublicationEditor';
 import {SpecialistProfilePanel} from './SpecialistProfilePanel';
+import {ListingOwnerRemoveButton} from '@/components/listings/ListingOwnerRemoveButton';
+import {useDraftRemovals} from '@/components/listings/ListingWorkflowProvider';
 
-function Workspace({owner,kind,visible}:{owner:string;kind:Exclude<ServicePublicationKind,'specialist'>;visible:boolean}){
+function Workspace({owner,kind,visible,onRemoved}:{owner:string;kind:Exclude<ServicePublicationKind,'specialist'>;visible:boolean;onRemoved:()=>void}){
+ const draftRemovals=useDraftRemovals();
  const [page,setPage]=useState<ServicePage|null>(null),[detail,setDetail]=useState<ServicePublicationSnapshot|null>(null),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const pending=useRef(false),scope=useRef<AbortController|null>(null),nav=servicePublicationNavigation[kind];
  async function run(work:()=>Promise<void>){if(pending.current)return;pending.current=true;setBusy(true);setMessage(null);
@@ -35,7 +38,9 @@ function Workspace({owner,kind,visible}:{owner:string;kind:Exclude<ServicePublic
     {page.items.map(item=><li key={item.id} className="min-w-0"><article className="h-full rounded-xl border border-slate-200 bg-white p-4"><h3 className="break-words font-bold">{item.title||'Без названия'}</h3>
      <p className="mt-2 text-sm text-slate-600">{item.status==='draft'?'Черновик':item.status==='published'?'Опубликовано':item.status==='archived'?'В архиве':item.status==='expired'?'Срок размещения истёк':item.status==='rejected'?'Нужны исправления':'Ожидает размещения'}</p>
      <div className="mt-4 flex flex-wrap gap-2"><Link href={`${nav.form}?draft=${item.id}`} prefetch={false} className={draftButton}>Редактировать</Link>
-      <button type="button" className={draftButton} aria-label={`Подробнее: ${item.title||'Без названия'}`} disabled={busy} onClick={()=>void run(()=>read(item.id))}>Подробнее</button></div></article></li>)}
+      <button type="button" className={draftButton} aria-label={`Подробнее: ${item.title||'Без названия'}`} disabled={busy} onClick={()=>void run(()=>read(item.id))}>Подробнее</button>
+      {draftRemovals&&kind==='marquee'&&item.status==='draft'&&!item.paid&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="marquee" onChanged={onRemoved}/>}
+     </div></article></li>)}
    </ul></div>}
    {page.nextCursor&&<button type="button" className={`${draftButton} mt-3`} disabled={busy} onClick={()=>void run(async()=>{const value=await servicePublications.list(owner,kind,page.nextCursor,{signal:scope.current?.signal});if(!scope.current?.signal.aborted)setPage(value);})}>Следующая страница</button>}
   </section>}
@@ -49,10 +54,11 @@ function Workspace({owner,kind,visible}:{owner:string;kind:Exclude<ServicePublic
 }
 export function ServicePublicationsPanel({kind,create=false}:{kind:ServicePublicationKind;create?:boolean}){
  const auth=usePrimaryAccountAuth(),owner=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null,[scope,setScope]=useState(owner);
+ const [refresh,setRefresh]=useState(0);
  if(owner&&owner!==scope)setScope(owner);if(auth?.state==='signed-out'&&scope)setScope(null);const visible=!!owner&&owner===scope;
  if(create)return <PrimaryServicePublicationEditor kind={kind}/>;
  return <section aria-label={serviceFormLabels[kind]}>{!visible&&<div className="mt-3" role="status"><p>{auth?.state==='signed-out'?'Войдите в аккаунт.':'Проверяем вход. Данные временно скрыты.'}</p>
   {auth?.state==='unavailable'&&<button type="button" className={`${draftButton} mt-3`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</div>}
-  {scope&&(kind==='specialist'?<SpecialistProfilePanel key={scope} owner={scope} visible={visible}/>:<Workspace key={`${scope}:${kind}`} owner={scope} kind={kind} visible={visible}/>)}
+  {scope&&(kind==='specialist'?<SpecialistProfilePanel key={scope} owner={scope} visible={visible}/>:<Workspace key={`${scope}:${kind}:${refresh}`} owner={scope} kind={kind} visible={visible} onRemoved={()=>setRefresh(value=>value+1)}/>)}
  </section>;
 }

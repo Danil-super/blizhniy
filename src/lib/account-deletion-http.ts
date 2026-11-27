@@ -14,7 +14,7 @@ import type {PostgresAccountDeletionStore} from './postgres-account-deletion';
 
 type Runtime={store:Pick<PostgresAccountDeletionStore,'session'|'read'|'request'|'list'|'begin'|'resolve'>;
  identity:Pick<IdentityStore,'loginForDataSubject'|'revokeSession'>;
- limiter:Pick<AuthRateLimiter,'allowProduction'|'allowProductionAttempt'|'allowProductionEmail'>;
+ limiter:Pick<AuthRateLimiter,'allowProduction'|'allowProductionAttempt'|'allowProductionCaptchaCheck'|'allowProductionVerifiedCredential'>;
  verifyCaptcha:(token:unknown,ip:string)=>Promise<boolean>};
 type Event={event:'deletion_request';requestId:string;operation:string;status:number;code?:string};
 const ownerKeys={login:['email','password','captchaToken'],logout:[],session:['access'],read:['access','expectedOwnerId'],request:['access','expectedOwnerId']};
@@ -66,10 +66,12 @@ export function createAccountDeletionHandler(config:ProductionAuthConfig,getRunt
     if(!allowed)throw new AuthRequestError(429,'RATE_LIMITED');
     proofExpiry=config.rememberedCaptcha?readBrowserProof(request.headers,config.rateSecret,ip)||undefined:undefined;
     if(!proofExpiry){
-     if(!body.captchaToken||await state.verifyCaptcha(body.captchaToken,ip)!==true)throw new AuthRequestError(403,'CAPTCHA_REQUIRED');
+     if(!body.captchaToken)throw new AuthRequestError(403,'CAPTCHA_REQUIRED');
+     if(config.rememberedCaptcha&&!await state.limiter.allowProductionCaptchaCheck())throw new AuthRequestError(429,'RATE_LIMITED');
+     if(await state.verifyCaptcha(body.captchaToken,ip)!==true)throw new AuthRequestError(403,'CAPTCHA_REQUIRED');
      if(config.rememberedCaptcha){const issued=issueBrowserProof(config.rateSecret,ip,request.headers.get('user-agent')??'');proofCookie=issued.cookie;proofExpiry=issued.expiresAt;}
     }
-    if(config.rememberedCaptcha&&!await state.limiter.allowProductionEmail('login',email!))throw new AuthRequestError(429,'RATE_LIMITED');
+    if(config.rememberedCaptcha&&!await state.limiter.allowProductionVerifiedCredential('login',email!))throw new AuthRequestError(429,'RATE_LIMITED');
     const issued=await state.identity.loginForDataSubject(email!,body.password as string);
     if(!issued)throw new AuthRequestError(401,'INVALID_CREDENTIALS');
     const maxAge=Math.min(3600,Math.floor((issued.expiresAt.getTime()-Date.now())/1000));

@@ -2,12 +2,13 @@ import {randomUUID} from 'node:crypto';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {ListingDraftAccessError} from './postgres-listing-drafts';
 import {PostgresListingFormStore} from './postgres-listing-form';
-import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
+import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavailableError,type ListingCheckoutInput} from './listing-checkout-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {readHostedPlacementRenewalOwner} from './placement-renewal-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
 import {readSpecialistCheckoutEnabled,readSpecialistAccountTest} from './specialist-checkout-config';
 import {hashSessionToken} from './identity';
@@ -34,10 +35,15 @@ export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:stri
  const publicationMarker=target==='specialist'
   ?(specialistTerms?'exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':'false')
   :"i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
+ // The combined window outlives the checkout flag. Show the covered time of
+ // this payment for marked hosted purchases and for the local simulator.
+ const paidStart="greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')";
+ const publishedAt=options.renewals?paidStart:options.includeTestFlag&&target!=='specialist'?
+  `case when i.is_test and (${publicationMarker}) then ${paidStart} else f.published_at end`:'f.published_at';
  const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean;storedShop?:string;publicationMode?:string}>(`select ${columns},i.is_test as "testOnly",
   ${options.specialistShop?`i.merchant_shop_id as "storedShop",i.request_body::jsonb#>>'{metadata,publicationMode}' as "publicationMode",`:''}
   coalesce(i.is_test and (${publicationMarker}),false) as "testPublication",
-  to_char(${options.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
+  to_char(${publishedAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
   to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
   ${source} and i.owner_id=o.owner_id and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision
   left join app.payment_fulfillments f on f.intent_id=o.id
@@ -69,7 +75,8 @@ export class PostgresListingCheckoutStore{
    readSpecialistCheckoutEnabled();
    if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled()||!config.isTest||config.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
   }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
-  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
+  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||(policy.publicationTestOwner!==undefined?
+    readHostedPlacementRenewalOwner()!==policy.publicationTestOwner:process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled')||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
  private specialistEnabled(config=this.config){
@@ -91,8 +98,10 @@ export class PostgresListingCheckoutStore{
   const row=(await tx.query<{available:boolean}>(`select (not target.is_paid or
    (select count(*) from app.payment_checkout_intents i join app.payment_orders o on o.id=i.id and o.status='succeeded'
     join app.payment_fulfillments f on f.intent_id=i.id where i.owner_id=target.author_id and i.target_type=$3 and i.target_id=target.id
-     and i.merchant_shop_id=$4 and i.is_test=$5 and f.published_at=target.published_at and f.expires_at=target.expires_at)=1) as available
-   from app.${table} target where target.id=$1 and target.author_id=$2`,[id,owner,this.targetType,this.config.shopId,this.config.isTest])).rows[0];
+     and i.merchant_shop_id=$4 and i.is_test=$5
+     and (not $6::boolean or i.request_body::jsonb#>>'{metadata,publicationMode}'='account-test-v1')
+     and f.published_at=target.published_at and f.expires_at=target.expires_at)=1) as available
+   from app.${table} target where target.id=$1 and target.author_id=$2`,[id,owner,this.targetType,this.config.shopId,this.config.isTest,this.policy.publicationTestOwner!==undefined])).rows[0];
   if(!row?.available)throw new ListingCheckoutUnavailableError();
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
@@ -132,8 +141,9 @@ export class PostgresListingCheckoutStore{
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.creation_key=$2`,[owner,key])).rows[0];
  }
  private async active(tx:PostgresQueries,owner:string,id:string){
+  const fulfilledAreHistory=this.policy.renewals||this.targetType==='specialist'&&this.policy.publicationTestOwner!==undefined;
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='${this.targetType}' and o.target_id=$2 and
-   ${this.policy.renewals?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
+   ${fulfilledAreHistory?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
   if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
@@ -151,10 +161,13 @@ export class PostgresListingCheckoutStore{
  /** Fresh session/owner authority for a saved intent; only a new POST requires current purchase eligibility.
   * A known provider ID remains recoverable after edits or tariff changes, never a new purchase.
   */
- async authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{
+ authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent?:boolean):Promise<PaymentIntentBinding>;
+ authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent:true,attempt:PaymentDispatchAttempt):Promise<PaymentDispatch>;
+ async authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false,attempt?:PaymentDispatchAttempt){
   if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
   const id=parseListingDraftId(paymentId);
   return this.owner(token,owner,async(tx,actor)=>{
+   const permitted=await attempt?.(tx);
    const row=(await tx.query<PaymentIntent&{status:string}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",
     i.target_revision::text as "targetRevision",i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",
     i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status
@@ -166,7 +179,7 @@ export class PostgresListingCheckoutStore{
    if(this.targetType==='specialist'&&(await tx.query('select intent_id from app.specialist_checkout_terms where intent_id=$1',[id])).rowCount!==1)throw new ListingCheckoutUnavailableError();
    const {status,...input}=row,intent=parsePaymentIntent(input);
    if(this.policy.publicationTestOwner&&JSON.parse(intent.requestBody).metadata.publicationMode!==(this.targetType==='specialist'?'specialist-account-test-v1':'account-test-v1'))throw new ListingCheckoutUnavailableError();
-   if(requireCurrent){
+   if(requireCurrent||attempt){
     const known=(await tx.query('select provider_payment_id from app.payment_provider_links where intent_id=$1',[id])).rowCount===1;
     if(!known){
      if(status!=='created'||!JSON.parse(intent.requestBody).receipt)throw new ListingCheckoutUnavailableError();
@@ -174,7 +187,7 @@ export class PostgresListingCheckoutStore{
      if(offer.id!==intent.tariffId||offer.amount!==intent.amount||offer.durationDays!==intent.durationDays)throw new ListingCheckoutConflictError();
     }
    }
-   return{id:intent.id,ownerId:intent.ownerId,targetType:intent.targetType,targetId:intent.targetId,targetRevision:intent.targetRevision,
+   return permitted??{id:intent.id,ownerId:intent.ownerId,targetType:intent.targetType,targetId:intent.targetId,targetRevision:intent.targetRevision,
     tariffId:intent.tariffId,amount:intent.amount,durationDays:intent.durationDays,shopId:intent.shopId,isTest:intent.isTest};
   });
  }
@@ -226,6 +239,9 @@ export class PostgresListingCheckoutStore{
     await tx.query('insert into app.specialist_checkout_terms(intent_id) values($1)',[id]);
    }
    const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ListingCheckoutUnavailableError();return display(saved,this.targetType);
+  }).catch(error=>{
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PRN01')throw new ListingCheckoutConflictError();
+   throw error;
   });
  }
 }

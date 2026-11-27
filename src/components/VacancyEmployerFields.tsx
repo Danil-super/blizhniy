@@ -1,24 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Building2, IdCard, UserRound } from "lucide-react";
 import { Field } from "@/components/FormPanel";
+import type { VacancyEmployerDefaults, VacancyEmployerPrefill } from "@/lib/vacancy-employer-defaults";
+import type { VacancyEmployerType as EmployerType } from "@/lib/vacancy-requisites";
 
-type EmployerType = "organization" | "ip" | "person";
-
-export type VacancyEmployerDefaults = {
-  contactPerson?: string;
-  email?: string;
-  employerType?: EmployerType | string;
-  inn?: string;
-  messengerUrl?: string;
-  organization?: string;
-  ogrn?: string;
-  ogrnip?: string;
-  phone?: string;
-  website?: string;
-};
+export function VacancyEmployerField({profileValue,...props}: ComponentProps<typeof Field> & {profileValue?:string}) {
+  const [edited,setEdited]=useState(false);
+  return <Field {...props} value={edited ? undefined : profileValue} onInput={()=>setEdited(true)}/>;
+}
 
 const employerTypes: Array<{ description: string; id: EmployerType; icon: typeof Building2; label: string }> = [
   {
@@ -109,14 +101,17 @@ function normalizeEmployerType(value?: string): EmployerType | "" {
 export function VacancyEmployerFields({
   children,
   defaults,
+  prefill,
 }: {
   children: ReactNode;
   defaults?: VacancyEmployerDefaults;
+  prefill?: VacancyEmployerPrefill;
 }) {
   const initialEmployerType = normalizeEmployerType(defaults?.employerType);
   const [employerType, setEmployerType] = useState<EmployerType | "">(initialEmployerType);
   const [step, setStep] = useState<1 | 2>(initialEmployerType ? 2 : 1);
   const isPrivatePerson = employerType === "person";
+  const saved = employerType ? prefill?.[employerType] : undefined;
   const canContinue = Boolean(employerType);
 
   return (
@@ -169,37 +164,39 @@ export function VacancyEmployerFields({
 
             {isPrivatePerson ? (
               <div className="vacancy-fields-grid">
-                <Field name="organization" label="Имя" defaultValue={defaults?.organization} placeholder="Иван" minLength={2} maxLength={60} pattern="[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\\s.'’\\-]{1,59}" title="Введите имя буквами, без цифр и лишних символов." required />
-                <Field name="phone" label="Телефон" defaultValue={defaults?.phone} placeholder="+7..." required />
+                <VacancyEmployerField name="organization" label="Имя" defaultValue={defaults?.organization} profileValue={saved?.organization} placeholder="Иван" minLength={2} maxLength={60} pattern="[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\\s.'’\\-]{1,59}" title="Введите имя буквами, без цифр и лишних символов." required />
+                <VacancyEmployerField name="phone" label="Телефон" defaultValue={defaults?.phone} profileValue={saved?.phone} placeholder="+7..." required />
                 <Field name="messengerUrl" label="WhatsApp / Telegram" defaultValue={defaults?.messengerUrl} placeholder="@username или ссылка" required />
               </div>
             ) : (
               <div className="vacancy-fields-grid">
-                <Field
+                <VacancyEmployerField
                   name="organization"
                   label={employerType === "ip" ? "ФИО ИП" : "Название организации"}
                   placeholder={employerType === "ip" ? "Иванов Иван Иванович" : "ООО РемДом"}
                   defaultValue={defaults?.organization}
+                  profileValue={saved?.organization}
                   minLength={2}
                   maxLength={120}
                   required
                 />
-                <Field key={`inn-${employerType}`} name="inn" label="ИНН" defaultValue={defaults?.inn} placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} maxLength={employerType === "ip" ? 12 : 10} required />
-                <Field
+                <VacancyEmployerField key={`inn-${employerType}`} name="inn" label="ИНН" defaultValue={defaults?.inn} profileValue={saved?.inn} placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} maxLength={employerType === "ip" ? 12 : 10} required />
+                <VacancyEmployerField
                   key={`reg-${employerType}`}
                   name={employerType === "ip" ? "ogrnip" : "ogrn"}
                   label={employerType === "ip" ? "ОГРНИП при наличии" : "ОГРН при наличии"}
                   placeholder={employerType === "ip" ? "15 цифр" : "13 цифр"}
                   defaultValue={employerType === "ip" ? defaults?.ogrnip : defaults?.ogrn}
+                  profileValue={employerType === "ip" ? saved?.ogrnip : saved?.ogrn}
                   inputMode="numeric"
                   pattern={employerType === "ip" ? "\\d{15}" : "\\d{13}"}
                   maxLength={employerType === "ip" ? 15 : 13}
                 />
-                <Field name="contactPerson" label="Контактное лицо" defaultValue={defaults?.contactPerson} placeholder="Наталья, HR" minLength={2} maxLength={80} required />
-                <Field name="phone" label="Телефон" defaultValue={defaults?.phone} placeholder="+7..." required />
-                <Field name="emailOrMessenger" label="Email / мессенджер" defaultValue={defaults?.email || defaults?.messengerUrl} placeholder="hr@example.ru, @username или ссылка" required />
-                {employerType === "ip" ? null : (
-                  <Field name="website" label="Сайт / соцсеть" defaultValue={defaults?.website} placeholder="https://... или @username" />
+                <VacancyEmployerField name="contactPerson" label="Контактное лицо" defaultValue={defaults?.contactPerson} profileValue={saved?.contactPerson} placeholder="Наталья, HR" minLength={2} maxLength={80} required />
+                <VacancyEmployerField name="phone" label="Телефон" defaultValue={defaults?.phone} profileValue={saved?.phone} placeholder="+7..." required />
+                <VacancyEmployerField name="emailOrMessenger" label="Email / мессенджер" defaultValue={defaults?.email || defaults?.messengerUrl} profileValue={saved?.email} placeholder="hr@example.ru, @username или ссылка" required />
+                {employerType === "ip" && !saved?.website && !defaults?.website ? null : (
+                  <VacancyEmployerField name="website" label="Сайт / соцсеть" defaultValue={defaults?.website} profileValue={saved?.website} placeholder="https://... или @username" />
                 )}
               </div>
             )}

@@ -10,7 +10,10 @@ function load(name,messages){
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX},
  }).outputText;
  new Function('require','exports',code)(dependency=>{
-  if(dependency==='@/lib/ad-marquee-store')return {getActiveAdMarqueeMessages:async()=>messages};
+  if(dependency==='@/lib/ad-marquee-store')return {
+   getActiveAdMarqueeMessages:async format=>messages.map(value=>typeof value==='string'?value:format(value)),
+  };
+  if(dependency==='@/lib/publication-time')return require('../src/lib/publication-time.ts');
   if(dependency==='./AdMarquee')return load('AdMarquee',messages);
   return require(dependency);
  },exports);return exports;
@@ -40,4 +43,11 @@ test('the text strip itself is the control with no separate icon button',async()
  assert.doesNotMatch(html,/<svg/);
  const description=/aria-describedby="([^"]+)"/.exec(html)?.[1];assert.ok(description);assert.ok(html.includes('id="'+description+'"'));
  assert.match(html,/<button[^>]*>[\s\S]*Объявления рядом[\s\S]*<\/button>/);
+});
+
+test('public paid advertising shows the scheduled start and end in Moscow time',async()=>{
+ const html=await markup([{text:'ТЕСТ · Щит',publishedAt:'2026-11-23T01:23:45.000001Z',expiresAt:'2026-11-30T01:23:45.000001Z'}]);
+ assert.match(html,/ТЕСТ · Щит<\/span>/);
+ assert.match(html,/<time dateTime="2026-11-23T01:23:45.000001Z">23 ноября 2026 г. в 04:23<\/time>/i);
+ assert.match(html,/<time dateTime="2026-11-30T01:23:45.000001Z">30 ноября 2026 г. в 04:23<\/time>/i);
 });

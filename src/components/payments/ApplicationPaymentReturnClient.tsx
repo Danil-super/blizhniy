@@ -1,18 +1,24 @@
 "use client";
 import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
-import {CheckoutCancellation} from './CheckoutCancellation';
+import {CheckoutCancellation,CheckoutCancellationFeedback} from './CheckoutCancellation';
 import Link from 'next/link';
+import {useRouter} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {applicationPayment,ApplicationPaymentClientError} from '@/lib/client-application-payment';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import type {ApplicationPaymentSnapshot} from '@/lib/application-checkout-contract';
+import {usePlacementReturnNotice} from './PlacementReturnNotice';
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:text-slate-500';
+const responsesCabinet='/cabinet/otkliki';
 function headline(snapshot:ApplicationPaymentSnapshot){const {order,deliveredAt,targetClosed}=snapshot;
  return order.status==='refunded'?'Платёж возвращён':order.status==='failed'?'Оплата не завершена':order.status==='succeeded'?deliveredAt?'Отклик доставлен':targetClosed?'Заказ закрыт, отклик не доставлен':'Оплата подтверждена, доставка ожидается':targetClosed?'Заказчик уже выбрал исполнителя':order.status==='pending'?'Платёж обрабатывается':'Заказ ожидает оплаты';
 }
 function Reader({owner,paymentId,visible,cancellationEnabled,hosted,onCheckoutClosed}:{owner:string;paymentId:string;visible:boolean;cancellationEnabled:boolean;hosted:boolean;onCheckoutClosed?:()=>void}){
+ const router=useRouter();
+ const {rememberReceipt}=usePlacementReturnNotice();
  const [cancellationPending,setCancellationPending]=useState(false);
+ const [cancellationFocus,setCancellationFocus]=useState<boolean|null>(null);
  const [snapshot,setSnapshot]=useState<ApplicationPaymentSnapshot|null>(null),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[refresh,setRefresh]=useState(0);
  const [launchBusy,setLaunchBusy]=useState(false),[launchError,setLaunchError]=useState<string|null>(null),[uncertain,setUncertain]=useState(false);
  const live=useRef(visible),launchScope=useRef<AbortController|null>(null),pending=useRef(false);live.current=visible;
@@ -27,9 +33,8 @@ function Reader({owner,paymentId,visible,cancellationEnabled,hosted,onCheckoutCl
     const value=await applicationPayment.read(owner,paymentId,{signal:controller.signal});
     if(controller.signal.aborted)return;
     setSnapshot(value);setLoaded(true);
-    if(value?.order.status==='succeeded'&&value.deliveredAt){
-     timer=setTimeout(()=>{if(live.current)window.location.replace('/cabinet/otkliki');},2000);
-    }else if(value&&!value.targetClosed&&(['pending','succeeded'].includes(value.order.status)||hosted&&value.order.status==='created')&&checks<8){
+    const delivered=value?.order.status==='succeeded'&&!!value.deliveredAt;
+    if(value&&!delivered&&!value.targetClosed&&(['pending','succeeded'].includes(value.order.status)||hosted&&value.order.status==='created')&&checks<8){
      const delay=Math.min(2000*2**checks,30000);
      checks++;
      timer=setTimeout(()=>void read(),delay);
@@ -54,7 +59,15 @@ function Reader({owner,paymentId,visible,cancellationEnabled,hosted,onCheckoutCl
   finally{if(!controller.signal.aborted){pending.current=false;setLaunchBusy(false);}}
  }
  const delivered=snapshot?.order.status==='succeeded'&&!!snapshot.deliveredAt&&!error;
- return <div hidden={!visible} inert={!visible} aria-busy={busy||launchBusy} className="min-w-0">
+ useEffect(()=>{
+  if(!visible||!delivered||busy||cancellationPending)return;
+  const timer=setTimeout(()=>{
+   rememberReceipt({owner,cabinet:responsesCabinet,result:'application-delivered'});
+   router.replace(responsesCabinet);
+  },2000);
+  return()=>clearTimeout(timer);
+ },[owner,visible,delivered,busy,cancellationPending,rememberReceipt,router]);
+ return <div hidden={!visible} inert={!visible} aria-busy={cancellationFocus===null&&(busy||launchBusy)} className="min-w-0">
   {busy&&<p role="status" className="mb-3 text-sm text-slate-700">Получаем статус TEST-заказа…</p>}
   {error&&<p role="alert" className="mb-3 break-words rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
   {snapshot&&<>
@@ -67,9 +80,10 @@ function Reader({owner,paymentId,visible,cancellationEnabled,hosted,onCheckoutCl
     {launchError&&<p role="alert" className="mt-3 break-words text-sm text-slate-800">{launchError}</p>}
    </section>}
   </>}
-  {cancellationEnabled&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType="application" visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRefresh(value=>value+1);}}/>}
-  {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm text-slate-700">TEST-заказ недоступен. Проверьте ссылку и аккаунт, из которого оформляли оплату.</p>}
-  <div className="mt-5 flex flex-wrap gap-2">{!delivered&&<button type="button" className={button} disabled={busy||launchBusy||cancellationPending} onClick={()=>{if(live.current)setRefresh(value=>value+1);}}>Проверить статус</button>}<Link href="/cabinet/otkliki" className={button}>Мои отклики</Link></div>
+  {cancellationEnabled&&snapshot?.order.status==='created'&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType="application" visible={visible} checkingOrder={busy} onPendingChange={setCancellationPending} onCancelled={hadFocus=>{setCancellationFocus(hadFocus);setSnapshot(null);setLoaded(false);setRefresh(value=>value+1);}}/>}
+  <CheckoutCancellationFeedback focusOnConfirmation={cancellationFocus}/>
+  {cancellationFocus===null&&loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm text-slate-700">TEST-заказ недоступен. Проверьте ссылку и аккаунт, из которого оформляли оплату.</p>}
+  <div className="mt-5 flex flex-wrap gap-2">{!delivered&&<button type="button" className={button} disabled={busy||launchBusy||cancellationPending} onClick={()=>{if(live.current)setRefresh(value=>value+1);}}>Проверить статус</button>}<Link href={responsesCabinet} className={button} onClick={visible&&delivered&&!busy?()=>rememberReceipt({owner,cabinet:responsesCabinet,result:'application-delivered'}):undefined}>Мои отклики</Link></div>
  </div>;
 }
 export function ApplicationPaymentReturnClient({paymentId,cancellationEnabled=false,hosted=false,onCheckoutClosed}:{paymentId:string;cancellationEnabled?:boolean;hosted?:boolean;onCheckoutClosed?:()=>void}){
@@ -80,6 +94,7 @@ export function ApplicationPaymentReturnClient({paymentId,cancellationEnabled=fa
   <h1 className="mb-4 text-2xl font-bold text-slate-950">Оплата отклика</h1>
   {!simulation&&!hosted&&<p role="status" className="text-sm text-slate-700">TEST-оплата откликов на этом сайте пока не включена.</p>}
   {!visible&&<div role="status" className="text-sm text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли TEST-заказ.</p><Link className={`${button} mt-3`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}?type=application`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-3`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
-  {scope&&(simulation||hosted&&auth?.applicationTest===true)&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible} hosted={hosted} onCheckoutClosed={onCheckoutClosed} cancellationEnabled={cancellationEnabled}/>}
+  {/* Keep this owner’s hidden reader until the session check returns. */}
+  {scope&&(simulation||hosted&&(!visible||auth?.applicationTest===true))&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible} hosted={hosted} onCheckoutClosed={onCheckoutClosed} cancellationEnabled={cancellationEnabled}/>}
  </section></main>;
 }

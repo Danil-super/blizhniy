@@ -4,11 +4,13 @@ export const bookingButton='inline-flex min-h-11 items-center justify-center rou
 export const bookingLabels={pending:'Ожидает ответа',accepted:'Подтверждено',declined:'Отклонено',cancelled:'Отменено',expired:'Срок ожидания истёк'};
 const date=(value:string)=>new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z'));
 export const bookingPeriod=(value:Pick<BookingSummary,'startDate'|'endDate'>)=>value.endDate?`${date(value.startDate)} — ${date(value.endDate)}`:date(value.startDate);
-export function BookingDetail({value,busy,unknown,onDecision,onCancel,onRefresh,onClose}:{value:BookingSnapshot;busy:boolean;unknown:boolean;onDecision:(state:'accepted'|'declined')=>void;onCancel?:(reason:string)=>void;onRefresh:()=>void;onClose:()=>void}){
+export function BookingDetail({value,completionMessageId,busy,unknown,onDecision,onCancel,onRefresh,onClose}:{value:BookingSnapshot;completionMessageId?:string;busy:boolean;unknown:boolean;onDecision:(state:'accepted'|'declined')=>void;onCancel?:(reason:string)=>void;onRefresh:()=>void;onClose:()=>void}){
  const [confirm,setConfirm]=useState<'accepted'|'declined'|'cancelled'|null>(null),[reason,setReason]=useState(''),heading=useRef<HTMLHeadingElement>(null);
- useEffect(()=>{heading.current?.focus();},[value.id]);useEffect(()=>setConfirm(null),[value.id,value.revision,unknown]);const actionable=value.view==='host'&&value.status==='pending';
+ useEffect(()=>{heading.current?.focus();},[value.id]);
+ useEffect(()=>{if(completionMessageId&&document.activeElement===document.body)heading.current?.focus();},[completionMessageId]);
+ useEffect(()=>setConfirm(null),[value.id,value.revision,unknown]);const actionable=value.view==='host'&&value.status==='pending';
  return <section className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="booking-details-title">
-  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="booking-details-title" ref={heading} tabIndex={-1} className="text-xl font-bold text-slate-950">Детали бронирования</h2>
+  <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="booking-details-title" ref={heading} tabIndex={-1} aria-describedby={completionMessageId} className="text-xl font-bold text-slate-950">Детали бронирования</h2>
    <button type="button" className={bookingButton} disabled={busy} onClick={onClose}>Закрыть детали</button></div>
   <p className="mt-4 text-sm font-semibold text-slate-700">{bookingLabels[value.status]}</p>
   {value.lifecycle&&value.status==='pending'&&<p className="mt-2 text-sm text-slate-600">Ответ владельца ожидается до {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(value.lifecycle.expiresAt))} мск. Затем даты освободятся автоматически.</p>}
@@ -26,7 +28,7 @@ export function BookingDetail({value,busy,unknown,onDecision,onCancel,onRefresh,
    {value.lifecycle?.canCancel&&onCancel&&<button type="button" className={bookingButton} disabled={busy||unknown} onClick={()=>{setReason('');setConfirm('cancelled');}}>Отменить бронирование</button>}</div>
   {unknown&&<p className="mt-3 text-sm text-slate-700">Ответ сервера не получен. Сначала нажмите «Проверить заявку», чтобы не повторить действие.</p>}
   {confirm&&!unknown&&<div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4" role="group" aria-label="Подтверждение решения">
-   <p className="text-sm text-slate-800">{confirm==='cancelled'?'Отменить бронирование и освободить даты? Вторая сторона получит причину отмены.':confirm==='accepted'?'Подтвердить указанные даты и сумму заявки? Гость получит уведомление.':'Отклонить заявку и освободить даты? Гость получит уведомление.'}</p>
+   <p className="text-sm text-slate-800">{confirm==='cancelled'?'Отменить бронирование? Причина будет видна второй стороне в деталях бронирования.':confirm==='accepted'?'Подтвердить указанные даты и сумму заявки?':'Отклонить заявку?'}</p>
    {confirm==='cancelled'&&<div className="mt-3"><label htmlFor="booking-cancellation-reason" className="text-sm font-semibold text-slate-800">Причина отмены</label><textarea id="booking-cancellation-reason" maxLength={500} rows={3} value={reason} disabled={busy} onChange={event=>setReason(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-950" aria-describedby="booking-reason-count"/><p id="booking-reason-count" className="mt-1 text-right text-xs text-slate-600">{reason.length}/500</p></div>}
    <div className="mt-3 flex flex-wrap gap-2"><button type="button" className={bookingButton} disabled={busy||confirm==='cancelled'&&!reason.trim()} onClick={()=>confirm==='cancelled'?onCancel?.(reason):onDecision(confirm)}>{confirm==='cancelled'?'Подтвердить отмену':confirm==='accepted'?'Подтвердить бронирование':'Подтвердить отказ'}</button>
     <button type="button" className={bookingButton} disabled={busy} onClick={()=>setConfirm(null)}>Отмена</button></div></div>}

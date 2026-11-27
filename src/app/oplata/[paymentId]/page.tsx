@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PaymentReturnClient } from "@/components/payments/PaymentReturnClient";
 import { PrimaryPaymentReturnClient } from "@/components/payments/PrimaryPaymentReturnClient";
-import {readCheckoutCancellationEnabled} from '@/lib/checkout-cancellation-contract';
+import {readCheckoutCancellationPolicy} from '@/lib/checkout-cancellation-policy';
 import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
 import {readSpecialistCheckoutEnabled} from '@/lib/specialist-checkout-config';
 import {ApplicationPaymentReturnClient} from '@/components/payments/ApplicationPaymentReturnClient';
@@ -29,11 +29,12 @@ export default async function Page({ params,searchParams }: { params: Promise<{ 
     </main>;
   }
   const type=postmoderation?requestedType:undefined,vacancy=type==='vacancy',workRequest=type==='workRequest',specialist=requestedType==='specialist';
+  const cancellation=readCheckoutCancellationPolicy();
   if(type==='application'&&hostedResponse){
     const {HostedResponseReturn}=await import('@/components/payments/HostedResponseReturn');
-    return <HostedResponseReturn paymentId={paymentId}/>;
+    return <HostedResponseReturn paymentId={paymentId} cancellationEnabled={!!cancellation?.application}/>;
   }
-  if(type==='application')return <ApplicationPaymentReturnClient paymentId={paymentId} cancellationEnabled={readCheckoutCancellationEnabled()}/>;
+  if(type==='application')return <ApplicationPaymentReturnClient paymentId={paymentId} cancellationEnabled={!!cancellation?.application}/>;
 
-  return mode && mode !== "local" ? <PrimaryPaymentReturnClient cancellationEnabled={!specialist&&readCheckoutCancellationEnabled()} paymentId={paymentId} vacancy={vacancy} workRequest={workRequest} specialist={specialist} testCheckout={(!specialist||postmoderation&&readSpecialistCheckoutEnabled())&&(process.env.BLIZHNIY_LISTING_PAYMENT==='account-publication-test'||process.env.BLIZHNIY_LISTING_PAYMENT==='account-test'&&(!vacancy&&!workRequest)||postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled')} /> : <PaymentReturnClient paymentId={paymentId} />;
+  return mode && mode !== "local" ? <PrimaryPaymentReturnClient cancellationEnabled={!!cancellation?.[specialist?'specialist':workRequest?'workRequest':vacancy?'vacancy':'listing']} paymentId={paymentId} vacancy={vacancy} workRequest={workRequest} specialist={specialist} testCheckout={(!specialist||postmoderation&&readSpecialistCheckoutEnabled())&&(process.env.BLIZHNIY_LISTING_PAYMENT==='account-publication-test'||process.env.BLIZHNIY_LISTING_PAYMENT==='account-test'&&(!vacancy&&!workRequest)||postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled')} /> : <PaymentReturnClient paymentId={paymentId} />;
 }

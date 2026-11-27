@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const {createListingOwnerRemovalHandler}=load('listing-owner-removal-http');
 const {ListingDraftAccessError,ListingDraftConflictError}=load('postgres-listing-drafts');
+const {DraftRemovalCheckoutActiveError}=load('postgres-listing-owner-removals');
 const origin='https://example.invalid',owner='10000000-0000-4000-8000-000000000001',id='10000000-0000-4000-8000-000000000002';
 const body={action:'remove',expectedOwnerId:owner,listingId:id,expectedRevision:'7'};
 function request(input=body,headers={},method='POST'){
@@ -30,7 +31,23 @@ test('CSRF, absent cookie, malformed input, untrusted ingress and throttled requ
  const value=fixture();assert.equal((await value.handle(request(body,{},'GET'))).status,405);assert.equal(value.calls.length,0);
 });
 test('denials and stale removal revisions have stable generic error statuses',async()=>{
- for(const [error,status,code] of [[new ListingDraftAccessError(),404,'DRAFT_NOT_FOUND'],[new ListingDraftConflictError(),409,'DRAFT_CHANGED'],[Error('private database detail'),503,'REMOVAL_UNAVAILABLE']]){
+ for(const [error,status,code] of [[new ListingDraftAccessError(),404,'DRAFT_NOT_FOUND'],[new ListingDraftConflictError(),409,'DRAFT_CHANGED'],[new DraftRemovalCheckoutActiveError(),409,'CHECKOUT_ACTIVE'],[Error('private database detail'),503,'REMOVAL_UNAVAILABLE']]){
   const response=await fixture({error}).handle(request());assert.equal(response.status,status);assert.deepEqual(await response.json(),{error:{code}});
  }
+});
+test('the optional draft action admits only listing or marquee when explicitly enabled',async()=>{
+ const calls=[];
+ const store={remove:async(...args)=>{calls.push(args);return{id,revision:'7',removed:true};}};
+ const runtime=async()=>({store,limiter:{allowProduction:async()=>true}});
+ const enabled=createListingOwnerRemovalHandler({origin,draftRemovals:true,postmoderation:false},runtime);
+ for(const target of ['listing','marquee']){
+  const result=await enabled(request({...body,target}));
+  assert.equal(result.status,200);
+  assert.deepEqual(calls.at(-1),['a'.repeat(64),owner,id,'7',target]);
+ }
+ assert.equal((await enabled(request({...body,target:'fair'}))).status,422);
+ assert.equal((await enabled(request())).status,404);
+ const disabled=createListingOwnerRemovalHandler({origin,draftRemovals:false,postmoderation:true},runtime);
+ assert.equal((await disabled(request({...body,target:'marquee'}))).status,404);
+ assert.equal(calls.length,2);
 });

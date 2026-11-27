@@ -80,6 +80,9 @@ export function DropdownSelect({
     }
 
     onValueChange?.(nextValue);
+    if (nextValue !== selectedValue && rootRef.current?.closest("form")) {
+      rootRef.current.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     buttonRef.current?.focus();
   }
 

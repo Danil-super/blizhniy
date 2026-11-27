@@ -4,13 +4,13 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {parseUserAccessEnvelope,parseAdminUserAccessResult,userAccessErrorStatus} from '../src/lib/admin-user-access-contract.ts';
 /** Explicit owned runtime only. Import never connects, installs a role or starts a listener. */
-export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseUserAccessEnvelope,parseResult=parseAdminUserAccessResult,errorStatus=userAccessErrorStatus}={}){
+export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseUserAccessEnvelope,parseResult=parseAdminUserAccessResult,errorStatus=userAccessErrorStatus,activation}={}){
   let directory,server,closed=false,closing,resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const unavailable=()=>Error('User access operator unavailable');
   try{
     if(typeof process.getuid!=='function'||typeof runtime?.execute!=='function'||typeof runtime?.close!=='function')throw unavailable();
-    directory=await mkdtemp(join(tmpdir(),'blizhniy-user-operator-'));await chmod(directory,0o700);
-    const socketPath=join(directory,'operator.sock');if(Buffer.byteLength(socketPath)>100)throw unavailable();
+    if(!activation){directory=await mkdtemp(join(tmpdir(),'blizhniy-user-operator-'));await chmod(directory,0o700);}
+    const socketPath=activation?.socketPath??join(directory,'operator.sock');if(Buffer.byteLength(socketPath)>100)throw unavailable();
     server=createServer({maxHeaderSize:4096,requestTimeout:3000,headersTimeout:3000},async(req,res)=>{
       const reply=(status,body)=>{if(res.destroyed)return;res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Connection':'close'});res.end(body);};
       const controller=new AbortController(),abort=()=>controller.abort();res.once('close',abort);req.once('aborted',abort);
@@ -30,13 +30,13 @@ export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseU
       }finally{clearTimeout(bodyTimer);clearTimeout(lifetime);res.removeListener('close',abort);req.removeListener('aborted',abort);}
     });
     server.maxConnections=8;server.timeout=16000;server.on('timeout',socket=>socket.destroy());server.on('clientError',(_error,socket)=>socket.destroy());
-    await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(socketPath,()=>{server.removeListener('error',reject);resolve();});});
-    server.on('error',()=>{closed=true;resolveDone(1);});server.once('close',()=>resolveDone(0));await chmod(socketPath,0o600);
+    await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(activation?{fd:activation.fd}:socketPath,()=>{server.removeListener('error',reject);resolve();});});
+    server.on('error',()=>{closed=true;resolveDone(1);});server.once('close',()=>resolveDone(0));if(directory)await chmod(socketPath,0o600);
     return {socketPath,done,close:()=>closing??=(async()=>{
       closed=true;let failed=false;
       try{await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}catch{failed=true;}
       try{await runtime.close();}catch{failed=true;}
-      try{await rm(directory,{recursive:true,force:true});}catch{failed=true;}
+      try{if(directory)await rm(directory,{recursive:true,force:true});}catch{failed=true;}
       if(failed)throw unavailable();
     })()};
   }catch{

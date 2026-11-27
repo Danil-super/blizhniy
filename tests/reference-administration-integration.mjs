@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { hashSessionToken } from "../src/lib/identity.ts";
 import { loadAdminModule } from "./admin-module.mjs";
 import { waitForLock } from "./admin-authorization-integration.mjs";
 
 const { CatalogAdministration } = loadAdminModule("catalog-administration");
 const { TariffAdministration } = loadAdminModule("tariff-administration");
+const { readAdminTariffs } = createRequire(import.meta.url)("../scripts/local-primary-modules.cjs")
+  .loadLocalPrimaryModule("postgres-admin-tariff-read");
 
 export async function testReferenceAdministration(suite, db, operator, fixture) {
   const catalog = new CatalogAdministration(db);
@@ -126,6 +129,19 @@ export async function testReferenceAdministration(suite, db, operator, fixture) 
       for (const sql of ["select password_hash from app.users", "update app.users set role='admin'", "delete from app.users", "delete from app.categories", "create table app.unauthorized(id integer)"]) {
         await assert.rejects(restricted.transaction(tx => tx.query(sql)), { code: "42501", message: "PostgreSQL operation failed" });
       }
+      await operator.query(`revoke update(name,price,active,duration_days) on app.tariffs from ${role}`);
+      assert.equal((await restricted.transaction(tx =>
+        tx.query("select has_column_privilege(current_user,'app.tariffs','price','UPDATE') as editable")
+      )).rows[0].editable, false);
+      const command = { resource: "tariffs", action: "list", expectedAdminId: fixture.admin.id };
+      const result = await readAdminTariffs(restricted, fixture.adminToken, command);
+      assert.deepEqual(result.tariffs.toSorted((a, b) => a.id.localeCompare(b.id)).map(({revision, ...row}) => {
+        assert.match(revision, /^[a-f0-9]{64}$/);
+        return row;
+      }), initialTariffs.map((row) => ({ id: row.id, action: row.action, name: row.name, price: row.price,
+        durationDays: row.duration_days, active: row.active })));
+      await assert.rejects(readAdminTariffs(restricted, fixture.userToken, command), { code: "ADMIN_REQUIRED" });
+      await assert.rejects(readAdminTariffs(restricted, await fixture.session("data-subject"), command), { code: "ADMIN_REQUIRED" });
     } finally {
       for (const row of roots) await catalog.updateCategory(fixture.adminToken, { id: row.id, sortOrder: row.sort_order });
       await operator.query(`drop owned by ${role}`);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {createPostgresDatabase} from '../src/lib/postgres.ts';
 import {hashSessionToken} from '../src/lib/identity.ts';
 import {workPublicationModule} from './work-publication-module.mjs';
@@ -69,6 +70,25 @@ export async function testNotificationInbox(suite,admin,config,credentials){
    assert.deepEqual((await admin.query('select id,read_at from app.notifications where id=any($1::uuid[]) order by id',[body.ids])).rows,before);
    assert.equal((await handler(request({action:'list',expectedOwnerId:other.id,after:null}))).status,401);
    assert.equal(JSON.stringify(events).includes(owner.token),false);
+  });
+  await suite.test('0064 suppresses new events per recipient and category, including replay after opt-in',async()=>{
+   await admin.query(await readFile(new URL('../database/candidates/0064-inbox-notification-preferences.sql',import.meta.url),'utf8'));
+   const categories={booking:'notifyBookings',message:'notifyMessages',payment:'notifyPayments',publication:'notifyPublicationStatus',system:'notifySystem'};
+   const pref=(value)=>admin.query(`insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)
+    on conflict(user_id) do update set profile=excluded.profile`,[other.id,value]);
+   for(const [category,setting] of Object.entries(categories)){
+    await pref({[setting]:false});
+    const input={...event(`synthetic:preference:${category}`),category};
+    const rejected=await enqueue(other.id,input),delivered=await enqueue(owner.id,input);
+    assert.equal((await store.list(other.token,other.id,null)).items.some(item=>item.id===rejected),false);
+    assert.equal((await store.list(owner.token,owner.id,null)).items.some(item=>item.id===delivered),true);
+    await pref({[setting]:true});
+    assert.equal(await enqueue(other.id,input),rejected);
+    const future=await enqueue(other.id,{...input,eventKey:input.eventKey+':later'});
+    const refreshed=(await new PostgresNotificationInbox(db).list(other.token,other.id,null)).items;
+    assert.equal(refreshed.some(item=>item.id===future),true);
+    assert.equal(refreshed.some(item=>item.id===rejected),false);
+   }
   });
   await suite.test('inbox reads and mutations reject revoked, blocked and data-subject-only sessions without affecting stored notices',async()=>{
    await admin.query("update app.sessions set scope='data-subject' where token_hash=$1",[hashSessionToken(owner.token)]);

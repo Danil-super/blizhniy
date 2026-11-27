@@ -6,7 +6,7 @@ export class RefundEffectError extends Error {
 }
 export type PlacementRefundEffect = {
   operationId: string; paymentIntentId: string; providerRefundId: string;
-  targetType: 'listing' | 'vacancy' | 'workRequest' | 'fair_application' | 'ad_marquee'; targetId: string;
+  targetType: 'listing' | 'vacancy' | 'workRequest' | 'fair_application' | 'ad_marquee' | 'specialist'; targetId: string;
   effect: 'unfulfilled' | 'revoked' | 'superseded' | 'missing'; appliedAt: string;
 };
 /** Private TEST capability. SQL atomically validates proof and applies one effect.

@@ -27,6 +27,8 @@ export class PostgresPublicSearchStore{
     options.deadline!==undefined&&(!Number.isFinite(options.deadline)||options.deadline<=performance.now()))throw new PublicSearchError();
    delegated=true;
    return await this.db.readTransaction(async transaction=>{
+    // JIT compilation can dominate the short candidate queries made for each page.
+    await transaction.query('set local jit=off');
     let bytes=0,candidateCount=0;
     const tx:PostgresQueries={query:async<Row extends QueryResultRow>(text:string,values?:unknown[])=>{
      const result=await transaction.query<Row>(text,values);bytes+=Buffer.byteLength(JSON.stringify(result.rows));

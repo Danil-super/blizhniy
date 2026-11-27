@@ -7,12 +7,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 import {loadMediaModule} from './media-module.mjs';
 import {fileWorkerModule} from './media-file-worker-module.mjs';
 import {getAdminUserAccessMigration} from '../scripts/admin-user-access-release.mjs';
 import {getAdminTariffMigration} from '../scripts/admin-tariff-release.mjs';
 import {sealBasicErasureLedger,verifyBasicErasureLedger} from '../scripts/basic-erasure-ledger.mjs';
 const rootProject=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
+const {loadLocalPrimaryModule}=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs');
 const {MediaMetadataRepository}=loadMediaModule('media-metadata'),{LocalMediaWriter}=loadMediaModule('media-write'),{LocalMediaRetirement}=loadMediaModule('media-retirement'),{LocalMediaUpload}=loadMediaModule('media-upload');
 const bytes=Buffer.from('524946460400000057454250','hex'),image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
 export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day,backupMediaDatabase}){
@@ -49,6 +51,38 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day,b
   assert.equal((await admin.query('select count(*)::int n from app.media_active_usage where owner_id=$1',[f.owner])).rows[0].n,0);
   const next=await f.repo.reserve(f.token,randomUUID(),image);assert.notEqual(next.id,f.pending.id);
   assert.equal((await admin.query('select count(*)::int n from app.media_objects where owner_id=$1',[f.owner])).rows[0].n,2);
+ });
+ await suite.test('shared owner photo survives the first detach and retires after the final confirmed detach',async t=>{
+  const f=await fixture(t),other=await fixture(t),photo=f.pending.id;
+  const {PostgresListingPhotoStore}=loadLocalPrimaryModule('postgres-listing-photos');
+  const photos=new PostgresListingPhotoStore(f.db),cleanup=new LocalMediaRetirement(f.db,f.worker);
+  const filename=path.join(f.root,photo+'.webp');
+  await new LocalMediaWriter(f.repo,f.worker).write(f.token,photo,{...image,bytes});
+  const drafts=(await admin.query(`insert into app.listings(author_id,listing_type,title)
+   values($1,'sell','Первый черновик'),($1,'sell','Второй черновик') returning id`,[f.owner])).rows;
+  const [first,second]=drafts.map(({id})=>id);
+  for(const {id} of drafts)await photos.replace(f.token,f.owner,id,'1',[photo]);
+  assert.equal(await f.repo.readOwned(other.token,photo),null);
+  await assert.rejects(photos.replace(other.token,other.owner,second,'2',[]),{name:'ListingDraftAccessError'});
+  let commits=0;
+  const unknown=new PostgresListingPhotoStore(database({commit:async()=>{commits++;throw Error('Synthetic lost photo COMMIT');}}));
+  await assert.rejects(unknown.replace(f.token,f.owner,first,'2',[]),/Synthetic lost photo COMMIT/);
+  assert.equal(commits,1);
+  assert.deepEqual(await photos.read(f.token,f.owner,first),{id:first,revision:'3',photos:[]});
+  assert.deepEqual((await photos.read(f.token,f.owner,second)).photos.map(item=>item.id),[photo]);
+  await clock(8*day);
+  await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+  assert.deepEqual(await fs.readFile(filename),bytes);
+  const before=await budget();
+  await photos.replace(f.token,f.owner,second,'2',[]);
+  await clock(15*day-1);
+  await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+  await clock(15*day);
+  assert.equal((await cleanup.retire(photo)).status,'completed');
+  await assert.rejects(fs.stat(filename),{code:'ENOENT'});
+  assert.equal(await f.repo.readOwned(f.token,photo),null);
+  assert.deepEqual(await photos.read(f.token,f.owner,second),{id:second,revision:'3',photos:[]});
+  assert.equal((await budget()).charged_objects,before.charged_objects-1);
  });
  await suite.test('request stays charged at500; one completion permits exactly one concurrent replacement',async t=>{
   const f=await fixture(t);await admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) select $1,gen_random_uuid(),'image/webp',1,1,$2,$3 from generate_series(1,499)",[f.owner,bytes.length,image.sha256]);

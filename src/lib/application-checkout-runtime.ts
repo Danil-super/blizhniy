@@ -18,7 +18,7 @@ export async function handleApplicationCheckoutRequest(request:Request){
    const dispatcher=createPrimaryPaymentDispatcher(db,config.merchant);
    return {store,limiter,async dispatch(token,owner,id){
     const binding=await store.authorizeDispatch(token,owner,id,true);
-    const result=await dispatcher.dispatch(binding,async()=>{await store.authorizeDispatch(token,owner,id,true);});
+    const result=await dispatcher.dispatch(binding,attempt=>store.authorizeDispatch(token,owner,id,true,attempt));
     await store.authorizeDispatch(token,owner,id);
     return {confirmationUrl:result.confirmationUrl,isTest:true};
    }};

@@ -3,6 +3,7 @@ import {readAccountSessionToken} from './account-cookie';
 import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {AppSessionAccessError} from './app-session-transaction';
 import {ListingDraftInputError,parseListingDraftCursor,parseListingDraftId} from './listing-draft-contract.ts';
+import {listingCabinetPlacementHeader} from './listing-cabinet-contract.ts';
 import type {PostgresListingCabinetStore} from './postgres-listing-cabinet';
 type Runtime={store:Pick<PostgresListingCabinetStore,'list'>;limiter:Pick<AuthRateLimiter,'allowProduction'>};
 export function createListingCabinetHandler(config:{origin:string},runtime:()=>Promise<Runtime>){return async(request:Request)=>{
@@ -15,7 +16,14 @@ export function createListingCabinetHandler(config:{origin:string},runtime:()=>P
   const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
   const state=await runtime();
   if(!await state.limiter.allowProduction('session',ip))return authJson({error:{code:'RATE_LIMITED'}},429,{'Retry-After':'900'});
-  return authJson(await state.store.list(token,owner,cursor),200);
+  const page=await state.store.list(token,owner,cursor);
+  if(request.headers.get(listingCabinetPlacementHeader)==='1')return authJson(page,200);
+  const items=page.items.map(item=>{
+   const card={...item.card};
+   delete card.placement;
+   return{...item,card};
+  });
+  return authJson({...page,items},200);
  }catch(error){
   if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
   if(error instanceof ListingDraftInputError)error=new AuthRequestError(422,'INVALID_INPUT');

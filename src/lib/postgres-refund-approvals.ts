@@ -6,12 +6,13 @@ import {describeFullPlacementRefund,parsePlacementRefundApproval,type PlacementR
 import {validateCaptureTime} from './yookassa-payment-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 import type {RefundTransactionAdmission} from './postgres-refund-dispatch.ts';
+import type {ServiceRefundScope} from './service-checkout-config.ts';
 export class RefundApprovalAccessError extends Error{constructor(){super('Refund approval unavailable');this.name='RefundApprovalAccessError';}}
 export class RefundApprovalConflictError extends Error{constructor(){super('Refund approval already exists');this.name='RefundApprovalConflictError';}}
 export class RefundApprovalOrderError extends Error{constructor(){super('Refund the latest purchase first');this.name='RefundApprovalOrderError';}}
 export class RefundApprovalBusyError extends Error{constructor(){super('Refund approval participant busy');this.name='RefundApprovalBusyError';}}
 export type PlacementRefundApproval={id:string;paymentIntentId:string;approvedBy:string;reason:string;policyVersion:'placement-full-admin-v1';fiscalMode:PlacementRefundFiscalMode;amount:string;approvedAt:string};
-type Merchant={shopId:string;isTest:boolean};
+type Merchant={shopId:string;isTest:boolean}&ServiceRefundScope;
 const columns=`id,payment_intent_id as "paymentIntentId",approved_by as "approvedBy",reason,policy_version as "policyVersion",fiscal_mode as "fiscalMode",amount::text,
  to_char(approved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "approvedAt"`;
 const fail=():never=>{throw new RefundApprovalAccessError();};

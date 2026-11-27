@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { AuthRateLimiter } from "../src/lib/auth-http.ts";
 
@@ -13,7 +13,8 @@ export async function testProductionRateSchema(suite, db, applyMigration) {
     const keys = new Set();
     const recorded = { query: async (sql, values) => { keys.add(values[0]); return db.query(sql, values); } };
     const secret = randomBytes(32).toString("hex");
-    return { keys, first: new AuthRateLimiter(recorded, secret), second: new AuthRateLimiter(recorded, secret),
+    const digest = (key) => createHmac('sha256', secret).update(key).digest('hex');
+    return { keys, digest, first: new AuthRateLimiter(recorded, secret), second: new AuthRateLimiter(recorded, secret),
       clear: () => db.query("delete from app.auth_rate_limits where key_hash=any($1::text[])", [[...keys]]) };
   };
   await suite.test("original PG rate schema reproduces the 62nd-request constraint failure; migration up/down preserves counters", async () => {
@@ -50,7 +51,8 @@ export async function testProductionRateSchema(suite, db, applyMigration) {
   });
   await suite.test("a full credential counter in the previous window leaves the current window available", async () => {
     const f = await owned();
-    const attempt = () => f.first.allowProductionAttempt("login", "192.0.2.93");
+    const attempt = async () => await f.first.allowProductionAttempt("reset", "192.0.2.93") &&
+      await f.first.allowProductionVerifiedCredential("reset");
     try {
       for (let i = 0; i < 20; i++) assert.equal(await attempt(), true);
       assert.equal(await attempt(), false);
@@ -94,6 +96,21 @@ export async function testProductionRateSchema(suite, db, applyMigration) {
         (i % 2 ? f.first : f.second).allowProduction('credential', `2001:db8::${(i+1).toString(16)}`, 'same@example.invalid')));
       assert.equal(outcomes.filter(Boolean).length, 5);
       assert.equal(await f.second.allowProduction('credential', '192.0.2.92', 'other@example.invalid'), true);
+    } finally { await f.clear(); }
+  });
+  await suite.test('real PG counts provider checks and verified credentials independently across limiter instances', async () => {
+    const f = await owned();
+    const credential = f.digest('production:credential:all'), provider = f.digest('production:captcha:all');
+    try {
+      const email = 'limited@example.invalid';
+      for (let i = 0; i < 5; i++) assert.equal(await f.first.allowProductionVerifiedCredential('login', email), true);
+      assert.equal(await f.first.allowProductionCaptchaCheck(), true);
+      await db.query('update app.auth_rate_limits set attempts=599 where key_hash=any($1::text[])', [[credential, provider]]);
+      assert.equal(await f.second.allowProductionCaptchaCheck(), true);
+      assert.equal(await f.second.allowProductionVerifiedCredential('login', email), false);
+      assert.equal(await f.first.allowProductionCaptchaCheck(), false);
+      assert.equal(await f.first.allowProductionVerifiedCredential('login', 'independent@example.invalid'), true);
+      assert.equal(await f.second.allowProductionVerifiedCredential('reset'), false);
     } finally { await f.clear(); }
   });
   await suite.test('real PG distributed concurrent requests retain each aggregate overload cap', async () => {

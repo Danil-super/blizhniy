@@ -1,11 +1,12 @@
-import {validPlainText,validPersonName,validProfileName,validPhone,validEmail,validWebUrl,validMoneyInput} from './cabinet-field-validation.ts';
+import {PROFILE_NAME_ISSUE,normalizeProfileName,validPlainText,validPersonName,validPhone,validEmail,validWebUrl,validMoneyInput} from './cabinet-field-validation.ts';
 import {normalizeMessengerHref} from './messenger-url.ts';
 import {professions} from './data.ts';
 /** Explicit field semantics: never apply text restrictions to passwords, files or tokens. */
 export function cabinetFieldIssue(name:string,value:string,multiline=false):string {
  if(!value||['password','newPassword','confirmPassword'].includes(name))return '';
+ if(name==='name')return normalizeProfileName(value)?'':PROFILE_NAME_ISSUE;
  if(!validPlainText(value,multiline))return 'Введите обычный текст без HTML-разметки и скрытых управляющих символов.';
- if(name==='name'&&!validProfileName(value.trim())||['contactPerson','personName'].includes(name)&&!validPersonName(value.trim()))return 'Введите имя буквами; допустимы пробел, дефис и апостроф.';
+ if(['contactPerson','personName'].includes(name)&&!validPersonName(value.trim()))return 'Введите имя буквами; допустимы пробел, дефис и апостроф.';
  if(['phone','contactPhone'].includes(name)&&!validPhone(value.trim()))return 'Введите российский телефон: 10 цифр или 11 цифр с 7/8.';
  if(name==='email'&&!validEmail(value))return 'Введите email в формате name@example.ru.';
  if(['href','website','videoUrl','organizationWebsite'].includes(name)&&!validWebUrl(value))return 'Введите ссылку http:// или https:// без логина и пароля.';

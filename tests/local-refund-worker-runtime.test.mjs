@@ -68,3 +68,57 @@ test('worker shutdown errors are redacted and cached without reopening or repeat
  await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});
  assert.equal(f.calls.filter(c=>c[0]==='close').length,1);await assert.rejects(runtime.preflight());await assert.rejects(runtime.placement.tick());
 });
+
+test('hosted TEST worker admits only the pinned database under its own role and checks the merchant before claims',async()=>{
+ const {createHostedRefundWorkerRuntime}=await import('../scripts/local-refund-worker-runtime.mjs');
+ assert.equal(typeof createHostedRefundWorkerRuntime,'function');
+ const hosted={...env,BLIZHNIY_REFUND_WORKER:'hosted-test-v1',
+  BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_NAME:'blizhniy_prod'};
+ let loaded=0;
+ const noLoad={loadModules:()=>{loaded++;throw Error('Unexpected configuration load');}};
+ for(const change of [{BLIZHNIY_REFUND_WORKER:'local-test'},{BLIZHNIY_DB_HOST:'127.0.0.1'},
+  {BLIZHNIY_DB_PORT:'5433'},{BLIZHNIY_DB_NAME:'blizhniy_test'},{BLIZHNIY_DB_USER:'blizhniy_refund_operator'},
+  {BLIZHNIY_DB_SSL_MODE:'disable'},{PGSSLMODE:'disable'},{BLIZHNIY_LOCAL_PRIMARY:'1'},{BLIZHNIY_PAYMENT_MODE:'live'}])
+  await assert.rejects(createHostedRefundWorkerRuntime({...hosted,...change},noLoad));
+ await assert.rejects(createLocalRefundWorkerRuntime(hosted,noLoad));
+ assert.equal(loaded,0);
+ const f=fixture(),runtime=await createHostedRefundWorkerRuntime(hosted,{loadModules:()=>f.modules});
+ try{
+  await assert.rejects(runtime.placement.tick());
+  assert.equal(f.calls[0][1].application_name,'blizhniy-refund-worker');
+  f.modules.createRefundMerchantPreflight=()=>async()=>{throw Error('not a TEST merchant');};
+  const rejected=await createHostedRefundWorkerRuntime(hosted,{loadModules:()=>f.modules});
+  try{
+   await assert.rejects(rejected.preflight());
+   await assert.rejects(rejected.application.sweep());
+   assert.equal(f.calls.some(([kind])=>kind==='placement'||kind==='application'),false);
+  }finally{await rejected.close();}
+  await runtime.preflight();
+  const checks=f.calls.filter(([kind])=>kind==='database');
+  assert.equal(checks.length,3);
+  for(const [,config] of checks){
+   assert.equal(config.database,'blizhniy_prod');
+   assert.equal(config.hostedRefunds,true);
+   assert.equal(config.merchant.isTest,true);
+   assert.equal(config.merchant.marqueeRefunds,true);
+   assert.equal(config.merchant.specialistRefunds,true);
+  }
+  assert.deepEqual(await runtime.placement.tick(),{state:'idle'});
+ }finally{await runtime.close();}
+});
+
+test('hosted TEST refund worker can use the approved PostgreSQL on the same server', async () => {
+ const {createHostedRefundWorkerRuntime}=await import('../scripts/local-refund-worker-runtime.mjs');
+ const local={...env,BLIZHNIY_REFUND_WORKER:'hosted-test-v1',BLIZHNIY_DB_NAME:'blizhniy_prod',
+  BLIZHNIY_DB_PLACEMENT:'same-host',BLIZHNIY_DB_HOST:'127.0.0.1'};
+ const f=fixture();
+ const configure=f.modules.readPostgresConfig;
+ f.modules.readPostgresConfig=settings=>{
+  assert.equal(settings.BLIZHNIY_DB_HOST,'127.0.0.1');
+  assert.equal(settings.BLIZHNIY_DB_SSL_MODE,'verify-full');
+  return configure(settings);
+ };
+ const runtime=await createHostedRefundWorkerRuntime(local,{loadModules:()=>f.modules});
+ try{ await runtime.preflight(); }
+ finally{ await runtime.close(); }
+});

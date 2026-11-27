@@ -67,6 +67,8 @@ test('primary sitemap includes every public publication type across batches with
  assert.equal(result.length,8);
  assert.ok(result.every(row=>row.lastModified.toISOString()==='2026-10-20T10:00:00.000Z'));
  assert.equal(calls.length,8);
+ assert.deepEqual(calls.filter(([type])=>type==='listing'),[['listing',1000,0],['listing',1000,1000]]);
+ assert.ok(calls.filter(([type])=>type!=='listing').every(([,limit])=>limit===100));
 });
 
 test('primary sitemap failures propagate instead of silently falling back or returning an empty successful sitemap',async()=>{

@@ -22,15 +22,21 @@ try{
  const workPayment=await prepare(saved.value.revision),updated={...saved.value.form,title:form.title+' — изменён'};
  const blocked=await api('/api/account/work-publications',{action:'update',kind:'workRequest',publicationId:workId,expectedRevision:saved.value.revision,form:updated},'PUT');assert.equal(blocked.status,409);assert.equal(blocked.value.error.code,'CHECKOUT_ACTIVE');
  const checkouts=[{type:'workRequest',payment:workPayment},await synthetic('listing'),await synthetic('vacancy'),await synthetic('application')];
- let lost=false,focusCheck=false,releaseAuth,releaseLost,committed,authHeld;
+ let lost=false,recheckSession=false,releaseAuth,releaseLost,committed,authHeld;
+ const cancellationMethods=[];
+ page.on('request',request=>{
+  if (new URL(request.url()).pathname==='/api/account/checkout-cancellation'&&request.postDataJSON()?.paymentId===checkouts[1].payment) {
+   cancellationMethods.push(request.method());
+  }
+ });
  const captured=new Promise(resolve=>committed=resolve),authPaused=new Promise(resolve=>authHeld=resolve),authRelease=new Promise(resolve=>releaseAuth=resolve),lostRelease=new Promise(resolve=>releaseLost=resolve);
- await page.route('**/api/account/session',async route=>{if(focusCheck){authHeld();await authRelease;}await route.continue();});
+ await page.route('**/api/account/session',async route=>{if(recheckSession){authHeld();await authRelease;}await route.continue();});
  await page.route('**/api/account/checkout-cancellation',async route=>{if(!lost&&route.request().method()==='PUT'&&route.request().postDataJSON().paymentId===checkouts[1].payment){lost=true;const reply=await route.fetch();assert.equal(reply.status(),200);committed();await lostRelease;await route.abort('failed');}else await route.continue();});
  for(const item of checkouts){await page.setViewportSize(item.type==='application'?{width:390,height:844}:{width:1440,height:1080});await page.goto(state.origin+`/oplata/${item.payment}${item.type==='listing'?'':'?type='+item.type}`);
   const button=page.getByRole('button',{name:'Отменить подготовку оплаты',exact:true});await button.waitFor();await button.click();
   if(item.type==='listing'){
-   await captured;focusCheck=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await authPaused;
-   await page.getByText('Проверяем доступ. Данные заказа временно скрыты.',{exact:true}).waitFor();focusCheck=false;releaseAuth();
+   await captured;recheckSession=true;await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));await authPaused;
+   await page.getByText('Проверяем доступ. Данные заказа временно скрыты.',{exact:true}).waitFor();recheckSession=false;releaseAuth();
    const readback=page.getByRole('button',{name:'Проверить отмену',exact:true});await readback.waitFor();assert.equal(await readback.isDisabled(),false);
    assert.equal(await page.getByRole('button',{name:'Открыть локальный симулятор',exact:true}).isDisabled(),true);releaseLost();await readback.click();
   }
@@ -38,10 +44,11 @@ try{
   await page.screenshot({path:join(artifacts,item.type+'-cancelled.png'),fullPage:true});assert.equal((await db.query('select status from app.payment_orders where id=$1',[item.payment])).rows[0].status,'failed');
   assert.equal((await db.query('select count(*)::int as n from app.payment_checkout_cancellations where payment_id=$1',[item.payment])).rows[0].n,1);assert.equal((await db.query('select count(*)::int as n from app.payment_dispatch_anchors where intent_id=$1',[item.payment])).rows[0].n,0);
  }
+ assert.deepEqual(cancellationMethods,['PUT','POST']);
  assert.equal(lost,true);const edited=await api('/api/account/work-publications',{action:'update',kind:'workRequest',publicationId:workId,expectedRevision:saved.value.revision,form:updated},'PUT');assert.equal(edited.status,200);assert.equal(edited.value.revision,'2');
  const replacement=await prepare('2');assert.notEqual(replacement,workPayment);const cancelled=await api('/api/account/checkout-cancellation',{paymentId:replacement,targetType:'workRequest'},'PUT');assert.equal(cancelled.status,200);
  assert.equal((await db.query('select count(*)::int as n from local_primary.provider_payments where intent_id=any($1::uuid[])',[payments])).rows[0].n,0);assert.deepEqual(errors,[]);
- console.log(JSON.stringify({passed:true,compiledHttp:true,browser:true,targetTypes:4,workEditUnblocked:true,newPreparationAllowed:true,lostAcknowledgementRecovered:true,focusRevalidationRecovered:true,providerCalls:false,productionTouched:false,artifacts}));
+ console.log(JSON.stringify({passed:true,compiledHttp:true,browser:true,targetTypes:4,workEditUnblocked:true,newPreparationAllowed:true,lostAcknowledgementRecovered:true,sessionRevalidationRecovered:true,providerCalls:false,productionTouched:false,artifacts}));
 }catch(error){if(page)await page.screenshot({path:join(artifacts,'failure.png'),fullPage:true});console.log(JSON.stringify({artifacts}));throw error;}
 finally{
  await browser?.close();

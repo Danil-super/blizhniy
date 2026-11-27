@@ -6,7 +6,7 @@ const runtimeUrl = new URL('../scripts/payment-worker-runtime.mjs', import.meta.
 const hooks = registerHooks({
   resolve(specifier, context, next) {
     if (context.parentURL === runtimeUrl.href && specifier === './payment-reconciliation-role.mjs') {
-      return {shortCircuit: true, url: 'data:text/javascript,export const verifyPaymentReconciliationDatabase=(db,options)=>db.preflight(options)'};
+      return {shortCircuit: true, url: 'data:text/javascript,export const verifyPaymentReconciliationDatabase=(db,options,onMarqueeQueueVerified)=>db.preflight(options,onMarqueeQueueVerified)'};
     }
     return next(specifier, context);
   },
@@ -84,4 +84,26 @@ test('a verified response schema drains admitted purchases after web checkout cl
   } finally {
     await runtime.close();
   }
+});
+
+test('the automatic worker drains hosted advertisements only after queue schema verification', async () => {
+  let queueSchema = false;
+  const runtime = await createPaymentWorkerRuntime({...publicationEnv, BLIZHNIY_MARQUEE_PAYMENT: 'disabled'}, {
+    loadModules: () => ({
+      Pool: class {},
+      readPostgresConfig: () => ({database: publicationEnv.BLIZHNIY_DB_NAME}),
+      PostgresDatabase: class {
+        preflight(_options, verified) { if (queueSchema) verified(); return true; }
+        async close() {}
+      },
+      createPaymentReconciliationWorker: (...args) => ({tick: async () => args}),
+    }),
+  });
+  try {
+    await runtime.preflight();
+    assert.deepEqual((await runtime.worker.tick()).slice(3), [owner, undefined, true]);
+    queueSchema = true;
+    await runtime.preflight();
+    assert.deepEqual((await runtime.worker.tick()).slice(3), [owner, undefined, true, true]);
+  } finally { await runtime.close(); }
 });

@@ -15,6 +15,7 @@ function harness(){
    if(name==='react/jsx-runtime')return {jsx,jsxs:jsx};if(name==='next/link')return {default:'link',__esModule:true};
    if(name==='react')return {useState(initial){const slot=index++;if(!Object.hasOwn(state,slot))state[slot]=initial;return[state[slot],value=>state[slot]=typeof value==='function'?value(state[slot]):value];},useEffect(work,deps){const slot=effectIndex++,old=effects[slot];if(!old||deps.some((value,i)=>!Object.is(value,old.deps[i])))scheduled.push(()=>{old?.cleanup?.();effects[slot]={deps,cleanup:work()};});}};
    if(name==='@/components/auth/AccountAuthProvider')return {usePrimaryAccountAuth:()=>auth};
+   if(name==='@/components/listings/ListingWorkflowProvider')return {useLocalPaymentSimulation:()=>false,useServiceCheckout:()=>false,useSpecialistCheckout:()=>!!auth.specialistTest};
    if(name==='@/lib/local-account')return {notifyAccountSessionChange:()=>changes++};
    if(name==='@/lib/client-payment-history')return {PaymentHistoryClientError:ClientError,paymentHistory:{list(owner,cursor,options){const request={owner,cursor,options,...deferred()};requests.push(request);return request.promise;}}};
    throw Error('Unexpected history dependency '+name);
@@ -40,4 +41,19 @@ test('history appends one page after retry without duplicating rows and links on
  nodes(tree).find(node=>node.type==='button'&&text(node)==='Показать ещё').props.onClick();h.render();assert.equal(h.requests[1].cursor,cursor);h.requests[1].reject(new h.ClientError('UNKNOWN'));await flush();tree=h.render();assert.equal(h.state[0].items.length,1);
  nodes(tree).find(node=>node.type==='button'&&text(node)==='Повторить загрузку').props.onClick();h.render();h.requests[2].resolve({items:[item('second','ad_marquee')],nextCursor:null});await flush();tree=h.render();assert.equal(h.state[0].items.length,2);
  const links=nodes(tree).filter(node=>node.type==='link');assert.deepEqual(links.map(node=>node.props.href),['/cabinet/obyavleniya','/reklama/begushchaya-stroka?view=list']);assert.equal(nodes(tree).some(node=>node.type==='button'&&text(node)==='Оплатить'),false);h.stop();
+});
+
+test('an available TEST order links to its exact payment while other records keep their section',async()=>{
+ const h=harness();h.setAuth({state:'signed-in',userId:'owner-a',workPublicationTest:true});h.render();
+ h.requests[0].resolve({items:[
+  {...item('original','workRequest'),status:'created'},{...item('live','workRequest'),status:'created',isTest:false},
+  {...item('specialist','specialist'),status:'created'},item('completed','vacancy'),
+ ],nextCursor:null});
+ await flush();
+ const links=nodes(h.render()).filter(node=>node.type==='link');
+ assert.deepEqual(links.map(node=>[text(node),node.props.href]),[
+  ['Продолжить','/oplata/original?type=workRequest'],['Перейти в раздел','/cabinet/zakazy'],
+  ['Перейти в раздел','/cabinet/specialist'],['Перейти в раздел','/cabinet/vakansii'],
+ ]);
+ h.stop();
 });

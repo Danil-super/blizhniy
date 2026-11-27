@@ -16,7 +16,7 @@ import pg from 'pg';
 import {bootstrapPostgres,getBootstrapPlan} from './bootstrap-postgres.mjs';
 import {hashPassword} from '../src/lib/identity.ts';
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
-import {localPrimaryImage,readLocalPrimaryState,validateLocalPrimaryState,validateLocalPrimaryContainer,validateLocalPrimaryContainerDefinition} from './local-primary-config.mjs';
+import {localPrimaryImage,readLocalPrimaryState,resolveLocalPrimaryDirectory,validateLocalPrimaryState,validateLocalPrimaryContainer,validateLocalPrimaryContainerDefinition} from './local-primary-config.mjs';
 import {getInteractionGrantPlan} from './grant-interactions.mjs';
 import {getLocalTelegramMigrations,withoutTransaction} from './local-telegram-migrations.mjs';
 import {getLocalDeletionMigrations} from './local-deletion-schema.mjs';
@@ -30,7 +30,7 @@ import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 
 const root=realpathSync(fileURLToPath(new URL('..',import.meta.url))),run=promisify(execFile);
-export const stateDirectory=join(homedir(),'.local','state','blizhniy','local-primary-private');
+export const stateDirectory=resolveLocalPrimaryDirectory(join(homedir(),'.local','state','blizhniy','local-primary-private'));
 export const stateFile=join(stateDirectory,'state.json');
 export const docker=async(args,env={})=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{env:{PATH:process.env.PATH,LANG:'C.UTF-8',...env},timeout:30000,maxBuffer:2*1024*1024})).stdout.trim();
 export async function prepareLocalPrimaryFixture(){

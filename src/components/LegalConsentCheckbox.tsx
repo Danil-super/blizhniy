@@ -39,7 +39,7 @@ export function LegalConsentCheckbox({
 
 export function LegalLink({ children, href }: { children: ReactNode; href: string }) {
   return (
-    <Link href={href} className="font-bold text-[#0875d1] underline-offset-2 transition hover:underline">
+    <Link href={href} className="font-bold text-[#075da8] underline underline-offset-2">
       {children}
     </Link>
   );

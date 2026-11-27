@@ -7,6 +7,7 @@ import {validProfileName} from './cabinet-field-validation.ts';
 import {professionFormSql} from './profession-reference';
 import {hashSessionToken} from './identity';
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {readApplicationContactViewsMode} from './application-contact-views-config';
 import {PostgresPublicWorkStore} from './postgres-public-work';import {PostgresPublicServiceStore} from './postgres-public-service';
 import {enqueueNotificationInTransaction} from './postgres-notification-inbox';import type {PostgresDatabase,PostgresQueries} from './postgres';
 export class ApplicationAccessError extends Error{constructor(){super('Application unavailable');this.name='ApplicationAccessError';}}
@@ -35,10 +36,14 @@ function display(row:Row,actor:string):ApplicationSnapshot{return{id:row.id,revi
 
 /** No financial authority. Peer locks are nonblocking so existing actor-user locks cannot form a cross-user cycle. */
 export class PostgresApplicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean;contactViews?:boolean}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean;contactViews?:boolean|'production-v1'}={}){
   if(policy.localActions&&!readPostmoderationEnabled())throw new ApplicationAccessError();
-  if(policy.contactViews!==undefined&&typeof policy.contactViews!=='boolean')throw new ApplicationAccessError();
-  if(policy.contactViews&&(!policy.localActions||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'))throw new ApplicationAccessError();
+  if(policy.contactViews==='production-v1'){
+   if(!policy.localActions||readApplicationContactViewsMode()!=='production-v1')throw new ApplicationAccessError();
+  }else{
+   if(policy.contactViews!==undefined&&typeof policy.contactViews!=='boolean')throw new ApplicationAccessError();
+   if(policy.contactViews&&(!policy.localActions||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'))throw new ApplicationAccessError();
+  }
  }
  /** Evidence must commit with the authorized request before any contact payload
   * escapes. A lost COMMIT reply is unknown; it never permits returning contacts.

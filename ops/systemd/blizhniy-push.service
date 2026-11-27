@@ -1,0 +1,30 @@
+[Unit]
+Description=Deliver a bounded batch of Blizhniy browser push messages
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/blizhniy/push/worker.env
+
+[Service]
+Type=oneshot
+User=blizhniy-push
+Group=blizhniy-push
+WorkingDirectory=/var/www/blizhniy
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/push/worker.env
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /var/www/blizhniy/scripts/push-delivery-worker.mjs --run
+TimeoutStartSec=120
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+LimitCORE=0
+MemoryMax=256M
+TasksMax=32
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/etc/blizhniy/auth -/etc/blizhniy/mail-worker -/etc/blizhniy/business-email -/etc/blizhniy/staging

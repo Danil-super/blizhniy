@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHmac} from 'node:crypto';
 import {test} from 'node:test';
 import {createRequire} from 'node:module';
 import {AuthRateLimiter} from '../src/lib/auth-http.ts';
@@ -11,8 +12,7 @@ const {createProductionAccountHandler}=loadProductionAuth('production-account-ht
  './account-cookie':cookies,'./trusted-proxy-ip':proxy,'./production-auth-config':settings,
 });
 const secret='f'.repeat(64),origin=settings.productionAuthOrigin;
-function fixture(){
- const counters=new Map();
+function fixture(counters=new Map()){
  const db={query:async(_sql,[key,limit])=>{
   const attempts=Math.min((counters.get(key)??0)+1,limit+1);
   counters.set(key,attempts);return {rows:[{allowed:attempts<=limit}]};
@@ -25,11 +25,11 @@ function account(limiter,rememberedCaptcha){
   recovery:{requestRecovery:async()=>null},identity:{resolveSession:async()=>null},
  }),()=>{});
 }
-function request(action,ip,captchaToken='invalid-synthetic-proof'){
+function request(action,ip,captchaToken='invalid-synthetic-proof',email=`fairness-${action}@example.invalid`){
  return new Request(`${origin}/api/account/${action}`,{method:'POST',headers:{host:new URL(origin).host,origin,
   'x-blizhniy-request':'1','content-type':'application/json','x-real-ip':ip,
   ...(action==='session'?{cookie:'__Host-blizhniy_session='+'a'.repeat(64)}:{}),
- },body:JSON.stringify(action==='session'?{}:{email:`fairness-${action}@example.invalid`,captchaToken,
+ },body:JSON.stringify(action==='session'?{}:{email,captchaToken,
   ...(action==='login'?{password:'Synthetic fairness passphrase!'}:{})})});
 }
 for(const remembered of [false,true])test(`IP-denied login traffic leaves recovery available to another IP (remembered CAPTCHA=${remembered})`,async()=>{
@@ -53,6 +53,21 @@ test('email-denied credential traffic leaves aggregate capacity for another emai
  const limiter=fixture();
  for(let i=0;i<620;i++)assert.equal(await limiter.allowProduction('credential',`2001:db8::${(i+1).toString(16)}`,'same@example.invalid'),i<5);
  assert.equal(await limiter.allowProduction('credential','192.0.2.2','other@example.invalid'),true);
+});
+test('remembered CAPTCHA charges an email-denied request only for work it reached',async()=>{
+ const digest=key=>createHmac('sha256',secret).update(key).digest('hex');
+ const credential=digest('production:credential:all'),provider=digest('production:captcha:all');
+ const email='limited@example.invalid';
+ const counters=new Map([[credential,599],[digest('production:credential:recover:email:'+email),5]]);
+ const handle=account(fixture(counters),true);
+ const recover=(ip,address)=>handle(request('recover',ip,'valid-synthetic-proof',address),'recover');
+ const denied=await recover('192.0.2.1',email);
+ assert.equal(denied.status,429);
+ assert.equal(denied.headers.get('Retry-After'),'900');
+ assert.equal(counters.get(credential),599);
+ assert.equal(counters.get(provider),1);
+ assert.equal((await recover('192.0.2.2','independent@example.invalid')).status,202);
+ assert.equal(counters.get(credential),600);
 });
 for(const [scope,limit]of [['credential',600],['session',2000]])test(`distributed concurrent ${scope} requests retain the global cap of ${limit}`,async()=>{
  const limiter=fixture();
@@ -80,4 +95,12 @@ test('real Telegram HTTP start flood cannot exhaust phone or session capacity fo
  },body:JSON.stringify({expectedOwnerId:owner,returnTo:'/cabinet'})}),'start');
  for(let i=0;i<2020;i++)assert.equal((await start('192.0.2.1')).status,i<10?200:429);
  assert.equal((await start('192.0.2.2')).status,200);
+});
+
+test('push display and consent can exhaust a device IP budget without affecting account sessions',async()=>{
+ const limiter=fixture();
+ for(let i=0;i<300;i++)assert.equal(await limiter.allowPushSubscription('192.0.2.61'),true);
+ assert.equal(await limiter.allowPushSubscription('192.0.2.61'),false);
+ assert.equal(await limiter.allowProduction('session','192.0.2.61'),true);
+ assert.equal(await limiter.allowPushSubscription('192.0.2.62'),true);
 });

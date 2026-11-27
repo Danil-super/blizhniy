@@ -24,6 +24,9 @@ export type CabinetProfile = {
   organizationDescription: string;
 };
 
+export type OrganizationField = Extract<keyof CabinetProfile, `organization${string}`>;
+export type OrganizationDraft = Partial<Record<OrganizationField, { original: string; value: string }>>;
+
 export function createDefaultCabinetProfile(identity: { name: string; email: string }): CabinetProfile {
   return {
     name: identity.name,

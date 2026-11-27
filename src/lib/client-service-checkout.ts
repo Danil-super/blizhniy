@@ -2,6 +2,7 @@
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract';
 import {parseServiceCheckout,type PaidServiceKind,type ServiceCheckoutInput} from './service-checkout-contract';
 import type {ServicePaymentOrder,ServicePaymentSnapshot} from './postgres-service-checkout';
+import {validateConfirmationUrl} from './yookassa-payment-contract';
 import {notifyAccountSessionChange} from './local-account';
 type Options={signal?:AbortSignal};
 export type ServiceQuote={publicationId:string;revision:string;tariff:{id:string;name:string;amount:string;durationDays:number|null};fairEvent:{date:string;endsAt:string}|null;activePayment:ServicePaymentOrder|null};
@@ -41,5 +42,5 @@ export const serviceCheckout={
  async prepare(kind:PaidServiceKind,owner:string,input:ServiceCheckoutInput,options:Options={}){const order=parseServicePaymentOrder(kind,await request(kind,{expectedOwnerId:owner,...parseServiceCheckout(kind,input)},options,'PUT'));if(order.creationKey!==input.creationKey||order.targetId!==input.publicationId||order.targetRevision!==input.expectedRevision||order.tariffId!==input.expectedTariffId||order.amount!==input.expectedAmount||order.durationDays!==input.expectedDurationDays||(order.fairEvent?.date??null)!==input.expectedFairDate)return fail();return order;},
  async recover(kind:PaidServiceKind,owner:string,key:string,options:Options={}){const row=await request(kind,{action:'intent',expectedOwnerId:owner,creationKey:key},options);return row===null?null:parseServicePaymentOrder(kind,row);},
  async order(kind:PaidServiceKind,owner:string,id:string,options:Options={}){return parseServicePaymentSnapshot(kind,await request(kind,{action:'order',expectedOwnerId:owner,paymentId:id},options),id);},
- async dispatch(kind:PaidServiceKind,owner:string,id:string,options:Options={}){const row=object(await request(kind,{action:'dispatch',expectedOwnerId:owner,paymentId:id},options),['confirmationUrl','isTest']);if(row.isTest!==true||row.confirmationUrl!==null&&(typeof row.confirmationUrl!=='string'||!row.confirmationUrl.startsWith('https://yookassa.ru/')))return fail();},
+ async dispatch(kind:PaidServiceKind,owner:string,id:string,options:Options={}){const row=object(await request(kind,{action:'dispatch',expectedOwnerId:owner,paymentId:id},options),['confirmationUrl','isTest']);if(row.isTest!==true)return fail();return row.confirmationUrl===null?null:validateConfirmationUrl(row.confirmationUrl);},
 };

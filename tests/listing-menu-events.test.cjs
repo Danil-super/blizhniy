@@ -2,7 +2,8 @@ const assert=require('node:assert/strict'),test=require('node:test'),fs=require(
 class Target{constructor(menu=null){this.menu=menu;}closest(){return this.menu;}}
 function root(){
  const out={},jsx=(type,props)=>({type,props}),deps={react:{useState:v=>[v,()=>{}],useRef:v=>({current:v}),useEffect(){}},'react/jsx-runtime':{jsx,jsxs:jsx},'next/link':{},
-  '@/lib/client-listing-drafts':{},'@/lib/client-listing-cabinet':{},'@/lib/local-account':{},'./PrivateDraftModeration':{},'./PrivateListingCheckout':{},'./PrivateDraftEditor':{},'./CabinetListingCard':{},'@/components/cabinet/TwoRowCardViewport':{}};
+  '@/lib/client-listing-drafts':{},'@/lib/client-listing-cabinet':{},'@/lib/local-account':{},'./PrivateDraftModeration':{},'./PrivateListingCheckout':{},'./PrivateDraftEditor':{},'./CabinetListingCard':{},
+  './ListingOwnerRemoveButton':{},'./ListingWorkflowProvider':{useDraftRemovals:()=>false},'@/components/cabinet/TwoRowCardViewport':{}};
  new Function('exports','require','Element',ts.transpileModule(fs.readFileSync('src/components/listings/ListingCabinetList.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText)(out,key=>{assert.ok(Object.hasOwn(deps,key),key);return deps[key];},Target);
  return out.ListingCabinetList({owner:'owner',visible:true,enriched:true});
 }

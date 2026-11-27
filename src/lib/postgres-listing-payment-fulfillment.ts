@@ -35,7 +35,7 @@ export class PostgresListingPaymentFulfillmentStore{
    if(!readSpecialistCheckoutEnabled()||!merchant.isTest||merchant.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new PaymentPublicationError();
   }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!merchant.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new PaymentPublicationError();
-  this.db=db;this.intents=new PostgresPaymentIntentStore(db);this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});
+  this.db=db;this.intents=new PostgresPaymentIntentStore(db);this.forms=new PostgresListingFormStore(db,{renewals:policy.renewals===true||policy.publicationTestOwner!==undefined});
  }
  private async renew(tx:PostgresQueries,intent:{id:string;ownerId:string;targetId:string}):Promise<Result>{
   const table=this.targetType==='listing'?'listings':'work_publications';
@@ -43,11 +43,14 @@ export class PostgresListingPaymentFulfillmentStore{
    join app.payment_orders o on o.id=i.id and o.status='succeeded' join app.payment_fulfillments f on f.intent_id=i.id
    join app.${table} target on target.id=i.target_id and target.author_id=i.owner_id
     and target.published_at=f.published_at and target.expires_at=f.expires_at
-   where i.owner_id=$1 and i.target_type=$2 and i.target_id=$3 and i.id<>$4 and i.merchant_shop_id=$5 and i.is_test=$6 limit 2`,
-  [intent.ownerId,this.targetType,intent.targetId,intent.id,this.merchant.shopId,this.merchant.isTest])).rows;
+   where i.owner_id=$1 and i.target_type=$2 and i.target_id=$3 and i.id<>$4 and i.merchant_shop_id=$5 and i.is_test=$6
+    and (not $7::boolean or i.request_body::jsonb#>>'{metadata,publicationMode}'='account-test-v1') limit 2`,
+  [intent.ownerId,this.targetType,intent.targetId,intent.id,this.merchant.shopId,this.merchant.isTest,this.policy.publicationTestOwner!==undefined])).rows;
   if(previous.length!==1)return{state:'blocked',reason:'renewal_basis_unavailable'};
-  const period=(await tx.query<PaymentPublicationPeriod>(`insert into app.payment_renewals(intent_id,previous_intent_id) values($1,$2)
-   returning ${receiptColumns}`,[intent.id,previous[0].id])).rows[0];
+  const renewal=this.policy.publicationTestOwner!==undefined?
+   `select ${receiptColumns} from app.apply_hosted_placement_renewal($1,$2)`:
+   `insert into app.payment_renewals(intent_id,previous_intent_id) values($1,$2) returning ${receiptColumns}`;
+  const period=(await tx.query<PaymentPublicationPeriod>(renewal,[intent.id,previous[0].id])).rows[0];
   if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
  }
  async fulfill(value:unknown):Promise<Result>{
@@ -56,7 +59,9 @@ export class PostgresListingPaymentFulfillmentStore{
   return this.db.transaction(async tx=>{
    // Detect the actual installed trigger, never a separately configured flag.
    // Its SQL guard remains the authority; old databases retain capture-time rules.
-   const phoneVerification=(await tx.query<{ready:boolean}>("select exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid join pg_namespace n on n.oid=p.pronamespace where t.tgname=$1 and t.tgrelid=$2::regclass and t.tgenabled in ('O','A') and p.proname='guard_phone_payment_window' and n.nspname='app') as ready",[this.targetType==='listing'?'listing_phone_payment_window':'work_phone_payment_window',this.targetType==='listing'?'app.listings':'app.work_publications'])).rows[0]?.ready===true;
+   const capabilities=(await tx.query<{ready:boolean;renewals:boolean}>("select exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid join pg_namespace n on n.oid=p.pronamespace where t.tgname=$1 and t.tgrelid=$2::regclass and t.tgenabled in ('O','A') and p.proname='guard_phone_payment_window' and n.nspname='app') as ready, coalesce(has_function_privilege(to_regprocedure('app.apply_hosted_placement_renewal(uuid,uuid)'), 'EXECUTE'),false) as renewals",[this.targetType==='listing'?'listing_phone_payment_window':'work_phone_payment_window',this.targetType==='listing'?'app.listings':'app.work_publications'])).rows[0];
+   const phoneVerification=capabilities?.ready===true;
+   const renewals=this.policy.renewals===true||(this.policy.publicationTestOwner!==undefined&&capabilities?.renewals===true);
    // Match the session writers' user-first order; the immutable intent owner is not a request field.
    const user=(await tx.query<{blocked:boolean;verified:boolean}>(`select is_blocked as blocked,email_verified_at is not null as verified
     from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update`,[id])).rows[0];
@@ -87,7 +92,7 @@ export class PostgresListingPaymentFulfillmentStore{
    }
    if(this.targetType!=='listing'){
     let inspected:Awaited<ReturnType<typeof inspectWorkPurchase>>;
-    try{inspected=await inspectWorkPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision,this.targetType,true,this.policy.renewals===true);}
+    try{inspected=await inspectWorkPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision,this.targetType,true,renewals);}
     catch(error){
      if(error instanceof WorkPublicationAccessError||error instanceof WorkPublicationConflictError)return{state:'blocked',reason:'target_changed'};
      if(error instanceof WorkPublicationInputError)return{state:'blocked',reason:'content_unavailable'};
@@ -95,7 +100,7 @@ export class PostgresListingPaymentFulfillmentStore{
     }
     const {issues}=inspected;
     if(issues.length)return{state:'blocked',reason:'content_unavailable'};
-    if(this.policy.renewals&&inspected.snapshot.paid)return this.renew(tx,intent);
+    if(renewals&&inspected.snapshot.paid)return this.renew(tx,intent);
     const period=paymentPublicationPeriod(verified.capturedAt,intent.durationDays);
     const updated=await tx.query(`update app.work_publications set status='published',is_paid=true,published_at=$4::timestamptz,expires_at=$5::timestamptz,updated_at=clock_timestamp()
      where id=$1 and author_id=$2 and kind=$6 and revision=$3::bigint and status='draft' and not is_paid and deleted_at is null
@@ -109,7 +114,7 @@ export class PostgresListingPaymentFulfillmentStore{
    }
    const listing=(await tx.query<{revision:string;status:string;paid:boolean;category:string|null;city:string|null}>(`select revision::text,status,is_paid as paid,category_id as category,city_id as city
     from app.listings where id=$1 and author_id=$2 for update`,[intent.targetId,intent.ownerId])).rows[0];
-   if(!listing||listing.revision!==intent.targetRevision||(!this.policy.renewals&&(listing.status!=='draft'||listing.paid)))return{state:'blocked',reason:'target_changed'};
+   if(!listing||listing.revision!==intent.targetRevision||(!renewals&&(listing.status!=='draft'||listing.paid)))return{state:'blocked',reason:'target_changed'};
    // Lock changing references before the canonical form inspection, not just the target row.
    const category=(await tx.query<{parent:string|null}>('select parent_id as parent from app.categories where id=$1 for share',[listing.category])).rows[0];
    if(category?.parent)await tx.query('select id from app.categories where id=$1 for share',[category.parent]);
@@ -123,10 +128,10 @@ export class PostgresListingPaymentFulfillmentStore{
     const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[intent.targetId,intent.targetRevision]);
     if(approval.rowCount!==1)return{state:'blocked',reason:'approval_required'};
    }
-   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision,this.policy.renewals===true);
+   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision,renewals);
    // Price and duration were accepted in the original immutable order; a new tariff is not a new consent.
    if(check.issues.some(issue=>issue.field!=='tariff'))return{state:'blocked',reason:'content_unavailable'};
-   if(this.policy.renewals&&listing.paid)return this.renew(tx,intent);
+   if(renewals&&listing.paid)return this.renew(tx,intent);
    const period=paymentPublicationPeriod(verified.capturedAt,intent.durationDays);
    const updated=await tx.query(`update app.listings set status='published',is_paid=true,published_at=$4::timestamptz,expires_at=$5::timestamptz,updated_at=clock_timestamp()
     where id=$1 and author_id=$2 and revision=$3::bigint and status='draft' and not is_paid and published_at is null and expires_at is null

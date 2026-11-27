@@ -41,3 +41,24 @@ test('cancellation client never automatically retries an uncertain write and pai
  for(const response of [()=>{throw Error('Lost response');},()=>new Response(' '.repeat(8193)),()=>new Response(new Uint8Array([0xff])),()=>new Response('{')]){let calls=0;await assert.rejects(createCheckoutCancellationClient(async()=>{calls++;return response();}).cancel(owner,input),error=>error.code==='UNKNOWN');assert.equal(calls,1);}
  let calls=0;await assert.rejects(createCheckoutCancellationClient(async()=>{calls++;return Response.json(null);}).read(owner,input,{signal:AbortSignal.abort()}));assert.equal(calls,0);
 });
+test('hosted cancellation policy pins the owner and TEST shop to the active checkout capabilities',()=>{
+ const {readCheckoutCancellationPolicy}=load('checkout-cancellation-policy');
+ const env={
+  BLIZHNIY_CHECKOUT_CANCELLATION:'hosted-test-v1',BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',
+  BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_PAYMENT_MODE:'test',
+  BLIZHNIY_PAYMENT_SHOP_ID:'12345678',YOOKASSA_SHOP_ID:'12345678',YOOKASSA_SECRET_KEY:'test_synthetic',
+  BLIZHNIY_PAYMENT_RECEIPT_VAT:'1',BLIZHNIY_PAYMENT_TEST_USER_ID:owner,BLIZHNIY_LISTING_PAYMENT:'account-publication-test',
+ };
+ const admission={ownerId:owner,shopId:'12345678'},placement={...admission,publicationMode:'account-test-v1'};
+ assert.deepEqual(readCheckoutCancellationPolicy(env),{listing:placement,vacancy:placement,workRequest:placement});
+ assert.deepEqual(readCheckoutCancellationPolicy({...env,BLIZHNIY_APPLICATION_PAYMENT:'account-response-test',BLIZHNIY_SPECIALIST_PAYMENT:'account-publication-test'}),
+  {listing:placement,vacancy:placement,workRequest:placement,application:admission,specialist:{...admission,publicationMode:'specialist-account-test-v1'}});
+ assert.deepEqual(readCheckoutCancellationPolicy({...env,BLIZHNIY_LISTING_PAYMENT:'account-test'}),{listing:admission});
+ assert.equal(readCheckoutCancellationPolicy({...env,BLIZHNIY_CHECKOUT_CANCELLATION:undefined}),null);
+ for(const patch of [{BLIZHNIY_LOCAL_PRIMARY:'enabled'},{BLIZHNIY_AUTH_ORIGIN:origin},{BLIZHNIY_PAYMENT_MODE:'live'},
+  {YOOKASSA_SECRET_KEY:'live_synthetic'},{YOOKASSA_SHOP_ID:'87654321'}])assert.throws(()=>readCheckoutCancellationPolicy({...env,...patch}));
+ const local={BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'};
+ assert.equal(readCheckoutCancellationPolicy(local).ad_marquee,undefined);
+ assert.equal(readCheckoutCancellationPolicy({...local,BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}).ad_marquee.shopId,'local-fixture-shop');
+ assert.deepEqual(parseCheckoutCancellation({...input,targetType:'specialist'},{specialist:true}),{...input,targetType:'specialist'});
+});

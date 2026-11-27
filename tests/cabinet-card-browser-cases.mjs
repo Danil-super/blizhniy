@@ -9,9 +9,11 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const owner = '12345678-1234-4321-8765-123456789abc';
   const photoId = '42345678-1234-4321-8765-123456789abc';
   const states = ['draft', 'pending_payment', 'paid', 'published', 'sold', 'archived', 'expired', 'blocked'];
+  const deadlines = {archived:'2026-11-25T21:00:00.000001Z',expired:'2026-11-24T21:00:00.000001Z'};
   const items = states.map((status, index) => ({id: `22345678-1234-4321-8765-123456789ab${index}`, revision: '2', kind: 'prodam',
     title: `Комод — ${status}`, price: '3500.00', card: {city: 'Сочи', district: 'Центральный', coverPhotoId: index === 0 ? photoId : null,
-      status, blockReason: status === 'blocked' ? 'Фотография нарушает правила публикации.' : null}}));
+      status, blockReason: status === 'blocked' ? 'Фотография нарушает правила публикации.' : null,
+      ...(deadlines[status]?{placement:{expiresAt:deadlines[status],active:status==='archived'}}:{})}}));
   const pixels = await sharp({create: {width: 480, height: 320, channels: 3, background: '#a05a2c'}}).webp().toBuffer();
   const errors = [], consoleErrors = [], writes = [], foreign = [];
   let holdSession = null, mediaReads = 0, listReads = 0;
@@ -33,6 +35,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
     if (url.pathname === '/api/account/listings') {
       listReads++;
       assert.equal(request.method(), 'POST'); assert.equal(request.postDataJSON().expectedOwnerId, owner);
+      assert.equal(request.headers()['x-blizhniy-listing-placement'], '1');
       return route.fulfill({json: {items, nextCursor: null, workflow: 'postmoderation'}});
     }
     if (url.pathname === '/api/account/media/read') {
@@ -56,6 +59,15 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   assert.equal(await cards.getByRole('link', {name: 'Редактировать', exact: true}).getAttribute('href'), `/razmestit/obyavlenie?draft=${items[0].id}`);
   await draft.locator('summary').filter({hasText:'Действия'}).click();
   await cards.getByRole('img', {name: 'Комод — draft', exact: true}).waitFor();
+  for (const status of ['archived','expired']) {
+    const card = cards.locator('article').filter({has: page.getByRole('heading', {name: `Комод — ${status}`, exact: true})});
+    assert.equal(await card.locator('time').getAttribute('datetime'), deadlines[status]);
+    const actions = card.locator('summary').filter({hasText:'Действия'});
+    await actions.click();
+    assert.equal(await card.getByRole('button',{name:'Опубликовать снова',exact:true}).count(),status==='archived'?1:0);
+    assert.equal(await card.getByRole('link',{name:'Продлить размещение',exact:true}).count(),0);
+    await actions.click();
+  }
   assert.ok(mediaReads >= 1);
   await cards.getByText('Фотография нарушает правила публикации.', {exact: false}).waitFor();
   const closedSizes=await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));

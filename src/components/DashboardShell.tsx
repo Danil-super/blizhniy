@@ -37,6 +37,7 @@ export function Shell({
   activeHref,
   createHref = "/razmestit",
   createLabel = "Создать",
+  notice,
   children,
 }: {
   title: string;
@@ -46,6 +47,7 @@ export function Shell({
   activeHref?: string;
   createHref?: string | null;
   createLabel?: string;
+  notice?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -69,6 +71,7 @@ export function Shell({
             ) : null}
           </div>}
         </div>
+        {notice}
         {nav ? <NavPills items={nav} activeHref={activeHref} /> : null}
         {nav === cabinetNav ? <CabinetProfileBar /> : null}
         <div className="mt-5 sm:mt-7">{children}</div>

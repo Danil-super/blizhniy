@@ -7,6 +7,7 @@ export type AccountAuthSnapshot = {
   specialistTest?: true;
   workPublicationTest?: true;
   listingVerificationTest?: true;
+  marqueeTest?: true;
 };
 
 export function canStartListingTest(account: AccountAuthSnapshot | null, owner: string | null): boolean {
@@ -21,9 +22,9 @@ export function createAccountSessionState(session: (retryInitialRead?: () => boo
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
   function publish(state: AccountAuthSnapshot["state"], user?: LocalAccountUser | null) {
     const userId=user?.id??null, specialistTest=user?.specialistTest, workPublicationTest=user?.workPublicationTest;
-    const listingVerificationTest=user?.listingVerificationTest, applicationTest=user?.applicationTest;
-    if (snapshot.applicationTest===applicationTest && snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest && snapshot.listingVerificationTest===listingVerificationTest) return;
-    snapshot = { state, userId, ...(applicationTest?{applicationTest}:{}), ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}), ...(listingVerificationTest?{listingVerificationTest}:{}) };
+    const listingVerificationTest=user?.listingVerificationTest, applicationTest=user?.applicationTest, marqueeTest=user?.marqueeTest;
+    if (snapshot.marqueeTest===marqueeTest && snapshot.applicationTest===applicationTest && snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest && snapshot.listingVerificationTest===listingVerificationTest) return;
+    snapshot = { state, userId, ...(marqueeTest?{marqueeTest}:{}), ...(applicationTest?{applicationTest}:{}), ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}), ...(listingVerificationTest?{listingVerificationTest}:{}) };
     listeners.forEach(listener => listener(snapshot));
   }
   async function refresh(background = false) {

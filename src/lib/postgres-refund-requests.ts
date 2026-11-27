@@ -1,4 +1,4 @@
-import {servicePlacementRefundTarget} from './service-checkout-config.ts';
+import {servicePlacementRefundTarget,type ServiceRefundScope} from './service-checkout-config.ts';
 import {createHash} from 'node:crypto';
 import {PostgresPaymentIntentStore,PaymentIntentError} from './postgres-payment-intents.ts';
 import {buildPlacementRefundRequest,RefundRequestError} from './refund-request-contract.ts';
@@ -13,7 +13,7 @@ export async function applicationRefundAdmitted(tx:PostgresQueries,paymentIntent
 
 export type PreparedRefundRequest=Omit<PlacementRefundReservation,'id'>&{operationId:string;requestBody:string;idempotenceKey:string};
 type RequestRow={requestBody:string;idempotenceKey:string;createdAt:string;sha256:string};
-type Merchant={shopId:string;isTest:boolean};
+type Merchant={shopId:string;isTest:boolean}&ServiceRefundScope;
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
 function fail():never{throw new RefundRequestError();}
 const requestColumns=`request_body as "requestBody",idempotence_key as "idempotenceKey",request_sha256 as sha256,
@@ -38,7 +38,7 @@ export class PostgresRefundRequestStore{
   if((await tx.query('select id from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update',[reservation.paymentIntentId])).rowCount!==1)fail();
   const purchase=await this.intents.lockKnownInTransaction(tx,reservation.paymentIntentId).catch(error=>{if(error instanceof PaymentIntentError)fail();throw error;});
   const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[reservation.paymentIntentId])).rows[0];
-  if(!order||!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase)||
+  if(!order||!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase,this.merchant)||
     purchase.targetType==='application'&&purchase.durationDays===null&&await applicationRefundAdmitted(tx,purchase.id,operationId))||!purchase.isTest||purchase.shopId!==this.merchant.shopId||
    reservation.id!==operationId||reservation.paymentIntentId!==purchase.id||reservation.providerPaymentId!==purchase.providerPaymentId||reservation.amount!==purchase.amount||
    reservation.shopId!==purchase.shopId||reservation.isTest!==purchase.isTest)fail();
