@@ -30,7 +30,9 @@ begin
  end if;
 
  select u.auth_version into actor_version from app.users u
-  where u.id=p_actor and u.email_verified_at is not null and not u.is_blocked for update;
+  where u.id=p_actor and u.email_verified_at is not null and not u.is_blocked
+   and exists(select 1 from app.sessions s where s.token_hash=p_hash and s.user_id=u.id and s.scope='app')
+  for update of u;
  if not found then raise exception using errcode='PDW01',message='Publication owner required';end if;
  select s.expires_at,s.last_seen_at into session_expires,session_seen from app.sessions s
   where s.token_hash=p_hash and s.user_id=p_actor and s.auth_version=actor_version and s.scope='app' for update;
