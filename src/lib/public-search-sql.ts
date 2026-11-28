@@ -1,28 +1,32 @@
 import {publicSearchPattern,type PublicSearchInput} from './public-search-contract.ts';
 import type {PublicSearchAnchor} from './public-search-cursor';
 import {maxListingMediaTotalSize} from './media-limits.ts';
+import {publicTextSql} from './publication-location-withdrawal.ts';
 type Scope={source:string;eligible:string};
 export type PublicSearchScopes={listing:Scope;work:Scope;service:Scope&{profileIdentity:boolean}};
 /** Fixed server-composed fragments only: input never selects an SQL identifier. */
-export function buildPublicSearchSql(input:PublicSearchInput,scopes:PublicSearchScopes,anchor:PublicSearchAnchor|null,reverse=false){
+export function buildPublicSearchSql(input:PublicSearchInput,scopes:PublicSearchScopes,anchor:PublicSearchAnchor|null,reverse=false,textWithdrawals=false){
  const like=(field:string)=>`lower(coalesce(${field},'') collate pg_catalog.pg_unicode_fast) collate "C" like $1 escape '!'`;
  const match=(fields:string[])=>`($1::text is null or ${fields.map(like).join(' or ')})`;
  const city=(field:string)=>`($3::text is null or ${field}=$3)`;
  const pub=(rank:string,id:string,published:string,created:string,metadata="'{}'::jsonb")=>`${rank} as rank,${id} as id,${published} as published,${created} as created,0 as sort_order,''::text as parent,''::text as name,${metadata} as metadata`;
- const workMatch=(kind:'vacancy'|'workRequest')=>match(['w.title',"w.form->>'description'","w.form->>'cityName'",'profession.name',kind==='vacancy'?"w.form->>'organization'":"'Автор заказа'"]);
+ const workMatch=(kind:'vacancy'|'workRequest')=>match([
+  textWithdrawals?publicTextSql('w','title',true):'w.title',publicTextSql('w','description',textWithdrawals),"w.form->>'cityName'",'profession.name',
+  kind==='vacancy'?publicTextSql('w','organization',textWithdrawals):"'Автор заказа'",
+ ]);
  const profileName=scopes.service.profileIdentity?"(select profile->>'name' from app.cabinet_profiles where user_id=s.author_id)":'s.title';
  const kinds="case l.listing_type when 'sell' then 'prodam' when 'buy' then 'kuplyu' when 'free' then 'otdam-darom' when 'rent' then 'arenda' end";
  const branches=[`
   select ${pub('1','l.id','l.published_at','l.created_at',"jsonb_build_object('categoryName',coalesce(parent.name,c.name))")}
    ${scopes.listing.source} where ${scopes.listing.eligible} and ${city('city.name')}
-   and ${match(['l.title','l.description','city.name','coalesce(parent.name,c.name)',"case when c.parent_id is not null then c.name else '' end",kinds])}
+   and ${match([publicTextSql('l','title',textWithdrawals),publicTextSql('l','description',textWithdrawals),'city.name','coalesce(parent.name,c.name)',"case when c.parent_id is not null then c.name else '' end",kinds])}
   `,`select ${pub("case w.kind when 'vacancy' then 2 else 3 end",'w.id','w.published_at','w.created_at')}
    ${scopes.work.source} where ${scopes.work.eligible} and ${city("w.form->>'cityName'")}
    and ((w.kind='vacancy' and ${workMatch('vacancy')}) or (w.kind='workRequest' and ${workMatch('workRequest')}))
   `,`select ${pub("case s.kind when 'specialist' then 4 else 5 end",'s.id','s.published_at','s.created_at')}
    ${scopes.service.source} where ${scopes.service.eligible} and ${city("s.form->>'cityName'")}
-   and ((s.kind='specialist' and ${match([profileName,'profession.name',"s.form->>'cityName'",scopes.service.profileIdentity?"''":"s.form->>'skills'"])})
-    or (s.kind='fair' and ${match(['s.title',"s.form->>'category'","s.form->>'description'","s.form->>'cityName'"])}))
+   and ((s.kind='specialist' and ${match([profileName,'profession.name',"s.form->>'cityName'",scopes.service.profileIdentity?"''":publicTextSql('s','skills',textWithdrawals)])})
+    or (s.kind='fair' and ${match([textWithdrawals?publicTextSql('s','title',true):'s.title',"s.form->>'category'",publicTextSql('s','description',textWithdrawals),"s.form->>'cityName'"])}))
   `,`select 6,c.id,null::timestamptz,null::timestamptz,c.sort_order,''::text,c.name,
    jsonb_build_object('slug',c.slug,'name',c.name,'description',coalesce((select string_agg(child.name,', ' order by child.sort_order,child.name,child.id) from
     (select name,min(sort_order) as sort_order,min(id::text) as id from app.categories where parent_id=c.id and active group by name) child),''))

@@ -22,6 +22,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let addressReceipt = null;
   let publicationReceipt = null;
   let photoReceipt = null;
+  let visibleTitle='До 😺 личное после';
+  const textFingerprint='a'.repeat(64);
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -47,6 +49,19 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       if(request.postDataJSON().fileId===secondPhoto)return route.fulfill({contentType:'image/webp',body:pixels});
       assert.equal(request.postDataJSON().fileId, photoId); mediaReads++;
       return route.fulfill({contentType: 'image/webp', body: pixels});
+    }
+    if(url.pathname==='/api/account/publication-location'&&['texts','withdraw-text'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner};
+      const {action}=request.postDataJSON();
+      if(action==='withdraw-text'){
+        assert.deepEqual(request.postDataJSON(),{...target,action,field:'title',fingerprint:textFingerprint,start:5,end:11});
+        visibleTitle='До 😺 … после';
+        return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,withdrawnAt:deadlines.archived}});
+      }
+      assert.deepEqual(request.postDataJSON(),{...target,action});
+      return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,texts:[
+        {field:'title',text:'До 😺 личное после',visible:visibleTitle,fingerprint:textFingerprint},
+      ]}});
     }
     if(url.pathname==='/api/account/publication-location'&&request.postDataJSON().action==='withdraw-photo'){
       assert.equal(request.method(),'POST');
@@ -178,6 +193,15 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await address.getByText('Фото скрыто в этой публикации.',{exact:true}).waitFor();
   await picker.selectOption(photoId);
   await address.getByRole('button',{name:'Скрыть выбранное фото',exact:true}).waitFor();
+  await address.locator('summary').filter({hasText:'Видимость текста'}).click();
+  const text=address.getByRole('textbox',{name:/Исходный текст/});
+  await text.focus();
+  await text.evaluate(element=>element.setSelectionRange(6,12));
+  await text.press('Shift');
+  await address.getByRole('button',{name:'Скрыть выделенный фрагмент',exact:true}).click();
+  await address.getByRole('button',{name:'Подтвердить скрытие фрагмента',exact:true}).click();
+  await address.getByText('Фрагмент скрыт.',{exact:true}).waitFor();
+  await address.getByText('До 😺 … после',{exact:true}).waitFor();
   await address.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
   await address.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
   await address.getByText('Публикация скрыта.',{exact:true}).waitFor();

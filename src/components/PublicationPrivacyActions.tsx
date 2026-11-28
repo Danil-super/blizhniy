@@ -6,6 +6,7 @@ import {parseListingDraftCursor} from '@/lib/listing-draft-contract';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
 import {PublicationPhotoWithdrawal} from './PublicationPhotoWithdrawal';
+import {PublicationTextWithdrawal} from './PublicationTextWithdrawal';
 
 type Props=PublicationPrivacyTarget&{showUnavailable?:boolean};
 
@@ -13,6 +14,7 @@ export function PublicationPrivacyActions(props:Props){
  return <>
   {props.kind!=='marquee'&&<Withdrawal {...props} whole={false}/>}
   {props.kind!=='marquee'&&<PublicationPhotoWithdrawal {...props}/>}
+  <PublicationTextWithdrawal {...props}/>
   <Withdrawal {...props} whole/>
  </>;
 }

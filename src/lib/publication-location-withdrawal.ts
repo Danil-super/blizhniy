@@ -1,5 +1,13 @@
 import type { PostgresQueries } from "./postgres";
+import type { PublicationTextField } from "./publication-text-selection";
 
+type Alias = "l" | "w" | "s";
+const textFields={
+ l:['title','description'],
+ w:['title','description','organization','schedule','workFormat','requirements','responsibilities','conditions'],
+ s:['title','description','skills','experience'],
+} as const;
+export type PublicText = Partial<Record<PublicationTextField,string|null>>;
 // Remember only presence. An installed boundary with broken permissions must fail closed.
 const installed = new WeakSet<PostgresQueries>();
 export async function hasLocationWithdrawalSchema(db: PostgresQueries): Promise<boolean> {
@@ -25,6 +33,26 @@ function withdrawal(alias: "l" | "w" | "s", scope: string) {
   const kind = alias === "l" ? "'listing'" : `${alias}.kind`;
   return `select 1 from app_publication_privacy.location_withdrawals privacy
     where privacy.kind=${kind} and privacy.publication_id=${alias}.id and privacy.scope=${scope}`;
+}
+
+function originalText(alias:Alias,field:PublicationTextField) {
+ return alias==='l'?`l.${field}`:`${alias}.form->>'${field}'`;
+}
+
+function withdrawnText(alias:Alias,field:PublicationTextField,original:string) {
+ const kind=alias==='l'?"'listing'":`${alias}.kind`;
+ return `app_publication_privacy.public_text(${kind},${alias}.id,'${field}',${original})`;
+}
+
+export function publicTextSql(alias:Alias,field:PublicationTextField,enabled?:boolean) {
+ const original=originalText(alias,field);
+ return enabled?`coalesce(${withdrawnText(alias,field,original)},${original})`:original;
+}
+
+export function publicTextColumn(alias:Alias,enabled?:boolean) {
+ if(!enabled)return '';
+ const fields=textFields[alias].map(field=>`'${field}',${withdrawnText(alias,field,originalText(alias,field))}`);
+ return `,json_build_object(${fields.join(',')}) as "publicText"`;
 }
 
 export function publicationWithdrawalEligibility(alias: "l" | "w" | "s", enabled?: boolean): string {

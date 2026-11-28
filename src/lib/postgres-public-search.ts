@@ -51,7 +51,7 @@ export class PostgresPublicSearchStore{
     let position:PublicSearchAnchor|null=cursor?anchorOf({...cursor,metadata:{}}):null,skip=cursor?0:(input.page-1)*24,exhausted=false;
     const accepted:Array<{candidate:Candidate;result:PublicSearchResult}>=[];
     while(accepted.length<25&&!exhausted){
-     const query=buildPublicSearchSql(input,scopes,position,reverse);
+     const query=buildPublicSearchSql(input,scopes,position,reverse,enforceLocationWithdrawals);
      const rows=(await tx.query<Candidate>(query.text,query.values)).rows;
      candidateCount+=rows.length;if(rows.length>25||candidateCount>25100)throw new PublicSearchBudgetError();
      exhausted=rows.length<25;if(!rows.length)break;

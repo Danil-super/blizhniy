@@ -1,7 +1,7 @@
 import {mapPublicListing,type PublicListingRow} from './public-listings';import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
-import {locationWithdrawalColumn,publicPhotoEligibility} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,publicPhotoEligibility,publicTextColumn} from './publication-location-withdrawal';
 export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
 export type PublicListingPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
@@ -41,7 +41,7 @@ export class PostgresPublicListingStore{
   const {source,eligible}=listingVisibility(options);
   this.source=`${source} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
   this.eligible=eligible;
-  this.privacyColumn=locationWithdrawalColumn('l',options.enforceLocationWithdrawals);
+  this.privacyColumn=locationWithdrawalColumn('l',options.enforceLocationWithdrawals)+publicTextColumn('l',options.enforceLocationWithdrawals);
   this.withdrawals=options.enforceLocationWithdrawals===true;
  }
  private project(row:Row):Listing|null{return mapPublicListing({...row,form:{...row.form,photoIds:row.mediaIds}},Date.now(),{postmoderation:this.postmoderation});}

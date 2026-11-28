@@ -1,7 +1,8 @@
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
 import {parseListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {formatBookingPrice} from './booking-details';import type {Listing} from './types';
-export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null;testPublication?:boolean;locationWithdrawn?:boolean};
+import type {PublicText} from './publication-location-withdrawal';
+export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Public DTO allowlist, not an owner/editor snapshot. SQL must also prove current author/reference/photo eligibility. */
@@ -17,7 +18,8 @@ export function mapPublicListing(row:PublicListingRow,now:number,options:{postmo
    if(typeof row.authorName!=='string'||!row.authorName.trim()||row.authorName.length>120||!row.authorName.isWellFormed()||/[\x00-\x1f\x7f]/.test(row.authorName))return null;author=row.authorName.trim();
   }
   const showExactAddress=form.showExactAddress&&row.locationWithdrawn!==true;
-  return{id,...(row.testPublication===true?{testPublication:true}:{}),slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,city:form.cityName!,
+  const title=(row.publicText?.title??form.title)||'Объявление';
+  return{id,...(row.testPublication===true?{testPublication:true}:{}),slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:row.testPublication===true?`ТЕСТ · ${title}`:title,description:row.publicText?.description??form.description,city:form.cityName!,
    ...(form.district?{district:form.district}:{}),showExactAddress,hasMapPoint:showExactAddress,
    ...(showExactAddress?{...(form.address?{address:form.address}:{}),lat:form.latitude!,lng:form.longitude!}:{}),
    price:form.booking?formatBookingPrice(form.booking):money(form.price),images:form.photoIds.map(photo=>`/api/listings/${id}/photos/${photo}`),

@@ -5,6 +5,7 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,ty
 import {parseListingFormDraft,type ListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {maxListingMediaTotalSize} from './media-limits.ts';import {enqueueNotificationInTransaction} from './postgres-notification-inbox';
 import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
+import {publicTextSql} from './publication-location-withdrawal';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {BookingDetails} from './types';
 import {parseBookingCancellation,BookingLifecycleInputError,type BookingLifecycle} from './booking-lifecycle.ts';
 export class BookingAccessError extends Error{constructor(){super('Booking unavailable');this.name='BookingAccessError';}}
@@ -18,14 +19,15 @@ type Bookable={id:string;author:string;revision:string;title:string;booking:Book
 /** Shared public eligibility gate; private form/contact columns are validated, never returned. Caller locks separately for writes. */
 export async function readBookableListing(tx:PostgresQueries,id:string,policy:ListingVisibilityPolicy={}):Promise<Bookable|null>{
  const {source,eligible}=listingVisibility(policy);
- const row=(await tx.query<ListingFormDraft&{id:string;author:string;revision:string;today:string}>(`select l.id,l.author_id as author,l.revision::text as revision,l.title,l.description,l.price::text as price,
+ const row=(await tx.query<ListingFormDraft&{id:string;author:string;revision:string;today:string;publicTitle?:string}>(`select l.id,l.author_id as author,l.revision::text as revision,l.title,l.description,l.price::text as price,
+  ${policy.enforceLocationWithdrawals?publicTextSql('l','title',true)+' as "publicTitle",':''}
   coalesce(parent.slug,c.slug) as "categorySlug",case when c.parent_id is not null then c.name end as "subcategoryName",city.name as "cityName",
   l.district,l.address,l.latitude::float8 as latitude,l.longitude::float8 as longitude,l.show_exact_address as "showExactAddress",l.contact_phone as "contactPhone",l.messenger_url as "messengerUrl",l.booking,
   to_char(clock_timestamp() at time zone 'Europe/Moscow','YYYY-MM-DD') as today
   ${source} where l.id=$1 and l.listing_type='rent' and ${eligible}`,[id,maxListingMediaTotalSize])).rows[0];
  if(!row)return null;
- try{const {id,author,revision,today,...fields}=row,form=parseListingFormDraft({...fields,kind:'arenda',photoIds:[]});
-  if(!form.booking||checkListingFormContent(form,true).length)return null;return{id,author,revision,title:form.title,booking:form.booking,today};
+ try{const {id,author,revision,today,publicTitle,...fields}=row,form=parseListingFormDraft({...fields,kind:'arenda',photoIds:[]});
+  if(!form.booking||checkListingFormContent(form,true).length)return null;return{id,author,revision,title:(publicTitle??form.title)||'Объявление',booking:form.booking,today};
  }catch{return null;}
 }
 type Status='pending'|'accepted'|'declined'|'cancelled'|'expired';type Terms={listingRevision:string;title:string;booking:BookingDetails};

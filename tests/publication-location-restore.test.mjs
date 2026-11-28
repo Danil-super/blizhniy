@@ -43,7 +43,7 @@ test('full withdrawal applies to public reads and the recovery fallback keeps ev
 test('recovery refuses tampered, unexpected and duplicate records before connecting',async()=>{
  const {replayLocationWithdrawals}=await import('../scripts/publication-location-restore.mjs');
  const row={kind:'listing',publicationId:'10000000-0000-4000-8000-000000000001',withdrawnAt:'2026-11-28T00:00:00.123456Z',scope:'location'};
- const snapshot=rows=>JSON.stringify({version:3,scope:'blizhniy-location-withdrawals',rows});
+ const snapshot=rows=>JSON.stringify({version:4,scope:'blizhniy-location-withdrawals',rows});
  const hash=text=>createHash('sha256').update(text).digest('hex');
  const client={async query(){assert.fail('invalid checkpoints cannot reach the database');}};
  for(const [document,expected] of [
@@ -51,7 +51,9 @@ test('recovery refuses tampered, unexpected and duplicate records before connect
   [snapshot([{...row,address:'synthetic'}]),null],
   [snapshot([{...row,kind:'marquee'}]),null],
   [snapshot([{...row,scope:'unknown'}]),null],
-  [snapshot([]).replace('"version":3','"version":2'),null],
+  [snapshot([]).replace('"version":4','"version":3'),null],
+  [snapshot([{...row,scope:'text:organization:'+'a'.repeat(64)+':1:2'}]),null],
+  [snapshot([{...row,scope:'text:title:'+'a'.repeat(64)+':2:2'}]),null],
   [snapshot([{...row,scope:'avatar'}]),null],
   [snapshot([{...row,scope:'photo:10000000-0000-8000-8000-000000000001'}]),null],
   [snapshot([{...row,withdrawnAt:'2026-02-30T00:00:00.123456Z'}]),null],

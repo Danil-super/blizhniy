@@ -12,8 +12,13 @@ const maxRows = 100000;
 const maxBytes = 16 * 1024 * 1024;
 const kinds = new Set(['listing', 'vacancy', 'workRequest', 'specialist', 'fair', 'marquee']);
 const digest = data => createHash('sha256').update(data).digest('hex');
-const encode = rows => JSON.stringify({ version: 3, scope, rows });
+const encode = rows => JSON.stringify({ version: 4, scope, rows });
 const photoScope = /^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const textScope = /^text:([a-zA-Z]+):[0-9a-f]{64}:(0|[1-9][0-9]{0,3}):([1-9][0-9]{0,3})$/;
+const textFields={
+  listing:['title','description'],vacancy:['title','description','organization','schedule','workFormat','requirements','responsibilities','conditions'],
+  workRequest:['title','description'],specialist:['description','skills','experience'],fair:['title','description'],marquee:['title'],
+};
 
 function checkpointRows(document, expectedDigest) {
   try {
@@ -24,9 +29,11 @@ function checkpointRows(document, expectedDigest) {
     if (!Array.isArray(rows) || rows.length > maxRows) throw Error();
     const ids = new Set();
     const normalized = rows.map(({ kind, publicationId, withdrawnAt, scope }) => {
+      const text = typeof scope === 'string' ? textScope.exec(scope) : null;
       const permittedScope = scope === 'publication' || scope === 'location' && kind !== 'marquee' ||
         scope === 'avatar' && kind === 'specialist' ||
-        typeof scope === 'string' && ['listing','vacancy','workRequest','fair'].includes(kind) && photoScope.test(scope);
+        typeof scope === 'string' && ['listing','vacancy','workRequest','fair'].includes(kind) && photoScope.test(scope) ||
+        text && kinds.has(kind) && textFields[kind].includes(text[1]) && Number(text[2])<Number(text[3]);
       if (!kinds.has(kind) || !permittedScope ||
           typeof publicationId !== 'string' ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(publicationId) ||
