@@ -164,6 +164,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   });
   const response=await page.goto(origin+'/razmestit/obyavlenie',{waitUntil:'domcontentloaded'});assert.equal(response.status(),200,output);
   await page.getByRole('heading',{name:'Создать объявление',exact:true}).waitFor();
+  assert.equal(await page.title(),'Создать объявление | БЛИЖНИЙ');
   assert.equal(await page.getByRole('heading',{name:'Создать объявление',exact:true}).count(),1);
   await page.locator('input[name="title"]').fill('Полная форма');await page.locator('textarea[name="description"]').fill('Не потерять описание');await page.locator('input[name="price"]').fill('1234');
   await page.getByRole('button',{name:/Город и регион/}).click();await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
@@ -211,6 +212,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   for(const secret of [env.BLIZHNIY_DB_PASSWORD,env.BLIZHNIY_SMTP_PASSWORD,env.BLIZHNIY_AUTH_RATE_SECRET,'a'.repeat(64)])assert.equal(editHtml.includes(secret),false);
   assert.equal(new URL(page.url()).searchParams.has('owner'),false);assert.equal(new URL(page.url()).searchParams.has('token'),false);
   await page.getByRole('heading',{name:'Редактировать объявление',exact:true}).waitFor();
+  assert.equal(await page.title(),'Редактировать объявление | БЛИЖНИЙ');
   assert.equal(await page.getByRole('region',{name:'Оплата объявления',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Оплатить размещение',exact:true}).count(),0);
   assert.equal(await page.locator('input[name="title"]').inputValue(),'Полная форма');
   assert.equal(await page.locator('input[name="price"]').inputValue(),'199.99');
