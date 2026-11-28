@@ -15,13 +15,15 @@ export async function POST(request: Request) {
     authJson({ error: { code } }, status, status === 429 ? { "Retry-After": "900" } : undefined);
   try {
     const config = readProductionAuthConfig();
-    if (!config) return error(404, "NOT_FOUND");
+    if (!config || process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS !== "required") return error(404, "NOT_FOUND");
     const body = await readAuthJson(request, config);
     if (!body || typeof body !== "object" || Object.getPrototypeOf(body) !== Object.prototype ||
-        Object.keys(body).length !== 3 || !["kind", "publicationId", "expectedOwnerId"].every(key => Object.hasOwn(body, key))) {
+        !["kind", "publicationId", "expectedOwnerId"].every(key => Object.hasOwn(body, key))) {
       return error(422, "INVALID_INPUT");
     }
     const input = body as Record<string, unknown>;
+    const statusOnly = Object.hasOwn(input, "action") && input.action === "status";
+    if (Object.keys(input).length !== (statusOnly ? 4 : 3)) return error(422, "INVALID_INPUT");
     const { kind } = input;
     if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair"].includes(kind)) {
       return error(422, "INVALID_INPUT");
@@ -36,11 +38,13 @@ export async function POST(request: Request) {
     if (!await hasLocationWithdrawalSchema(db)) return error(404, "NOT_FOUND");
     if (!await limiter.allowProduction("session", ip)) return error(429, "RATE_LIMITED");
     request.signal.throwIfAborted();
-    const { rows: [receipt] } = await db.query<{ withdrawnAt: string }>(
-      'select app_publication_privacy.withdraw_location($1,$2,$3,$4) as "withdrawnAt"',
-      [hashSessionToken(token), actor, kind, publicationId],
+    const { rows: [receipt] } = await db.query<{ withdrawnAt: string | null }>(
+      'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5) as "withdrawnAt"',
+      [hashSessionToken(token), actor, kind, publicationId, !statusOnly],
     );
-    if (!receipt?.withdrawnAt) return error(503, "LOCATION_UNAVAILABLE");
+    if (!receipt || (receipt.withdrawnAt === null ? !statusOnly : typeof receipt.withdrawnAt !== "string")) {
+      return error(503, "LOCATION_UNAVAILABLE");
+    }
     return authJson({ kind, publicationId, withdrawnAt: receipt.withdrawnAt }, 200);
   } catch (failure) {
     if (failure instanceof AuthRequestError) return error(failure.status, failure.code);

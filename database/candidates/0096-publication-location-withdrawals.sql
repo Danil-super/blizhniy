@@ -13,7 +13,7 @@ create table app_publication_privacy.location_withdrawals(
 revoke all on app_publication_privacy.location_withdrawals from public;
 
 -- A withdrawal is independent of the editable or paid revision.
-create function app_publication_privacy.withdraw_location(p_hash text,p_actor uuid,p_kind text,p_publication uuid)
+create function app_publication_privacy.withdraw_location(p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_apply boolean default true)
  returns text language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
 declare
  actor_version bigint;
@@ -25,7 +25,7 @@ begin
   or p_hash is null or octet_length(p_hash)<>64 or p_hash !~ '^[a-f0-9]+$' or p_actor is null then
   raise exception using errcode='PDW01',message='Publication owner required';
  end if;
- if p_publication is null or p_kind is null or p_kind not in ('listing','vacancy','workRequest','specialist','fair') then
+ if p_publication is null or p_apply is null or p_kind is null or p_kind not in ('listing','vacancy','workRequest','specialist','fair') then
   raise exception using errcode='PDW02',message='Invalid publication';
  end if;
 
@@ -55,9 +55,11 @@ begin
   raise exception using errcode='PDW02',message='Invalid publication';
  end if;
 
- insert into app_publication_privacy.location_withdrawals(kind,publication_id)
-  values(p_kind,p_publication) on conflict do nothing;
- select w.withdrawn_at into strict receipt from app_publication_privacy.location_withdrawals w
+ if p_apply then
+  insert into app_publication_privacy.location_withdrawals(kind,publication_id)
+   values(p_kind,p_publication) on conflict do nothing;
+ end if;
+ select w.withdrawn_at into receipt from app_publication_privacy.location_withdrawals w
   where w.kind=p_kind and w.publication_id=p_publication;
  if session_expires<=clock_timestamp() or session_seen<=clock_timestamp()-interval '30 minutes' then
   raise exception using errcode='PDW01',message='Publication owner required';
@@ -65,8 +67,8 @@ begin
  return to_char(receipt at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
 end;
 $$;
-revoke all on function app_publication_privacy.withdraw_location(text,uuid,text,uuid) from public;
+revoke all on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean) from public;
 grant usage on schema app_publication_privacy to blizhniy_runtime;
 grant select(kind,publication_id) on app_publication_privacy.location_withdrawals to blizhniy_runtime;
-grant execute on function app_publication_privacy.withdraw_location(text,uuid,text,uuid) to blizhniy_runtime;
+grant execute on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean) to blizhniy_runtime;
 commit;

@@ -126,7 +126,19 @@ test('work publication production pages preserve complete forms and use Russian 
       const photo={id:mediaId,mimeType:'image/webp',width:80,height:40,size:webp.length};
       state.media.set(mediaId,{owner:state.active,photo});state.uploads.push(mediaId);state.sequence.push('upload');return route.fulfill({json:photo});
      }
-     const body=request.postDataJSON();
+    const body=request.postDataJSON();
+    if(url.pathname==='/api/account/publication-location'){
+     assert.equal(request.method(),'POST');
+     const {action,...target}=body;
+     assert.deepEqual(target,{kind,publicationId:chosen[kind].id,expectedOwnerId:state.active});
+     if(!state.locationEnabled||!collection().has(body.publicationId))return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+     assert.ok(action===undefined||action==='status');
+     if(action===undefined){
+      state.locationWrites=(state.locationWrites??0)+1;
+      state.locationReceipt=stamp;
+     }
+     return route.fulfill({json:{kind,publicationId:body.publicationId,withdrawnAt:state.locationReceipt??null}});
+    }
      if(url.pathname==='/api/account/profile'){
       const actor=state.active,profile=state.profiles.get(actor),revision=profileRevision(profile);
       if(request.method()==='PUT'){
@@ -304,6 +316,30 @@ test('work publication production pages preserve complete forms and use Russian 
     assert.deepEqual(state.cancellations,['PUT','POST']);
     assert.deepEqual(collection().get(id),draft);
     assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,0);
+   });
+   await run(kind+' withdraws the exact address while an order locks editing and reads the receipt after reload',kind,async({page,state,collection})=>{
+    const {id,title}=chosen[kind],paymentId='62345678-1234-4321-8765-123456789abc';
+    const current={id,kind,revision:'1',status:'draft',paid:false,
+     form:parseWorkPublicationForm(kind,{title,address:'Стендовый адрес',latitude:45.1,longitude:38.9,showExactAddress:true}),photos:[],
+     createdAt:stamp,updatedAt:stamp,publishedAt:null,expiresAt:null,activeCheckout:{paymentId,status:'pending'}};
+    collection().set(id,current);
+    state.locationEnabled=true;
+    await page.goto(origin+(kind==='vacancy'?'/rabota/vakansii/':'/rabota/zakazy/')+id+'/edit');
+    await page.getByRole('region',{name:'Исходный заказ'}).waitFor();
+    const hide=page.getByRole('button',{name:'Скрыть точный адрес',exact:true});
+    await hide.click();
+    assert.equal(state.locationWrites,undefined,'opening the confirmation never writes');
+    await page.getByRole('button',{name:'Оставить как есть',exact:true}).click();
+    await hide.click();
+    await page.getByRole('button',{name:'Подтвердить скрытие',exact:true}).click();
+    await page.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+    assert.equal(state.locationWrites,1);
+    assert.deepEqual(collection().get(id),current);
+    await page.reload();
+    await page.getByRole('region',{name:'Исходный заказ'}).waitFor();
+    await page.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+    assert.equal(await hide.count(),0);
+    assert.equal(state.locationWrites,1);
    });
    await run(kind+' owner switch removes a private unsaved form and its selected file without writing it under another account',kind,async({page,state})=>{
     await page.goto(origin+chosen[kind].path);await fillWorkForm(page,kind,pixels);

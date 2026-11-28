@@ -40,7 +40,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner,creates=0,rejectWrite=false;
   const persist=()=>writeFile(fixture,JSON.stringify({owner,active,snapshot:saved}),{mode:0o600});
   let moderation={id:null,revision:null,state:'not_submitted',note:null},loseSubmission=false,submissions=0;
-  const removalCalls=[];let removedRevision=null;
+  const removalCalls=[];let removedRevision=null,locationReceipt=null;
   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
   const webPixels=await sharp(pixels).webp().toBuffer();
   await context.route('**/*',async route=>{
@@ -71,6 +71,18 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
     if(request.method()==='POST')return route.fulfill({json:{items:saved?[{id,revision:saved.revision,kind:saved.form.kind,title:saved.form.title,price:saved.form.price}]:[],nextCursor:null}});
     creates++;saved={id,revision:'1',form:parseListingFormDraft({kind:'prodam'}),photos:[]};await persist();
     return route.fulfill({json:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
+   }
+   if(url.pathname==='/api/account/publication-location'){
+    assert.equal(request.method(),'POST');
+    assert.equal(request.headers()['x-blizhniy-request'],'1');
+    const {action,...target}=body;
+    assert.deepEqual(target,{expectedOwnerId:owner,kind:'listing',publicationId:id});
+    assert.ok(action===undefined||action==='status');
+    if(action===undefined){
+     locationReceipt='2026-10-18T00:00:00.123456Z';
+     return route.abort('connectionreset');
+    }
+    return route.fulfill({json:{kind:'listing',publicationId:id,withdrawnAt:locationReceipt}});
    }
    if(url.pathname==='/api/account/listing-drafts')return route.fulfill({json:{id,revision:saved.revision,draft:{kind:saved.form.kind,title:saved.form.title,description:saved.form.description,price:saved.form.price,categoryId:null,cityId:null}}});
    if(url.pathname==='/api/account/listing-photos')return route.fulfill({json:{id,revision:saved.revision,photos:saved.photos}});
@@ -179,6 +191,11 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   const firstCard=page.getByRole('link',{name:'Полная форма',exact:true}).locator('xpath=ancestor::li[1]');
   await firstCard.getByRole('button',{name:'Статус и оплата',exact:true}).click();
   await page.getByText('Не отправлено на модерацию',{exact:true}).waitFor();
+  await firstCard.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
+  await firstCard.getByRole('button',{name:'Подтвердить скрытие',exact:true}).click();
+  await firstCard.getByRole('button',{name:'Проверить состояние',exact:true}).click();
+  await firstCard.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+  assert.equal(writes.length,1,'hiding the location never writes the listing form');
   assert.equal(await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).count(),0);
   const firstPhoto=saved.form.photoIds[0];

@@ -18,6 +18,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const errors = [], consoleErrors = [], writes = [], foreign = [];
   let holdSession = null, mediaReads = 0, listReads = 0;
   let enrolled = true;
+  let addressReceipt = null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -42,6 +43,15 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       assert.equal(request.method(), 'POST'); assert.equal(request.postDataJSON().expectedOwnerId, owner);
       assert.equal(request.postDataJSON().fileId, photoId); mediaReads++;
       return route.fulfill({contentType: 'image/webp', body: pixels});
+    }
+    if (url.pathname === '/api/account/publication-location') {
+      const {action, ...target} = request.postDataJSON();
+      assert.equal(request.method(), 'POST');
+      assert.equal(request.headers()['x-blizhniy-request'], '1');
+      assert.deepEqual(target, {kind:'listing', publicationId:items[1].id, expectedOwnerId:owner});
+      assert.ok(action === undefined || action === 'status');
+      if (action === undefined) addressReceipt = deadlines.archived;
+      return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt}});
     }
     writes.push(url.pathname);
     return route.fulfill({status: 404, json: {error: {code: 'NOT_FOUND'}}});
@@ -120,6 +130,24 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await draft.getByRole('button', {name: 'Статус и оплата', exact: true}).click();
   await draft.getByText('Оплата пока недоступна для этого аккаунта.', {exact: false}).waitFor();
   assert.equal(await draft.getByRole('button', {name: 'Оплатить размещение', exact: true}).count(), 0);
+  await page.keyboard.press('Escape');
+  const waiting=cards.locator('article').filter({has:page.getByRole('heading',{name:'Комод — pending_payment',exact:true})});
+  const menu=waiting.locator('summary').filter({hasText:'Действия'});
+  const address=page.getByRole('dialog',{name:'Видимость точного адреса',exact:true});
+  await page.setViewportSize({width:320,height:900});
+  await menu.click();
+  await waiting.getByRole('button',{name:'Видимость адреса',exact:true}).click();
+  await address.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  assert.deepEqual(await address.evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
+  await address.getByRole('button',{name:'Подтвердить скрытие',exact:true}).click();
+  await address.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await menu.evaluate(node=>document.activeElement===node),true);
+  await page.reload();
+  await menu.click();
+  await waiting.getByRole('button',{name:'Видимость адреса',exact:true}).click();
+  await address.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
   assert.deepEqual(errors, []); assert.deepEqual(consoleErrors, []); assert.deepEqual(foreign, []); assert.deepEqual(writes, []);
 }
 

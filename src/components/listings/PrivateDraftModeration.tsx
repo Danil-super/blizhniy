@@ -5,6 +5,7 @@ import type {ListingModerationState} from '@/lib/postgres-listing-moderation';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {draftButton} from './PrivateDraftEditor';
 import {PrivateListingCheckout,type ListingCheckoutAttempt} from './PrivateListingCheckout';
+import {PublicationLocationWithdrawal} from '@/components/PublicationLocationWithdrawal';
 const labels={not_submitted:'Не отправлено на модерацию',pending:'На модерации',approved:'Одобрено модератором',rejected:'Нужны исправления',outdated:'После изменений нужна повторная модерация'};
 export function PrivateDraftModeration({owner,id,revision,disabled,checkoutAttempt,allowSubmit=true}:{owner:string;id:string;revision:string;disabled:boolean;checkoutAttempt:ListingCheckoutAttempt;allowSubmit?:boolean}){
  const [state,setState]=useState<ListingModerationState|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[uncertain,setUncertain]=useState(false);
@@ -27,7 +28,7 @@ export function PrivateDraftModeration({owner,id,revision,disabled,checkoutAttem
   return()=>{epoch.current=generation+1;controller.abort();};
  },[run,disabled]);
  const canSubmit=!state||state.state==='not_submitted'||state.state==='outdated';
- return <section className="mt-6 min-w-0 rounded-xl border border-slate-200 bg-white p-4" aria-label="Модерация объявления" aria-busy={busy}>
+ return <><section className="mt-6 min-w-0 rounded-xl border border-slate-200 bg-white p-4" aria-label="Модерация объявления" aria-busy={busy}>
   <h2 className="text-lg font-bold">Модерация объявления</h2>
   <p className="mt-2 text-sm text-slate-600">Сначала модератор проверяет объявление, затем можно будет оплатить размещение. Отправка на проверку бесплатна.</p>
   {disabled?<p className="mt-3">Сначала сохраните или сверьте правки текста, полей и фотографий.</p>:<>
@@ -45,5 +46,5 @@ export function PrivateDraftModeration({owner,id,revision,disabled,checkoutAttem
    </div>
    {(state?.state==='approved'||checkoutAttempt.uncertain)&&<PrivateListingCheckout owner={owner} id={id} revision={revision} attempt={checkoutAttempt}/>}
   </>}
- </section>;
+ </section>{!allowSubmit&&<PublicationLocationWithdrawal owner={owner} kind="listing" publicationId={id}/>}</>;
 }
