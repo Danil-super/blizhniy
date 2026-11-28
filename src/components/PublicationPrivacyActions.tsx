@@ -4,17 +4,15 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {parseListingDraftCursor} from '@/lib/listing-draft-contract';
 import {notifyAccountSessionChange} from '@/lib/local-account';
+import {postPublicationPrivacy,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
+import {PublicationPhotoWithdrawal} from './PublicationPhotoWithdrawal';
 
-type Props={
- owner:string;
- kind:'listing'|'vacancy'|'workRequest'|'specialist'|'fair'|'marquee';
- publicationId:string;
- showUnavailable?:boolean;
-};
+type Props=PublicationPrivacyTarget&{showUnavailable?:boolean};
 
 export function PublicationPrivacyActions(props:Props){
  return <>
   {props.kind!=='marquee'&&<Withdrawal {...props} whole={false}/>}
+  {props.kind!=='marquee'&&<PublicationPhotoWithdrawal {...props}/>}
   <Withdrawal {...props} whole/>
  </>;
 }
@@ -30,13 +28,8 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
   if(!controller||controller.signal.aborted)return;
   setBusy(true);setError(false);
   try{
-   const response=await fetch('/api/account/publication-location',{
-    method:'POST',credentials:'same-origin',redirect:'error',cache:'no-store',
-    signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)]),
-    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},
-    body:JSON.stringify({kind,publicationId,expectedOwnerId:owner,
-     ...(whole?{action:statusOnly?'publication-status':'withdraw-publication'}:statusOnly?{action:'status'}:{})}),
-   });
+   const response=await postPublicationPrivacy({owner,kind,publicationId},
+    {action:whole?statusOnly?'publication-status':'withdraw-publication':statusOnly?'status':undefined},controller.signal);
    if(controller.signal.aborted)return;
    if(statusOnly&&response.status===404){setAvailable(false);return;}
    if(response.status===401)notifyAccountSessionChange(false);

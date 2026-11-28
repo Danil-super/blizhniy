@@ -4,7 +4,13 @@ import {createRequire} from 'node:module';
 import {test} from 'node:test';
 
 const {loadLocalPrimaryModule}=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs');
-const {locationWithdrawalColumn,publicationWithdrawalEligibility}=loadLocalPrimaryModule('publication-location-withdrawal');
+const {locationWithdrawalColumn,publicationWithdrawalEligibility,publicPhotoEligibility}=loadLocalPrimaryModule('publication-location-withdrawal');
+
+test('photo withdrawal uses the publication and exact media identity in the public predicate',()=>{
+ assert.equal(publicPhotoEligibility('l','p.media_id',false),'');
+ assert.match(publicPhotoEligibility('l','p.media_id',true),/kind='listing'[\s\S]+publication_id=l\.id[\s\S]+scope='photo:'\|\|p\.media_id::text/);
+ assert.match(publicPhotoEligibility('s','image.id',true),/kind=s\.kind[\s\S]+scope='photo:'\|\|image\.id::text/);
+});
 
 test('recovery mode hides exact locations with or without the privacy schema',()=>{
  const prior=process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS;
@@ -37,7 +43,7 @@ test('full withdrawal applies to public reads and the recovery fallback keeps ev
 test('recovery refuses tampered, unexpected and duplicate records before connecting',async()=>{
  const {replayLocationWithdrawals}=await import('../scripts/publication-location-restore.mjs');
  const row={kind:'listing',publicationId:'10000000-0000-4000-8000-000000000001',withdrawnAt:'2026-11-28T00:00:00.123456Z',scope:'location'};
- const snapshot=rows=>JSON.stringify({version:2,scope:'blizhniy-location-withdrawals',rows});
+ const snapshot=rows=>JSON.stringify({version:3,scope:'blizhniy-location-withdrawals',rows});
  const hash=text=>createHash('sha256').update(text).digest('hex');
  const client={async query(){assert.fail('invalid checkpoints cannot reach the database');}};
  for(const [document,expected] of [
@@ -45,7 +51,9 @@ test('recovery refuses tampered, unexpected and duplicate records before connect
   [snapshot([{...row,address:'synthetic'}]),null],
   [snapshot([{...row,kind:'marquee'}]),null],
   [snapshot([{...row,scope:'unknown'}]),null],
-  [snapshot([]).replace('"version":2','"version":1'),null],
+  [snapshot([]).replace('"version":3','"version":2'),null],
+  [snapshot([{...row,scope:'avatar'}]),null],
+  [snapshot([{...row,scope:'photo:10000000-0000-8000-8000-000000000001'}]),null],
   [snapshot([{...row,withdrawnAt:'2026-02-30T00:00:00.123456Z'}]),null],
   [snapshot([row,row]),null],
  ]){

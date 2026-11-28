@@ -2,6 +2,7 @@ import { readAccountSessionToken } from "@/lib/account-cookie";
 import { AuthRequestError, authJson, readAuthJson } from "@/lib/auth-http";
 import { hashSessionToken } from "@/lib/identity";
 import { ListingDraftInputError, parseListingDraftId } from "@/lib/listing-draft-contract";
+import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
 import { hasLocationWithdrawalSchema } from "@/lib/publication-location-withdrawal";
@@ -23,15 +24,22 @@ export async function POST(request: Request) {
     }
     const input = body as Record<string, unknown>;
     const action = Object.hasOwn(input, "action") ? input.action : undefined;
-    const statusOnly = action === "status" || action === "publication-status";
+    const photoList = action === "photos";
+    const photoWrite = action === "withdraw-photo";
+    const statusOnly = action === "status" || action === "publication-status" || photoList;
     const full = action === "withdraw-publication" || action === "publication-status";
-    if (Object.keys(input).length !== (statusOnly || full ? 4 : 3)) return error(422, "INVALID_INPUT");
+    if (Object.keys(input).length !== (photoWrite ? 5 : statusOnly || full ? 4 : 3) ||
+        (photoWrite && !Object.hasOwn(input, 'photoId'))) return error(422, "INVALID_INPUT");
     const { kind } = input;
     if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
     }
     const publicationId = parseListingDraftId(input.publicationId);
     const actor = parseListingDraftId(input.expectedOwnerId);
+    let scope = full ? "publication" : photoList ? "photos" : "location";
+    if (photoWrite) {
+      scope = kind === "specialist" && input.photoId === "avatar" ? "avatar" : "photo:" + parseListingPhotoIds([input.photoId])[0];
+    }
     const ip = getTrustedProxyIp(request.headers);
     if (!ip) return error(403, "UNTRUSTED_INGRESS");
     const token = readAccountSessionToken(request);
@@ -40,14 +48,15 @@ export async function POST(request: Request) {
     if (!await hasLocationWithdrawalSchema(db)) return error(404, "NOT_FOUND");
     if (!await limiter.allowProduction("session", ip)) return error(429, "RATE_LIMITED");
     request.signal.throwIfAborted();
-    const { rows: [receipt] } = await db.query<{ withdrawnAt: string | null }>(
-      'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as "withdrawnAt"',
-      [hashSessionToken(token), actor, kind, publicationId, !statusOnly, full ? "publication" : "location"],
+    const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[] } }>(
+      'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as result',
+      [hashSessionToken(token), actor, kind, publicationId, !statusOnly, scope],
     );
-    if (!receipt || (receipt.withdrawnAt === null ? !statusOnly : typeof receipt.withdrawnAt !== "string")) {
+    if (photoList && Array.isArray(result?.photos)) return authJson({ kind, publicationId, photos: result.photos }, 200);
+    if (!result || (result.withdrawnAt === null ? !statusOnly : typeof result.withdrawnAt !== "string")) {
       return error(503, "LOCATION_UNAVAILABLE");
     }
-    return authJson({ kind, publicationId, withdrawnAt: receipt.withdrawnAt }, 200);
+    return authJson({ kind, publicationId, withdrawnAt: result.withdrawnAt, ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
   } catch (failure) {
     if (failure instanceof AuthRequestError) return error(failure.status, failure.code);
     if (failure instanceof ListingDraftInputError) return error(422, "INVALID_INPUT");

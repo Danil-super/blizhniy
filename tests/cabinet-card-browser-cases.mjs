@@ -8,6 +8,7 @@ import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 export async function testCabinetCardBrowser({context, page, origin}) {
   const owner = '12345678-1234-4321-8765-123456789abc';
   const photoId = '42345678-1234-4321-8765-123456789abc';
+  const secondPhoto = '52345678-1234-4321-8765-123456789abc';
   const states = ['draft', 'pending_payment', 'paid', 'published', 'sold', 'archived', 'expired', 'blocked'];
   const deadlines = {archived:'2026-11-25T21:00:00.000001Z',expired:'2026-11-24T21:00:00.000001Z'};
   const items = states.map((status, index) => ({id: `22345678-1234-4321-8765-123456789ab${index}`, revision: '2', kind: 'prodam',
@@ -20,6 +21,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let enrolled = true;
   let addressReceipt = null;
   let publicationReceipt = null;
+  let photoReceipt = null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -42,14 +44,24 @@ export async function testCabinetCardBrowser({context, page, origin}) {
     }
     if (url.pathname === '/api/account/media/read') {
       assert.equal(request.method(), 'POST'); assert.equal(request.postDataJSON().expectedOwnerId, owner);
+      if(request.postDataJSON().fileId===secondPhoto)return route.fulfill({contentType:'image/webp',body:pixels});
       assert.equal(request.postDataJSON().fileId, photoId); mediaReads++;
       return route.fulfill({contentType: 'image/webp', body: pixels});
+    }
+    if(url.pathname==='/api/account/publication-location'&&request.postDataJSON().action==='withdraw-photo'){
+      assert.equal(request.method(),'POST');
+      assert.deepEqual(request.postDataJSON(),{kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,action:'withdraw-photo',photoId:secondPhoto});
+      photoReceipt=deadlines.archived;
+      return route.fulfill({json:{kind:'listing',publicationId:items[1].id,photoId:secondPhoto,withdrawnAt:photoReceipt}});
     }
     if (url.pathname === '/api/account/publication-location') {
       const {action, ...target} = request.postDataJSON();
       assert.equal(request.method(), 'POST');
       assert.equal(request.headers()['x-blizhniy-request'], '1');
       assert.deepEqual(target, {kind:'listing', publicationId:items[1].id, expectedOwnerId:owner});
+      if(action==='photos')return route.fulfill({json:{kind:'listing',publicationId:items[1].id,photos:[
+        {id:photoId,withdrawnAt:null},{id:secondPhoto,withdrawnAt:photoReceipt},
+      ]}});
       if(action==='withdraw-publication')publicationReceipt=deadlines.archived;
       if(action==='publication-status'||action==='withdraw-publication')
         return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt}});
@@ -152,6 +164,20 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await menu.click();
   await waiting.getByRole('button',{name:'Публичный доступ',exact:true}).click();
   await address.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+  const photoSection=address.locator('summary').filter({hasText:'Видимость фотографий'});
+  await photoSection.click();
+  const picker=address.getByLabel('Выберите фото');
+  await picker.selectOption(secondPhoto);
+  await address.getByRole('img',{name:'Выбранное фото'}).waitFor();
+  await address.getByRole('button',{name:'Скрыть выбранное фото',exact:true}).click();
+  await address.getByRole('button',{name:'Подтвердить скрытие фото',exact:true}).click();
+  await address.getByText('Фото скрыто в этой публикации.',{exact:true}).waitFor();
+  await photoSection.click();
+  await photoSection.click();
+  await picker.selectOption(secondPhoto);
+  await address.getByText('Фото скрыто в этой публикации.',{exact:true}).waitFor();
+  await picker.selectOption(photoId);
+  await address.getByRole('button',{name:'Скрыть выбранное фото',exact:true}).waitFor();
   await address.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
   await address.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
   await address.getByText('Публикация скрыта.',{exact:true}).waitFor();

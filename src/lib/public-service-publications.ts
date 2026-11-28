@@ -2,7 +2,7 @@ import {parseServicePublicationForm,checkServicePublicationForm,type ServicePubl
 import {parseListingDraftId} from './listing-draft-contract.ts';import type {SpecialistProfile,FairApplication} from './types';
 import {validProfileName} from './cabinet-field-validation.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
-export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null;locationWithdrawn?:boolean};
+export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null;locationWithdrawn?:boolean};
 export type PublicMarquee={id:string;text:string;href?:string;publishedAt:string;expiresAt:string};
 export type PublicServiceMaterial=SpecialistProfile|FairApplication|PublicMarquee;
 /** Explicit public DTO: never spread the private form or copy its owner, contacts or review. */
@@ -17,7 +17,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
    !Number.isFinite(Date.parse(row.createdAt))||issues.length||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.kind==='marquee'?[]:form.photoIds))return null;
   if(form.kind==='marquee')return{id,text:row.testPublication===true?'ТЕСТ · '+form.title:form.title,publishedAt:row.publishedAt!,expiresAt:row.expiresAt!,...(form.href?{href:form.href}:{})};
   const showExactAddress=form.showExactAddress&&row.locationWithdrawn!==true;
-  const images=form.photoIds.map(photo=>`/api/service-publications/${id}/photos/${photo}`),location={showExactAddress,...(form.district&&!profileBound?{district:form.district}:{}),
+  const images=form.photoIds.filter(photo=>!row.withdrawnPhotos?.includes(photo)).map(photo=>`/api/service-publications/${id}/photos/${photo}`),location={showExactAddress,...(form.district&&!profileBound?{district:form.district}:{}),
    ...(showExactAddress?{address:form.address!,lat:form.latitude!,lng:form.longitude!}:{})};
   if(form.kind==='fair')return{id,participantName:form.title,city:form.cityName!,category:form.category!,description:form.description,productPhotos:images,
    ...(form.videoUrl?{videoUrl:form.videoUrl}:{}),phone:'',email:'',status:'published',paymentStatus:'succeeded',createdAt:row.createdAt,...location};

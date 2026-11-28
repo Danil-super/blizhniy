@@ -4,7 +4,7 @@ import type {ServicePublicationKind} from './service-publication-contract';impor
 import type {MediaFileRecord} from './media-files';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
-import {locationWithdrawalColumn,publicationWithdrawalEligibility} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,publicationWithdrawalEligibility,publicPhotoEligibility,publicAvatarSql,withdrawnPhotoColumn} from './publication-location-withdrawal';
 const source=`from app.service_publications s
  join app.users author on author.id=s.author_id and not author.is_blocked and author.email_verified_at is not null
  left join app.cities city on city.id=s.city_id and city.name=s.form->>'cityName'
@@ -23,10 +23,10 @@ function checkKind(kind:ServicePublicationKind){if(!['specialist','fair','marque
 /** Only current approved, paid, live rows; private editor reads never authorize public output. */
 export class PostgresPublicServiceStore{
  constructor(private readonly db:PostgresQueries,private readonly options:{specialistProfileIdentity?:boolean;testPublicationLabels?:boolean;enforcePublicationRestrictions?:boolean;enforceLocationWithdrawals?:boolean}={}){if(typeof window!=='undefined')throw Error('Public service storage is server-only');}
- private get privacyColumn(){return locationWithdrawalColumn('s',this.options.enforceLocationWithdrawals);}
+ private get privacyColumn(){return locationWithdrawalColumn('s',this.options.enforceLocationWithdrawals)+withdrawnPhotoColumn('s',this.options.enforceLocationWithdrawals);}
  private get eligible(){return live+publicationRestrictionEligibility('s',this.options.enforcePublicationRestrictions)+publicationWithdrawalEligibility('s',this.options.enforceLocationWithdrawals);}
  private get identityColumn(){return this.options.specialistProfileIdentity?`,case when s.kind='specialist' then
-  (select json_build_object('name',profile->>'name','avatarDataUrl',coalesce(profile->>'avatarDataUrl','')) from app.cabinet_profiles where user_id=s.author_id)
+  (select json_build_object('name',profile->>'name','avatarDataUrl',${publicAvatarSql(this.options.enforceLocationWithdrawals)}) from app.cabinet_profiles where user_id=s.author_id)
   end as "profileIdentity"`:'';}
  private async testLabel(kind?:ServicePublicationKind){
   if(!this.options.testPublicationLabels||kind==='fair')return '';
@@ -93,7 +93,7 @@ export class PostgresPublicServiceStore{
    json_build_object('id',image.id,'mimeType',image.mime_type,'width',image.width,'height',image.height,'size',image.size,'sha256',image.sha256) as record
    ${source} join app.service_publication_photos attachment on attachment.publication_id=s.id
    join app.media_objects image on image.id=attachment.media_id and image.owner_id=s.author_id and image.state='ready'
-   where ${this.eligible} and s.kind<>'marquee' ${this.options.specialistProfileIdentity?"and s.kind<>'specialist'":''} and s.id=$1 and image.id=$2 limit 1`,[id,media])).rows[0];
+   where ${this.eligible} and s.kind<>'marquee' ${this.options.specialistProfileIdentity?"and s.kind<>'specialist'":''} and s.id=$1 and image.id=$2${publicPhotoEligibility('s','image.id',this.options.enforceLocationWithdrawals)} limit 1`,[id,media])).rows[0];
   if(!row||!mapPublicServicePublication(row,Date.now())||!row.mediaIds.includes(media))return undefined;
   return{record:row.record,revision:row.revision,expiresAt:row.expiresAt!};
  }

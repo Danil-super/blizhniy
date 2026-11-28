@@ -18,18 +18,34 @@ export async function hasLocationWithdrawalSchema(db: PostgresQueries): Promise<
 export function locationWithdrawalColumn(alias: "l" | "w" | "s", enabled?: boolean): string {
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return ',true as "locationWithdrawn"';
   if (!enabled) return "";
-  return `,exists(${withdrawal(alias, 'location')}) as "locationWithdrawn"`;
+  return `,exists(${withdrawal(alias, "'location'")}) as "locationWithdrawn"`;
 }
 
-function withdrawal(alias: "l" | "w" | "s", scope: "location" | "publication") {
+function withdrawal(alias: "l" | "w" | "s", scope: string) {
   const kind = alias === "l" ? "'listing'" : `${alias}.kind`;
   return `select 1 from app_publication_privacy.location_withdrawals privacy
-    where privacy.kind=${kind} and privacy.publication_id=${alias}.id and privacy.scope='${scope}'`;
+    where privacy.kind=${kind} and privacy.publication_id=${alias}.id and privacy.scope=${scope}`;
 }
 
 export function publicationWithdrawalEligibility(alias: "l" | "w" | "s", enabled?: boolean): string {
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return " and false";
-  return enabled ? ` and not exists(${withdrawal(alias, 'publication')})` : "";
+  return enabled ? ` and not exists(${withdrawal(alias, "'publication'")})` : "";
+}
+
+export function publicPhotoEligibility(alias: "l" | "w" | "s", photo: "p.media_id" | "image.id", enabled?: boolean): string {
+  return enabled ? ` and not exists(${withdrawal(alias, "'photo:'||" + photo + "::text")})` : "";
+}
+
+export function withdrawnPhotoColumn(alias: "w" | "s", enabled?: boolean): string {
+  if (!enabled) return "";
+  const table = alias === "w" ? "app.work_publication_photos" : "app.service_publication_photos";
+  return `,array(select p.media_id::text from ${table} p where p.publication_id=${alias}.id
+    and exists(${withdrawal(alias, "'photo:'||p.media_id::text")})) as "withdrawnPhotos"`;
+}
+
+export function publicAvatarSql(enabled?: boolean): string {
+  const avatar = "coalesce(profile->>'avatarDataUrl','')";
+  return enabled ? `case when exists(${withdrawal('s', "'avatar'")}) then '' else ${avatar} end` : avatar;
 }
 
 export async function isPublicationWithdrawn(db: PostgresQueries, kind: string, id: string): Promise<boolean> {

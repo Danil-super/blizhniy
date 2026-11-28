@@ -7,7 +7,7 @@ import type {MediaFileRecord} from './media-files';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
-import {locationWithdrawalColumn,publicationWithdrawalEligibility} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,publicationWithdrawalEligibility,publicPhotoEligibility,withdrawnPhotoColumn} from './publication-location-withdrawal';
 export type PublicWorkPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 const references=`from app.work_publications w
  join app.users author on author.id=w.author_id and not author.is_blocked and author.email_verified_at is not null
@@ -43,12 +43,14 @@ export class PostgresPublicWorkStore{
  private readonly source:string;
   private readonly columns:string;
   private readonly available:string;
+  private readonly withdrawals:boolean;
  constructor(private readonly db:PostgresQueries,policy:{vacancyPostmoderation?:boolean;enforcePublicationRestrictions?:boolean;enforceLocationWithdrawals?:boolean}={}){
   if(typeof window!=='undefined')throw Error('Public work storage is server-only');
   if(policy.vacancyPostmoderation&&!readPostmoderationEnabled())throw Error('Local vacancy workflow unavailable');
   const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
   this.source=policy.vacancyPostmoderation?(simulation?localSource:postmoderationSource):source;
-   this.columns=columns+locationWithdrawalColumn('w',policy.enforceLocationWithdrawals)+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
+   this.withdrawals=policy.enforceLocationWithdrawals===true;
+   this.columns=columns+locationWithdrawalColumn('w',this.withdrawals)+withdrawnPhotoColumn('w',this.withdrawals)+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
     exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
      where i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.is_test
       and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'
@@ -95,7 +97,7 @@ export class PostgresPublicWorkStore{
    json_build_object('id',image.id,'mimeType',image.mime_type,'width',image.width,'height',image.height,'size',image.size,'sha256',image.sha256) as record
    ${this.source} join app.work_publication_photos attachment on attachment.publication_id=w.id
    join app.media_objects image on image.id=attachment.media_id and image.owner_id=w.author_id and image.state='ready'
-    where ${this.available} and w.id=$1 and image.id=$2 limit 1`,[id,media])).rows[0];
+    where ${this.available} and w.id=$1 and image.id=$2${publicPhotoEligibility('w','image.id',this.withdrawals)} limit 1`,[id,media])).rows[0];
   if(!row||!mapPublicWorkPublication(row,Date.now())||!row.mediaIds.includes(media))return undefined;
   return{record:row.record,revision:row.revision,expiresAt:row.expiresAt!};
  }
