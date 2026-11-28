@@ -2,7 +2,7 @@ import {parseWorkPublicationForm,checkWorkPublicationForm,type WorkPublicationKi
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {JobVacancy,WorkRequest} from './types';
 import type {PublicText} from './publication-location-withdrawal';
-export type PublicWorkRow={id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText};
+export type PublicWorkRow={id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText;linkHidden?:boolean};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Final public DTO boundary: no contacts, identifiers of owners or unchecked private form spread. */
@@ -26,7 +26,7 @@ export function mapPublicWorkPublication(row:PublicWorkRow,now:number):JobVacanc
    text[field]=row.publicText?.[field]??form[field];
   return{...common,organization,employerType:form.employerType,salary:form.salary&&form.salary!=='0.00'?`от ${money(form.salary)}`:money(null),
    logoText:organization.split(/\s+/).slice(0,2).map(word=>Array.from(word)[0]??'').join('').toLocaleUpperCase('ru'),logoTone:'blue',hasMapPoint:showExactAddress,
-   ...(form.website?{website:form.website}:{}),...(text.schedule?{schedule:text.schedule}:{}),...(text.workFormat?{workFormat:text.workFormat}:{}),
+   ...(form.website&&row.linkHidden!==true?{website:form.website}:{}),...(text.schedule?{schedule:text.schedule}:{}),...(text.workFormat?{workFormat:text.workFormat}:{}),
    ...(text.requirements?{requirements:text.requirements}:{}),...(text.responsibilities?{responsibilities:text.responsibilities}:{}),...(text.conditions?{conditions:text.conditions}:{})};
  }catch{return null;}
 }

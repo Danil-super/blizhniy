@@ -60,6 +60,20 @@ export function listingContactVisibility(enabled?: boolean): string {
   }).join("");
 }
 
+export function linkConsentRequired(): boolean {
+  return process.env.BLIZHNIY_PUBLICATION_LINK_CONSENT === "required";
+}
+
+export function publicLinkColumn(alias:"w"|"s",enabled?:boolean):string {
+  const required=linkConsentRequired();
+  if(!enabled)return required?',true as "linkHidden"':"";
+  const value=alias==='w'?"w.form->>'website'":"s.form->>case s.kind when 'marquee' then 'href' else 'videoUrl' end";
+  const missing=required
+    ?` or not app_publication_privacy.publication_is_consented(${alias}.kind,${alias}.id,${alias}.author_id,'link',to_jsonb(${value}))`
+    :"";
+  return `,(exists(${withdrawal(alias,"'link'")})${missing}) as "linkHidden"`;
+}
+
 export function locationWithdrawalColumn(alias: Alias, enabled?: boolean): string {
   const consent = locationConsentRequired();
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress" || consent && !enabled) {

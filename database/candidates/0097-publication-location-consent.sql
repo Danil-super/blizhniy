@@ -4,10 +4,11 @@ set local statement_timeout='10s';
 
 create table app_publication_privacy.publication_consents(
  id bigint generated always as identity primary key,
- kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair')),
+ kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair','marquee')),
  publication_id uuid not null,
- category text not null check(category='location' or kind='listing' and category in ('phone','messenger')
+ category text not null check(category='location' and kind<>'marquee' or kind='listing' and category in ('phone','messenger')
   or category='name' and kind in ('listing','specialist') or category='avatar' and kind='specialist'
+  or category='link' and kind in ('vacancy','fair','marquee')
   or kind in ('listing','vacancy','workRequest','fair') and category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
  subject_id uuid not null references app.users(id) on delete cascade,
  subject_name text not null,
@@ -40,19 +41,22 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
   'purpose','Показ '||case split_part(p_category,':',1) when 'phone' then 'номера телефона' when 'messenger' then 'ссылки на мессенджер'
    when 'name' then 'имени из профиля' when 'avatar' then 'фото профиля'
    when 'photo' then 'выбранной фотографии'
+   when 'link' then 'указанной ссылки'
    else 'точного адреса и координат' end||' этой публикации всем посетителям БЛИЖНЕГО, в том числе без входа в аккаунт.',
   'resource','https://xn----9sbphbgks4a4a.xn--p1ai'||case p_kind
    when 'listing' then '/obyavlenie/'||p_publication::text
    when 'vacancy' then '/vakansiya/'||p_publication::text
    when 'workRequest' then '/rabota/zakazy/'||p_publication::text
    when 'specialist' then '/specialist/'||p_publication::text
-   when 'fair' then '/yarmarka-masterov' end,
+   when 'fair' then '/yarmarka-masterov'
+   when 'marquee' then '/' end,
   'term','90 суток с момента подтверждения. Согласие можно отозвать раньше в кабинете или через поддержку.',
   'statement',case split_part(p_category,':',1) when 'phone' then 'Разрешаю оператору публиковать указанный номер телефона в этом объявлении.'
    when 'messenger' then 'Разрешаю оператору публиковать указанную ссылку на мессенджер в этом объявлении.'
    when 'name' then 'Разрешаю оператору публиковать указанное имя в этой публикации.'
    when 'avatar' then 'Разрешаю оператору публиковать показанное фото профиля в этой анкете.'
    when 'photo' then 'Разрешаю оператору публиковать выбранную фотографию в этой публикации.'
+   when 'link' then 'Разрешаю оператору публиковать указанную ссылку в этой публикации.'
    else 'Разрешаю оператору публиковать указанные ниже точный адрес и координаты этой публикации.' end)
   ||case when starts_with(p_category,'photo:') then jsonb_build_object(
    'attachment',substr(p_category,7),'fileResource','https://xn----9sbphbgks4a4a.xn--p1ai/api/'||
@@ -111,6 +115,7 @@ declare
 begin
  if p_category is null or not (p_category='location' or p_kind='listing' and p_category in ('phone','messenger')
   or p_category='name' and p_kind in ('listing','specialist') or p_category='avatar' and p_kind='specialist'
+  or p_category='link' and p_kind in ('vacancy','fair','marquee')
   or p_kind in ('listing','vacancy','workRequest','fair') and p_category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') then
   raise exception using errcode='PDW04',message='Invalid consent category';
  end if;
@@ -122,7 +127,7 @@ begin
 
  -- The existing command checks the verified owner and locks the session and publication.
  field_name:=case when p_category='location' then 'location' when p_category in ('name','avatar') then 'profileValue'
-  when starts_with(p_category,'photo:') then 'photoValue' else 'contact' end;
+  when starts_with(p_category,'photo:') then 'photoValue' when p_category='link' then 'linkValue' else 'contact' end;
  decision:=app_publication_privacy.withdraw_location(p_hash,p_actor,p_kind,p_publication,false,p_category);
  if decision->>'withdrawnAt' is not null or exists(
   select 1 from app_publication_privacy.location_withdrawals where kind=p_kind and publication_id=p_publication and scope='publication'
@@ -135,6 +140,13 @@ begin
  end if;
 
  case
+  when p_category='link' then
+   if p_kind='vacancy' then
+    select w.form into form from app.work_publications w where w.id=p_publication;
+   else
+    select s.form into form from app.service_publications s where s.id=p_publication;
+   end if;
+   facts:=to_jsonb(nullif(form->>case p_kind when 'vacancy' then 'website' when 'marquee' then 'href' else 'videoUrl' end,''));
   when field_name='photoValue' then
    photo_id:=substr(p_category,7)::uuid;
    select to_jsonb(m.sha256) into facts from app.media_objects m
@@ -169,7 +181,7 @@ begin
   case when not c.retired and c.fingerprint=current_fingerprint and c.subject_id=p_actor and c.expires_at>confirmed_at then c.expires_at end
  into last_id,last_offer,deadline from app_publication_privacy.publication_consents c
  where c.kind=p_kind and c.publication_id=p_publication and c.category=p_category order by c.id desc limit 1;
- current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,current_fingerprint,last_id)::text,'UTF8')),'hex');
+ current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,p_kind,p_publication,p_category,current_fingerprint,last_id)::text,'UTF8')),'hex');
  if p_expected is not null then
   if p_expected<>current_offer and (deadline is null or p_expected is distinct from last_offer) then
    raise exception using errcode='PDW05',message='Location changed';

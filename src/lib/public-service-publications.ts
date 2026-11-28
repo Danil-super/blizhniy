@@ -3,7 +3,7 @@ import {parseListingDraftId} from './listing-draft-contract.ts';import type {Spe
 import {validProfileName} from './cabinet-field-validation.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
 import type {PublicText} from './publication-location-withdrawal';
-export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;publicName?:string|null;avatarDataUrl:string}|null;locationWithdrawn?:boolean;publicText?:PublicText};
+export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;publicName?:string|null;avatarDataUrl:string}|null;locationWithdrawn?:boolean;publicText?:PublicText;linkHidden?:boolean};
 export type PublicMarquee={id:string;text:string;href?:string;publishedAt:string;expiresAt:string};
 export type PublicServiceMaterial=SpecialistProfile|FairApplication|PublicMarquee;
 /** Explicit public DTO: never spread the private form or copy its owner, contacts or review. */
@@ -18,14 +18,14 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
    !Number.isFinite(Date.parse(row.createdAt))||issues.length||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.kind==='marquee'?[]:form.photoIds))return null;
   if(form.kind==='marquee'){
    const text=(row.publicText?.title??form.title)||'Рекламная запись';
-   return{id,text:row.testPublication===true?'ТЕСТ · '+text:text,publishedAt:row.publishedAt!,expiresAt:row.expiresAt!,...(form.href?{href:form.href}:{})};
+   return{id,text:row.testPublication===true?'ТЕСТ · '+text:text,publishedAt:row.publishedAt!,expiresAt:row.expiresAt!,...(form.href&&row.linkHidden!==true?{href:form.href}:{})};
   }
   const showExactAddress=form.showExactAddress&&row.locationWithdrawn!==true;
   const images=form.photoIds.filter(photo=>!row.withdrawnPhotos?.includes(photo)).map(photo=>`/api/service-publications/${id}/photos/${photo}`),location={showExactAddress,...(form.district&&!profileBound?{district:form.district}:{}),
    ...(showExactAddress?{address:form.address!,lat:form.latitude!,lng:form.longitude!}:{})};
   const description=row.publicText?.description??form.description;
   if(form.kind==='fair')return{id,participantName:(row.publicText?.title??form.title)||'Участник Ярмарки',city:form.cityName!,category:form.category!,description,productPhotos:images,
-   ...(form.videoUrl?{videoUrl:form.videoUrl}:{}),phone:'',email:'',status:'published',paymentStatus:'succeeded',createdAt:row.createdAt,...location};
+   ...(form.videoUrl&&row.linkHidden!==true?{videoUrl:form.videoUrl}:{}),phone:'',email:'',status:'published',paymentStatus:'succeeded',createdAt:row.createdAt,...location};
   const price=form.price!,display=`${price.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${price.endsWith('.00')?'':','+price.split('.')[1]} ₽`;
   let name=form.title,specialistImages=images;
   if(Object.hasOwn(row,'profileIdentity')){
@@ -42,6 +42,6 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
    experience:form.experience&&originalDescription.includes(form.experience.trim())?null:experience,
   }):description;
   return{id,...(row.testPublication===true?{testPublication:true}:{}),name:row.testPublication===true?'ТЕСТ · '+name:name,profession:form.professionName!,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),skills:profileBound?'':skills!,description:about,city:form.cityName!,price:`от ${display}`,imageSeed:'',images:specialistImages,
-   ...(form.videoUrl&&!profileBound?{videoUrl:form.videoUrl}:{}),status:'published',createdAt:row.createdAt,publishedAt:row.publishedAt!,hasMapPoint:showExactAddress,...location};
+   ...(form.videoUrl&&!profileBound&&row.linkHidden!==true?{videoUrl:form.videoUrl}:{}),status:'published',createdAt:row.createdAt,publishedAt:row.publishedAt!,hasMapPoint:showExactAddress,...location};
  }catch{return null;}
 }

@@ -19,9 +19,10 @@ const labels={
  name:{title:'Согласие на публикацию имени',term:'имени',missing:'сохраните имя в профиле',hidden:'Имя скрыто.'},
  avatar:{title:'Согласие на публикацию фото профиля',term:'фото профиля',missing:'сохраните фото в профиле',hidden:'Фото профиля скрыто.'},
  photo:{title:'Согласие на публикацию выбранного фото',term:'выбранного фото',missing:'сохраните фото',hidden:'Фото скрыто.'},
+ link:{title:'Согласие на публикацию ссылки',term:'ссылки',missing:'сохраните ссылку',hidden:'Ссылка скрыта.'},
 };
 
-type Selection={category?:ContactConsentCategory|ProfileConsentCategory;photoId?:never}|{category:'photo';photoId:string};
+type Selection={category?:ContactConsentCategory|ProfileConsentCategory|'link';photoId?:never}|{category:'photo';photoId:string};
 
 export function PublicationConsent({category,photoId,...target}:PublicationPrivacyTarget&Selection){
  const label=labels[category??'location'];
@@ -46,6 +47,9 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
    const command=category==='photo'
     ? operation==='confirm'?{action:'confirm-photo-consent' as const,photoId,...fields}
      :{action:'photo-consent-status' as const,photoId}
+    :category==='link'
+    ? operation==='confirm'?{action:'confirm-link-consent' as const,...fields}
+     :{action:operation==='withdraw'?'withdraw-link' as const:'link-consent-status' as const}
     :profile
     ? operation==='confirm'?{action:'confirm-profile-consent' as const,category,...fields}
      :{action:operation==='withdraw'?'withdraw-profile-value' as const:'profile-consent-status' as const,category}
@@ -73,10 +77,11 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
    }
    if(!data.consent)throw Error();
    const next=data.consent as Omit<Consent,'value'>&{
-    location?:Location|null;contact?:string|null;profileValue?:string|null;photoValue?:string|null;withdrawnAt?:string|null;
+    location?:Location|null;contact?:string|null;profileValue?:string|null;photoValue?:string|null;linkValue?:string|null;withdrawnAt?:string|null;
    };
    const location=next.location;
-   const value=category==='photo'?(next.photoValue===photoId?photoId:null):profile?next.profileValue:category?next.contact:location&&
+   const value=category==='photo'?(next.photoValue===photoId?photoId:null):category==='link'?next.linkValue:
+    profile?next.profileValue:category?next.contact:location&&
     `${location.city}${location.address?', '+location.address:''}. Координаты ${location.latitude}, ${location.longitude}.`;
    if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||operation==='confirm'&&!next.expiresAt))throw Error();
    setConsent(value?{email:next.email,fingerprint:next.fingerprint,expiresAt:next.expiresAt,notice:next.notice,value}:null);

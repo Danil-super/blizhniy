@@ -127,13 +127,29 @@ test('work publication production pages preserve complete forms and use Russian 
       state.media.set(mediaId,{owner:state.active,photo});state.uploads.push(mediaId);state.sequence.push('upload');return route.fulfill({json:photo});
      }
     const body=request.postDataJSON();
+    if(url.pathname==='/api/account/publication-location'&&['link-consent-status','confirm-link-consent','withdraw-link'].includes(body.action)){
+     const {action}=body;
+     const target={kind:'vacancy',publicationId:chosen.vacancy.id,expectedOwnerId:state.active};
+     const fingerprint='f'.repeat(64);
+     assert.deepEqual(body,{...target,action,...(action==='confirm-link-consent'?{fingerprint,fullName:'Стендовый Пользователь'}:{})});
+     assert.equal(kind,'vacancy');
+     const response={kind,publicationId:body.publicationId,category:'link'};
+     if(action==='withdraw-link')return route.fulfill({json:{...response,withdrawnAt:stamp}});
+     return route.fulfill({json:{...response,consent:{
+      linkValue:'https://example.invalid/work-fixture',
+      notice:{version:'link-test',operator:'Оператор проверки',purpose:'Показ ссылки',resource:origin+'/vakansiya/'+body.publicationId,
+       term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать указанную ссылку.'},
+      email:'fixture@example.invalid',fingerprint,expiresAt:action==='confirm-link-consent'?'2027-01-25T21:00:00.000001Z':null,
+     }}});
+    }
     if(url.pathname==='/api/account/publication-location'&&['publication-status','withdraw-publication'].includes(body.action)){
      assert.equal(request.method(),'POST');
      const {action,...target}=body;
      assert.deepEqual(target,{kind,publicationId:chosen[kind].id,expectedOwnerId:state.active});
      if(!state.locationEnabled||!collection().has(body.publicationId))return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
      if(action==='withdraw-publication')state.publicationReceipt=stamp;
-     return route.fulfill({json:{kind,publicationId:body.publicationId,withdrawnAt:state.publicationReceipt??null}});
+     return route.fulfill({json:{kind,publicationId:body.publicationId,withdrawnAt:state.publicationReceipt??null,
+      ...(kind==='vacancy'&&!state.publicationReceipt?{linkConsent:true}:{})}});
     }
     if(url.pathname==='/api/account/publication-location'){
      assert.equal(request.method(),'POST');
@@ -348,6 +364,21 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
     assert.equal(await hide.count(),0);
     assert.equal(state.locationWrites,1);
+    if(kind==='vacancy'){
+     const linkConsent=page.getByRole('region',{name:'Согласие на публикацию ссылки'});
+     await linkConsent.getByRole('button',{name:'Открыть согласие на публикацию ссылки'}).click();
+     await linkConsent.getByText('https://example.invalid/work-fixture',{exact:true}).waitFor();
+     assert.equal(await linkConsent.getByRole('link').count(),0);
+     await linkConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Стендовый Пользователь');
+     const confirmLink=linkConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
+     assert.equal(await confirmLink.isDisabled(),true);
+     await linkConsent.getByRole('checkbox',{name:'Разрешаю публиковать указанную ссылку.'}).check();
+     await confirmLink.click();
+     await linkConsent.getByText(/Согласие на публикацию ссылки действует до/).waitFor();
+     await linkConsent.getByRole('button',{name:'Отозвать согласие'}).click();
+     await linkConsent.getByRole('button',{name:'Подтвердить отзыв'}).click();
+     await linkConsent.getByText('Ссылка скрыта.',{exact:true}).waitFor();
+    }
     await page.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
     await page.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
     await page.getByText('Публикация скрыта.',{exact:true}).waitFor();

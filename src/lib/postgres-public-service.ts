@@ -4,7 +4,7 @@ import type {ServicePublicationKind} from './service-publication-contract';impor
 import type {MediaFileRecord} from './media-files';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
-import {locationWithdrawalColumn,profileConsentRequired,publicationWithdrawalEligibility,publicPhotoEligibility,publicAvatarSql,publicProfileNameSql,withdrawnPhotoColumn,publicTextColumn} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,profileConsentRequired,publicationWithdrawalEligibility,publicLinkColumn,publicPhotoEligibility,publicAvatarSql,publicProfileNameSql,withdrawnPhotoColumn,publicTextColumn} from './publication-location-withdrawal';
 const source=`from app.service_publications s
  join app.users author on author.id=s.author_id and not author.is_blocked and author.email_verified_at is not null
  left join app.cities city on city.id=s.city_id and city.name=s.form->>'cityName'
@@ -23,7 +23,8 @@ function checkKind(kind:ServicePublicationKind){if(!['specialist','fair','marque
 /** Only current approved, paid, live rows; private editor reads never authorize public output. */
 export class PostgresPublicServiceStore{
  constructor(private readonly db:PostgresQueries,private readonly options:{specialistProfileIdentity?:boolean;testPublicationLabels?:boolean;enforcePublicationRestrictions?:boolean;enforceLocationWithdrawals?:boolean}={}){if(typeof window!=='undefined')throw Error('Public service storage is server-only');}
- private get privacyColumn(){return locationWithdrawalColumn('s',this.options.enforceLocationWithdrawals)+withdrawnPhotoColumn('s',this.options.enforceLocationWithdrawals)+publicTextColumn('s',this.options.enforceLocationWithdrawals);}
+ private get privacyColumn(){const enabled=this.options.enforceLocationWithdrawals;
+  return locationWithdrawalColumn('s',enabled)+withdrawnPhotoColumn('s',enabled)+publicTextColumn('s',enabled)+publicLinkColumn('s',enabled);}
  private get eligible(){return live+publicationRestrictionEligibility('s',this.options.enforcePublicationRestrictions)+publicationWithdrawalEligibility('s',this.options.enforceLocationWithdrawals);}
  private get profileIdentity(){return this.options.specialistProfileIdentity===true||profileConsentRequired();}
  private get identityColumn(){return this.profileIdentity?`,case when s.kind='specialist' then

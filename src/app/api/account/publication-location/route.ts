@@ -6,7 +6,7 @@ import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
-import { contactConsentRequired, hasLocationWithdrawalSchema, locationConsentRequired, photoConsentRequired, profileConsentRequired } from "@/lib/publication-location-withdrawal";
+import { contactConsentRequired, hasLocationWithdrawalSchema, linkConsentRequired, locationConsentRequired, photoConsentRequired, profileConsentRequired } from "@/lib/publication-location-withdrawal";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 export const runtime = "nodejs";
@@ -30,6 +30,10 @@ export async function POST(request: Request) {
     const photoStatus = action === "photo-consent-status";
     const photoGrant = action === "confirm-photo-consent";
     const photoConsent = photoStatus || photoGrant;
+    const linkStatus = action === "link-consent-status";
+    const linkGrant = action === "confirm-link-consent";
+    const linkWithdrawal = action === "withdraw-link";
+    const link = linkStatus || linkGrant || linkWithdrawal;
     const textList = action === "texts";
     const textWrite = action === "withdraw-text";
     const contactStatus = action === "contact-consent-status";
@@ -41,25 +45,28 @@ export async function POST(request: Request) {
     const profileWithdrawal = action === "withdraw-profile-value";
     const profile = profileStatus || profileWrite || profileWithdrawal;
     const categorized = contact || profile;
-    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus || photoStatus;
-    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite || photoGrant;
+    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus || photoStatus || linkStatus;
+    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite || photoGrant || linkGrant;
     const consent = consentStatus || consentWrite;
     const statusOnly = action === "status" || action === "publication-status" || photoList || textList;
     const full = action === "withdraw-publication" || action === "publication-status";
     if (contact && !contactConsentRequired() || profile && !profileConsentRequired() ||
         photoConsent && !photoConsentRequired() ||
-        consent && !categorized && !photoConsent && !locationConsentRequired()) return error(404, "NOT_FOUND");
+        link && !linkConsentRequired() ||
+        consent && !categorized && !photoConsent && !link && !locationConsentRequired()) return error(404, "NOT_FOUND");
     const { category, kind } = input;
+    const linkKind = kind === "vacancy" || kind === "fair" || kind === "marquee";
+    if (link && !linkKind) return error(422, "INVALID_INPUT");
     if (contact && (kind !== "listing" || (category !== "phone" && category !== "messenger"))) return error(422, "INVALID_INPUT");
     if (profile && !(category === "name" && (kind === "listing" || kind === "specialist") ||
         category === "avatar" && kind === "specialist")) return error(422, "INVALID_INPUT");
     if (photoConsent && kind !== "listing" && kind !== "vacancy" && kind !== "workRequest" && kind !== "fair") return error(422, "INVALID_INPUT");
-    const fieldWithdrawal = contactWithdrawal || profileWithdrawal;
+    const fieldWithdrawal = contactWithdrawal || profileWithdrawal || linkWithdrawal;
     const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || fieldWithdrawal ? 4 : 3;
     if (Object.keys(input).length !== keys + (categorized || photoConsent ? 1 : 0) ||
         ((photoWrite || photoConsent) && !Object.hasOwn(input, 'photoId')) ||
         (textWrite && !['field','fingerprint','start','end'].every(key => Object.hasOwn(input,key)))) return error(422, "INVALID_INPUT");
-    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite ? ["marquee"] : [])].includes(kind)) {
+    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite || link ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
     }
     const publicationId = parseListingDraftId(input.publicationId);
@@ -71,7 +78,7 @@ export async function POST(request: Request) {
         Array.from(fullName).length < 2 || Array.from(fullName).length > 160)) {
       return error(422, "INVALID_INPUT");
     }
-    const fieldScope = (contact && (category === "phone" || category === "messenger") ||
+    const fieldScope = link ? "link" : (contact && (category === "phone" || category === "messenger") ||
       profile && (category === "name" || category === "avatar")) ? category : "location";
     let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : fieldWithdrawal ? fieldScope : "location";
     if (photoWrite || photoConsent) {
@@ -100,7 +107,7 @@ export async function POST(request: Request) {
           consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
       );
       if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
-      return authJson({ kind, publicationId, ...(categorized ? { category: fieldScope } : {}),
+      return authJson({ kind, publicationId, ...(categorized || link ? { category: fieldScope } : {}),
         ...(photoConsent ? { photoId: scope.slice(6) } : {}), consent: row.result }, 200);
     }
     const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[]; texts?: unknown[] } }>(
@@ -118,6 +125,7 @@ export async function POST(request: Request) {
       ...(action === "publication-status" && kind === "listing" && contactConsentRequired() && result.withdrawnAt === null ? { contactConsent: true } : {}),
       ...(action === "publication-status" && (kind === "listing" || kind === "specialist") &&
           profileConsentRequired() && result.withdrawnAt === null ? { profileConsent: true } : {}),
+      ...(action === "publication-status" && linkKind && linkConsentRequired() && result.withdrawnAt === null ? { linkConsent: true } : {}),
       ...(fieldWithdrawal ? { category: fieldScope } : {}),
       ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
   } catch (failure) {

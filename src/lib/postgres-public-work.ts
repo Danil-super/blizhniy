@@ -7,7 +7,7 @@ import type {MediaFileRecord} from './media-files';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
-import {locationWithdrawalColumn,publicationWithdrawalEligibility,publicPhotoEligibility,withdrawnPhotoColumn,publicTextColumn} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,publicationWithdrawalEligibility,publicLinkColumn,publicPhotoEligibility,withdrawnPhotoColumn,publicTextColumn} from './publication-location-withdrawal';
 export type PublicWorkPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 const references=`from app.work_publications w
  join app.users author on author.id=w.author_id and not author.is_blocked and author.email_verified_at is not null
@@ -50,7 +50,7 @@ export class PostgresPublicWorkStore{
   const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
   this.source=policy.vacancyPostmoderation?(simulation?localSource:postmoderationSource):source;
    this.withdrawals=policy.enforceLocationWithdrawals===true;
-   this.columns=columns+locationWithdrawalColumn('w',this.withdrawals)+withdrawnPhotoColumn('w',this.withdrawals)+publicTextColumn('w',this.withdrawals)+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
+   this.columns=columns+locationWithdrawalColumn('w',this.withdrawals)+withdrawnPhotoColumn('w',this.withdrawals)+publicTextColumn('w',this.withdrawals)+publicLinkColumn('w',this.withdrawals)+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
     exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
      where i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.is_test
       and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'

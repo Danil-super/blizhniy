@@ -23,7 +23,7 @@ export function PublicationPrivacyActions(props:Props){
 function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whole:boolean}){
  const [receipt,setReceipt]=useState<string|null>(),[confirm,setConfirm]=useState(false);
  const [available,setAvailable]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false);
- const [consentEnabled,setConsentEnabled]=useState<{location?:boolean;contact?:boolean;profile?:boolean}>({});
+ const [consentEnabled,setConsentEnabled]=useState<{location?:boolean;contact?:boolean;profile?:boolean;link?:boolean}>({});
  const scope=useRef<AbortController|null>(null),button=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
  const savedHere=useRef(false);
 
@@ -45,7 +45,7 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
     parseListingDraftCursor({id:publicationId,updatedAt:data.withdrawnAt})!.updatedAt;
    savedHere.current=!statusOnly;
    setConsentEnabled(statusOnly?{location:!whole&&data.locationConsent===true,contact:whole&&data.contactConsent===true,
-    profile:whole&&data.profileConsent===true}:{});
+    profile:whole&&data.profileConsent===true,link:whole&&data.linkConsent===true}:{});
    setReceipt(next);setConfirm(false);
   }catch{
    if(!controller.signal.aborted){setConfirm(false);setError(true);}
@@ -93,6 +93,10 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
    <h4 className="font-semibold">Публичные данные профиля</h4>
    <PublicationConsent key={owner+'|'+publicationId+'|name'} owner={owner} kind={kind} publicationId={publicationId} category="name"/>
    {kind==='specialist'&&<PublicationConsent key={owner+'|'+publicationId+'|avatar'} owner={owner} kind={kind} publicationId={publicationId} category="avatar"/>}
+  </div>}
+ {whole&&consentEnabled.link&&receipt===null&&!error&&
+  <div className="my-3 rounded-lg border border-slate-200 p-3 text-sm">
+   <PublicationConsent key={owner+'|'+kind+'|'+publicationId+'|link'} owner={owner} kind={kind} publicationId={publicationId} category="link"/>
   </div>}
  </>;
 }
