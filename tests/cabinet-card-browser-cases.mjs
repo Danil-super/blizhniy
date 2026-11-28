@@ -19,6 +19,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let holdSession = null, mediaReads = 0, listReads = 0;
   let enrolled = true;
   let addressReceipt = null;
+  let publicationReceipt = null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -49,6 +50,9 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       assert.equal(request.method(), 'POST');
       assert.equal(request.headers()['x-blizhniy-request'], '1');
       assert.deepEqual(target, {kind:'listing', publicationId:items[1].id, expectedOwnerId:owner});
+      if(action==='withdraw-publication')publicationReceipt=deadlines.archived;
+      if(action==='publication-status'||action==='withdraw-publication')
+        return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt}});
       assert.ok(action === undefined || action === 'status');
       if (action === undefined) addressReceipt = deadlines.archived;
       return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt}});
@@ -133,10 +137,10 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await page.keyboard.press('Escape');
   const waiting=cards.locator('article').filter({has:page.getByRole('heading',{name:'Комод — pending_payment',exact:true})});
   const menu=waiting.locator('summary').filter({hasText:'Действия'});
-  const address=page.getByRole('dialog',{name:'Видимость точного адреса',exact:true});
+  const address=page.getByRole('dialog',{name:'Публичный доступ',exact:true});
   await page.setViewportSize({width:320,height:900});
   await menu.click();
-  await waiting.getByRole('button',{name:'Видимость адреса',exact:true}).click();
+  await waiting.getByRole('button',{name:'Публичный доступ',exact:true}).click();
   await address.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   assert.deepEqual(await address.evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
@@ -146,8 +150,11 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   assert.equal(await menu.evaluate(node=>document.activeElement===node),true);
   await page.reload();
   await menu.click();
-  await waiting.getByRole('button',{name:'Видимость адреса',exact:true}).click();
+  await waiting.getByRole('button',{name:'Публичный доступ',exact:true}).click();
   await address.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+  await address.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
+  await address.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
+  await address.getByText('Публикация скрыта.',{exact:true}).waitFor();
   assert.deepEqual(errors, []); assert.deepEqual(consoleErrors, []); assert.deepEqual(foreign, []); assert.deepEqual(writes, []);
 }
 

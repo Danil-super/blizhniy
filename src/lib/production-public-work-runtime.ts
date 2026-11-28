@@ -20,7 +20,7 @@ export async function handleProductionPublicWorkPhoto(request:Request,publicatio
   const config=readProductionAuthConfig();if(!config)return authJson({error:{code:'NOT_FOUND'}},404);
   return await createProductionPublicWorkPhotoHandler(config,async()=>{
    const {db}=await getProductionAccountDatabase(config);
-   return{store:new PostgresPublicWorkStore(db,{vacancyPostmoderation:readPostmoderationEnabled(),enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db)}),files:{read:async record=>(await getProductionMediaFileReader(config)).read(record)}};
+   return{store:new PostgresPublicWorkStore(db,{vacancyPostmoderation:readPostmoderationEnabled(),enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db),enforceLocationWithdrawals:await hasLocationWithdrawalSchema(db)}),files:{read:async record=>(await getProductionMediaFileReader(config)).read(record)}};
   })(request,publicationId,fileId);
  }catch{return authJson({error:{code:'MEDIA_UNAVAILABLE'}},503);}
 }

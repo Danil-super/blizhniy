@@ -14,7 +14,7 @@ export async function handleProductionPublicServicePhoto(request:Request,publica
   // Reuse the exact public-photo policy: authorize SQL before FS, recheck after FS,
   // shared four-read admission, bounded WebP, no-store and no private metadata.
   return await createProductionPublicWorkPhotoHandler(config,async()=>{
-   const {db}=await getProductionAccountDatabase(config);return{store:new PostgresPublicServiceStore(db,{specialistProfileIdentity:true,enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db)}),files:{read:async record=>(await getProductionMediaFileReader(config)).read(record)}};
+   const {db}=await getProductionAccountDatabase(config);return{store:new PostgresPublicServiceStore(db,{specialistProfileIdentity:true,enforcePublicationRestrictions:await hasPublicationRestrictionSchema(db),enforceLocationWithdrawals:await hasLocationWithdrawalSchema(db)}),files:{read:async record=>(await getProductionMediaFileReader(config)).read(record)}};
   },event=>console.info(JSON.stringify({...event,event:'public_service_photo'})))(request,publicationId,fileId);
  }catch{return authJson({error:{code:'MEDIA_UNAVAILABLE'}},503);}
 }

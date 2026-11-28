@@ -7,12 +7,19 @@ import {notifyAccountSessionChange} from '@/lib/local-account';
 
 type Props={
  owner:string;
- kind:'listing'|'vacancy'|'workRequest'|'specialist'|'fair';
+ kind:'listing'|'vacancy'|'workRequest'|'specialist'|'fair'|'marquee';
  publicationId:string;
  showUnavailable?:boolean;
 };
 
-export function PublicationLocationWithdrawal({owner,kind,publicationId,showUnavailable}:Props){
+export function PublicationPrivacyActions(props:Props){
+ return <>
+  {props.kind!=='marquee'&&<Withdrawal {...props} whole={false}/>}
+  <Withdrawal {...props} whole/>
+ </>;
+}
+
+function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whole:boolean}){
  const [receipt,setReceipt]=useState<string|null>(),[confirm,setConfirm]=useState(false);
  const [available,setAvailable]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false);
  const scope=useRef<AbortController|null>(null),button=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
@@ -27,7 +34,8 @@ export function PublicationLocationWithdrawal({owner,kind,publicationId,showUnav
     method:'POST',credentials:'same-origin',redirect:'error',cache:'no-store',
     signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)]),
     headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},
-    body:JSON.stringify({kind,publicationId,expectedOwnerId:owner,...(statusOnly?{action:'status'}:{})}),
+    body:JSON.stringify({kind,publicationId,expectedOwnerId:owner,
+     ...(whole?{action:statusOnly?'publication-status':'withdraw-publication'}:statusOnly?{action:'status'}:{})}),
    });
    if(controller.signal.aborted)return;
    if(statusOnly&&response.status===404){setAvailable(false);return;}
@@ -45,7 +53,7 @@ export function PublicationLocationWithdrawal({owner,kind,publicationId,showUnav
   }finally{
    if(!controller.signal.aborted)setBusy(false);
   }
- },[owner,kind,publicationId]);
+ },[owner,kind,publicationId,whole]);
 
  useEffect(()=>{
   const controller=new AbortController();
@@ -55,19 +63,20 @@ export function PublicationLocationWithdrawal({owner,kind,publicationId,showUnav
  },[request]);
  useEffect(()=>{if(receipt&&savedHere.current)result.current?.focus({preventScroll:true});},[receipt]);
 
- if(!available)return showUnavailable?<p className="px-3 py-2 text-sm text-slate-600">Управление адресом недоступно.</p>:null;
+ if(!available)return showUnavailable&&!whole?<p className="px-3 py-2 text-sm text-slate-600">Управление публичным доступом недоступно.</p>:null;
  if(receipt===undefined&&!error&&!showUnavailable)return null;
- return <section aria-label="Точный адрес" className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
-  {error?<><p role="status">Не удалось подтвердить состояние точного адреса.</p>
+ return <section aria-label={whole?'Доступ к публикации':'Точный адрес'} className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+  {error?<><p role="status">{whole?'Не удалось подтвердить состояние публикации.':'Не удалось подтвердить состояние точного адреса.'}</p>
    <button type="button" className={draftButton} disabled={busy} onClick={()=>void request(true)}>Проверить состояние</button></>:
-   receipt===undefined?<p role="status">Проверяем состояние адреса…</p>:
-   receipt?<p ref={result} tabIndex={-1} role="status">Точный адрес скрыт.</p>:
+   receipt===undefined?<p role="status">{whole?'Проверяем доступ к публикации…':'Проверяем состояние адреса…'}</p>:
+   receipt?<p ref={result} tabIndex={-1} role="status">{whole?'Публикация скрыта.':'Точный адрес скрыт.'}</p>:
    <>
-    {confirm&&<p>Адрес и точка на карте будут скрыты в этой карточке, в том числе после правок. Оплаченный срок сохраняется.</p>}
+    {confirm&&<p>{whole?'Карточка, описание и фото перестанут быть доступны посетителям. Оплаченный срок продолжит идти. Если нужно разместить исправленный материал, обратитесь в поддержку.':
+     'Адрес и точка на карте будут скрыты в этой карточке, в том числе после правок. Оплаченный срок сохраняется.'}</p>}
     <div className="flex flex-wrap gap-2">
      <button ref={button} type="button" className={draftButton} disabled={busy} onClick={()=>{
       if(confirm)void request(false);else setConfirm(true);
-     }}>{confirm?'Подтвердить скрытие':'Скрыть точный адрес'}</button>
+     }}>{confirm?(whole?'Подтвердить скрытие публикации':'Подтвердить скрытие'):(whole?'Скрыть всю публикацию':'Скрыть точный адрес')}</button>
      {confirm&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{setConfirm(false);button.current?.focus();}}>Оставить как есть</button>}
     </div>
    </>}

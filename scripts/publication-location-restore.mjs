@@ -10,9 +10,9 @@ const target = 'blizhniy_restore';
 const scope = 'blizhniy-location-withdrawals';
 const maxRows = 100000;
 const maxBytes = 16 * 1024 * 1024;
-const kinds = new Set(['listing', 'vacancy', 'workRequest', 'specialist', 'fair']);
+const kinds = new Set(['listing', 'vacancy', 'workRequest', 'specialist', 'fair', 'marquee']);
 const digest = data => createHash('sha256').update(data).digest('hex');
-const encode = rows => JSON.stringify({ version: 1, scope, rows });
+const encode = rows => JSON.stringify({ version: 2, scope, rows });
 
 function checkpointRows(document, expectedDigest) {
   try {
@@ -22,16 +22,17 @@ function checkpointRows(document, expectedDigest) {
     const { rows } = JSON.parse(document);
     if (!Array.isArray(rows) || rows.length > maxRows) throw Error();
     const ids = new Set();
-    const normalized = rows.map(({ kind, publicationId, withdrawnAt }) => {
-      if (!kinds.has(kind) || typeof publicationId !== 'string' ||
+    const normalized = rows.map(({ kind, publicationId, withdrawnAt, scope }) => {
+      if (!kinds.has(kind) || (scope !== 'publication' && (scope !== 'location' || kind === 'marquee')) ||
+          typeof publicationId !== 'string' ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(publicationId) ||
           typeof withdrawnAt !== 'string' || withdrawnAt.startsWith('0000-') ||
           !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(withdrawnAt) ||
           new Date(withdrawnAt).toISOString().slice(0, 19) !== withdrawnAt.slice(0, 19)) throw Error();
-      const id = kind + ':' + publicationId;
+      const id = kind + ':' + publicationId + ':' + scope;
       if (ids.has(id)) throw Error();
       ids.add(id);
-      return { kind, publicationId, withdrawnAt };
+      return { kind, publicationId, withdrawnAt, scope };
     });
     if (encode(normalized) !== document) throw Error();
     return normalized;
@@ -50,8 +51,8 @@ async function checkDatabase(client, database) {
 export async function captureLocationWithdrawals(client) {
   await checkDatabase(client, source);
   const { rows } = await client.query(`select kind,publication_id::text as "publicationId",
-    to_char(withdrawn_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "withdrawnAt"
-    from ${table} order by kind collate "C",publication_id limit ${maxRows + 1}`);
+    to_char(withdrawn_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "withdrawnAt",scope
+    from ${table} order by kind collate "C",publication_id,scope collate "C" limit ${maxRows + 1}`);
   const document = encode(rows), sha256 = digest(document);
   return { count: checkpointRows(document, sha256).length, document, sha256 };
 }
@@ -74,11 +75,11 @@ export async function replayLocationWithdrawals(client, document, sha256) {
     await client.query("set local statement_timeout='30s'");
     await assertClosed(client);
     await client.query('lock table ' + table + ' in share row exclusive mode');
-    const input = 'jsonb_to_recordset($1::jsonb) as r(kind text,"publicationId" uuid,"withdrawnAt" timestamptz)';
-    const { rowCount: inserted } = await client.query(`insert into ${table}(kind,publication_id,withdrawn_at)
-      select kind,"publicationId","withdrawnAt" from ${input} on conflict (kind,publication_id) do nothing`, [JSON.stringify(records)]);
+    const input = 'jsonb_to_recordset($1::jsonb) as r(kind text,"publicationId" uuid,"withdrawnAt" timestamptz,scope text)';
+    const { rowCount: inserted } = await client.query(`insert into ${table}(kind,publication_id,withdrawn_at,scope)
+      select kind,"publicationId","withdrawnAt",scope from ${input} on conflict (kind,publication_id,scope) do nothing`, [JSON.stringify(records)]);
     const { rows: [result] } = await client.query(`select not exists(select 1 from ${input}
-      left join ${table} w on w.kind=r.kind and w.publication_id=r."publicationId"
+      left join ${table} w on w.kind=r.kind and w.publication_id=r."publicationId" and w.scope=r.scope
       where w.withdrawn_at is distinct from r."withdrawnAt") as matches`, [JSON.stringify(records)]);
     if (result?.matches !== true) throw new Error('Withdrawal checkpoint conflicts with restored data');
     await assertClosed(client);

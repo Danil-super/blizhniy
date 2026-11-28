@@ -77,6 +77,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
     assert.equal(request.headers()['x-blizhniy-request'],'1');
     const {action,...target}=body;
     assert.deepEqual(target,{expectedOwnerId:owner,kind:'listing',publicationId:id});
+    if(action==='publication-status')return route.fulfill({json:{kind:'listing',publicationId:id,withdrawnAt:null}});
     assert.ok(action===undefined||action==='status');
     if(action===undefined){
      locationReceipt='2026-10-18T00:00:00.123456Z';

@@ -13,6 +13,7 @@ export function workPublicationModule(name,extra={}){
   './listing-draft-contract.ts':drafts,'./media-limits.ts':limits,'./cabinet-field-validation.ts':fields,
   './listing-workflow-config':loadLocalPrimaryModule('listing-workflow-config'),
   './publication-restriction-eligibility':loadLocalPrimaryModule('publication-restriction-eligibility'),
+  './publication-location-withdrawal':loadLocalPrimaryModule('publication-location-withdrawal'),
   './specialist-checkout-config':loadLocalPrimaryModule('specialist-checkout-config'),
   './application-contact-views-config':loadLocalPrimaryModule('application-contact-views-config'),
   './specialist-application-profile.ts':loadLocalPrimaryModule('specialist-application-profile'),

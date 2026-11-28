@@ -18,7 +18,23 @@ export async function hasLocationWithdrawalSchema(db: PostgresQueries): Promise<
 export function locationWithdrawalColumn(alias: "l" | "w" | "s", enabled?: boolean): string {
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return ',true as "locationWithdrawn"';
   if (!enabled) return "";
+  return `,exists(${withdrawal(alias, 'location')}) as "locationWithdrawn"`;
+}
+
+function withdrawal(alias: "l" | "w" | "s", scope: "location" | "publication") {
   const kind = alias === "l" ? "'listing'" : `${alias}.kind`;
-  return `,exists(select 1 from app_publication_privacy.location_withdrawals privacy
-    where privacy.kind=${kind} and privacy.publication_id=${alias}.id) as "locationWithdrawn"`;
+  return `select 1 from app_publication_privacy.location_withdrawals privacy
+    where privacy.kind=${kind} and privacy.publication_id=${alias}.id and privacy.scope='${scope}'`;
+}
+
+export function publicationWithdrawalEligibility(alias: "l" | "w" | "s", enabled?: boolean): string {
+  if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return " and false";
+  return enabled ? ` and not exists(${withdrawal(alias, 'publication')})` : "";
+}
+
+export async function isPublicationWithdrawn(db: PostgresQueries, kind: string, id: string): Promise<boolean> {
+  if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return true;
+  if (!await hasLocationWithdrawalSchema(db)) return false;
+  const result = await db.query("select 1 from app_publication_privacy.location_withdrawals where kind=$1 and publication_id=$2 and scope='publication'", [kind, id]);
+  return result.rows.length > 0;
 }

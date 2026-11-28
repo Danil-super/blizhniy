@@ -127,6 +127,14 @@ test('work publication production pages preserve complete forms and use Russian 
       state.media.set(mediaId,{owner:state.active,photo});state.uploads.push(mediaId);state.sequence.push('upload');return route.fulfill({json:photo});
      }
     const body=request.postDataJSON();
+    if(url.pathname==='/api/account/publication-location'&&['publication-status','withdraw-publication'].includes(body.action)){
+     assert.equal(request.method(),'POST');
+     const {action,...target}=body;
+     assert.deepEqual(target,{kind,publicationId:chosen[kind].id,expectedOwnerId:state.active});
+     if(!state.locationEnabled||!collection().has(body.publicationId))return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+     if(action==='withdraw-publication')state.publicationReceipt=stamp;
+     return route.fulfill({json:{kind,publicationId:body.publicationId,withdrawnAt:state.publicationReceipt??null}});
+    }
     if(url.pathname==='/api/account/publication-location'){
      assert.equal(request.method(),'POST');
      const {action,...target}=body;
@@ -340,6 +348,12 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
     assert.equal(await hide.count(),0);
     assert.equal(state.locationWrites,1);
+    await page.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
+    await page.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
+    await page.getByText('Публикация скрыта.',{exact:true}).waitFor();
+    await page.reload();
+    await page.getByText('Публикация скрыта.',{exact:true}).waitFor();
+    assert.deepEqual(collection().get(id),current);
    });
    await run(kind+' owner switch removes a private unsaved form and its selected file without writing it under another account',kind,async({page,state})=>{
     await page.goto(origin+chosen[kind].path);await fillWorkForm(page,kind,pixels);

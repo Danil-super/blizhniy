@@ -8,6 +8,7 @@ import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavail
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {isPublicationRestricted} from './publication-restriction-eligibility';
+import {isPublicationWithdrawn} from './publication-location-withdrawal';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {readHostedPlacementRenewalOwner} from './placement-renewal-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
@@ -124,6 +125,7 @@ export class PostgresListingCheckoutStore{
   }
   const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision,{allowPlaced:this.policy.renewals===true,checkBookingDates:true});
   if(!check.checksPassed||!check.tariff||check.tariff.amount==='0.00')throw new ListingCheckoutUnavailableError();
+  if(await isPublicationWithdrawn(tx,'listing',id))throw new ListingCheckoutUnavailableError();
   if(this.policy.postmoderation){
    const blocked=await tx.query('select listing_id from app.listing_blocks where listing_id=$1',[id]);
    if(blocked.rowCount!==0)throw new ListingCheckoutUnavailableError();

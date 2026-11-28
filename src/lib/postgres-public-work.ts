@@ -7,7 +7,7 @@ import type {MediaFileRecord} from './media-files';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {professionFormSql} from './profession-reference';
 import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
-import {locationWithdrawalColumn} from './publication-location-withdrawal';
+import {locationWithdrawalColumn,publicationWithdrawalEligibility} from './publication-location-withdrawal';
 export type PublicWorkPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 const references=`from app.work_publications w
  join app.users author on author.id=w.author_id and not author.is_blocked and author.email_verified_at is not null
@@ -53,7 +53,7 @@ export class PostgresPublicWorkStore{
      where i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.is_test
       and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'
       and f.published_at=w.published_at and f.expires_at=w.expires_at) as "testPublication"`:'');
-   this.available=live+publicationRestrictionEligibility('w',policy.enforcePublicationRestrictions)+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
+   this.available=live+publicationRestrictionEligibility('w',policy.enforcePublicationRestrictions)+publicationWithdrawalEligibility('w',policy.enforceLocationWithdrawals)+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
  }
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
   checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();

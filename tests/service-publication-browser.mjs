@@ -33,6 +33,15 @@ test('service production pages use Russian cookie forms, preserve unknown result
     }
     assert.equal(request.headers().authorization,undefined,'service forms never send legacy bearer');const body=request.postData()?request.headers()['content-type']==='application/json'?request.postDataJSON():null:null;
     if(url.pathname==='/api/account/session')return route.fulfill({headers:kind==='specialist'?{'X-Blizhniy-Specialist-Test':'1'}:{},json:{user:{id:state.owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});
+    if(url.pathname==='/api/account/publication-location'&&['publication-status','withdraw-publication'].includes(body.action)){
+     assert.equal(request.method(),'POST');
+     assert.equal(request.headers()['x-blizhniy-request'],'1');
+     const {action,...target}=body;
+     assert.deepEqual(target,{expectedOwnerId:state.owner,kind,publicationId:id});
+     if(!state.row)return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+     if(action==='withdraw-publication')state.publicationReceipt=stamp;
+     return route.fulfill({json:{kind,publicationId:id,withdrawnAt:state.publicationReceipt??null}});
+    }
     if(url.pathname==='/api/account/publication-location'){
      assert.notEqual(kind,'marquee','advertising text has no address control');
      assert.equal(request.method(),'POST');
@@ -136,6 +145,11 @@ test('service production pages use Russian cookie forms, preserve unknown result
      await page.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
      assert.deepEqual(state.row,unchanged);
     }
+    const unmodified=state.row;
+    await page.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
+    await page.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
+    await page.getByText('Публикация скрыта.',{exact:true}).waitFor();
+    assert.deepEqual(state.row,unmodified);
     await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
     for(const width of [320,768,1440]){
      await page.setViewportSize({width,height:1000});
@@ -177,6 +191,7 @@ test('service production pages use Russian cookie forms, preserve unknown result
      return route.fulfill({json:saved});
     }
     if(url.pathname==='/api/account/service-moderation')return route.fulfill({json:{id:reviewId,revision:'1',state:'rejected',note:'Исправьте синтетическую ссылку'}});
+    if(url.pathname==='/api/account/publication-location')return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
     unexpected.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
    });
    try{

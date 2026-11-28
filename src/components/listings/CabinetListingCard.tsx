@@ -1,7 +1,7 @@
 "use client";
 
 import Image from 'next/image';
-import {PublicationLocationWithdrawal} from '@/components/PublicationLocationWithdrawal';
+import {PublicationPrivacyActions} from '@/components/PublicationPrivacyActions';
 import Link from 'next/link';
 import {ImageIcon, MapPin} from 'lucide-react';
 import {useEffect, useRef, useState, type ReactNode} from 'react';
@@ -99,7 +99,7 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
       {!managePublication&&editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
       {!managePublication&&item.card.status === 'published' && <Link href={`/obyavlenie/${item.id}`} className={action}>Посмотреть</Link>}
       {['draft','pending_payment','paid'].includes(item.card.status)&&<button ref={opener} type="button" className={action} aria-haspopup="dialog" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>Статус и оплата</button>}
-      {!managePublication&&<button ref={addressTrigger} type="button" aria-haspopup="dialog" className={action} onClick={openAddress}>Видимость адреса</button>}
+      {!managePublication&&<button ref={addressTrigger} type="button" aria-haspopup="dialog" className={action} onClick={openAddress}>Публичный доступ</button>}
       {managePublication&&<details ref={addressMenu} data-listing-actions name={`listing-actions-${owner}`} className="relative min-w-0 flex-1"><summary className={`${action} w-full cursor-pointer list-none`}>Действия</summary>
        <div className="absolute bottom-full right-0 z-30 mb-2 w-60 max-w-[80vw] rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
         {['draft','published','archived','blocked'].includes(item.card.status)&&<Link href={`/razmestit/obyavlenie?draft=${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Редактировать</Link>}
@@ -109,7 +109,7 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
         {item.card.status==='blocked'&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} onChanged={onChanged}/>}
         {editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
         {!['draft','published','archived','blocked'].includes(item.card.status)&&<p className="px-3 py-2 text-sm text-slate-600">Статус объявления указан в карточке.</p>}
-        <button type="button" aria-haspopup="dialog" className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={openAddress}>Видимость адреса</button>
+        <button type="button" aria-haspopup="dialog" className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-semibold text-blue-800 hover:bg-blue-50" onClick={openAddress}>Публичный доступ</button>
        </div>
       </details>}
     </div>
@@ -120,9 +120,9 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
     </dialog>}</div>
     {addressOpen&&<dialog ref={addressDialog} aria-labelledby={`${detailsId}-address-title`} onCancel={event=>{event.preventDefault();closeAddress();}}
      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-5 text-slate-950 shadow-xl backdrop:bg-slate-950/40">
-     <div className="flex items-start justify-between gap-3"><h2 id={`${detailsId}-address-title`} className="break-words text-lg font-bold">Видимость точного адреса</h2>
+     <div className="flex items-start justify-between gap-3"><h2 id={`${detailsId}-address-title`} className="break-words text-lg font-bold">Публичный доступ</h2>
       <button type="button" autoFocus className={action} onClick={closeAddress}>Закрыть</button></div>
-     <PublicationLocationWithdrawal owner={owner} kind="listing" publicationId={item.id} showUnavailable/>
+     <PublicationPrivacyActions owner={owner} kind="listing" publicationId={item.id} showUnavailable/>
     </dialog>}
       </div>
   </article>;

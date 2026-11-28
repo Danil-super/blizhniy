@@ -5,15 +5,16 @@ set local statement_timeout='10s';
 create schema app_publication_privacy;
 revoke all on schema app_publication_privacy from public;
 create table app_publication_privacy.location_withdrawals(
- kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair')),
+ kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair','marquee')),
  publication_id uuid not null,
  withdrawn_at timestamptz not null default clock_timestamp() check(isfinite(withdrawn_at)),
- primary key(kind,publication_id)
+ scope text not null default 'location' check(scope='publication' or scope='location' and kind<>'marquee'),
+ primary key(kind,publication_id,scope)
 );
 revoke all on app_publication_privacy.location_withdrawals from public;
 
 -- A withdrawal is independent of the editable or paid revision.
-create function app_publication_privacy.withdraw_location(p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_apply boolean default true)
+create function app_publication_privacy.withdraw_location(p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_apply boolean default true,p_scope text default 'location')
  returns text language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
 declare
  actor_version bigint;
@@ -25,7 +26,8 @@ begin
   or p_hash is null or octet_length(p_hash)<>64 or p_hash !~ '^[a-f0-9]+$' or p_actor is null then
   raise exception using errcode='PDW01',message='Publication owner required';
  end if;
- if p_publication is null or p_apply is null or p_kind is null or p_kind not in ('listing','vacancy','workRequest','specialist','fair') then
+ if p_publication is null or p_apply is null or p_kind is null or p_kind not in ('listing','vacancy','workRequest','specialist','fair','marquee')
+  or p_scope is null or p_scope not in ('location','publication') or (p_scope='location' and p_kind='marquee') then
   raise exception using errcode='PDW02',message='Invalid publication';
  end if;
 
@@ -56,19 +58,19 @@ begin
  end if;
 
  if p_apply then
-  insert into app_publication_privacy.location_withdrawals(kind,publication_id)
-   values(p_kind,p_publication) on conflict do nothing;
+  insert into app_publication_privacy.location_withdrawals(kind,publication_id,scope)
+   values(p_kind,p_publication,p_scope) on conflict do nothing;
  end if;
  select w.withdrawn_at into receipt from app_publication_privacy.location_withdrawals w
-  where w.kind=p_kind and w.publication_id=p_publication;
+  where w.kind=p_kind and w.publication_id=p_publication and w.scope=p_scope;
  if session_expires<=clock_timestamp() or session_seen<=clock_timestamp()-interval '30 minutes' then
   raise exception using errcode='PDW01',message='Publication owner required';
  end if;
  return to_char(receipt at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
 end;
 $$;
-revoke all on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean) from public;
+revoke all on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean,text) from public;
 grant usage on schema app_publication_privacy to blizhniy_runtime;
-grant select(kind,publication_id) on app_publication_privacy.location_withdrawals to blizhniy_runtime;
-grant execute on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean) to blizhniy_runtime;
+grant select(kind,publication_id,scope) on app_publication_privacy.location_withdrawals to blizhniy_runtime;
+grant execute on function app_publication_privacy.withdraw_location(text,uuid,text,uuid,boolean,text) to blizhniy_runtime;
 commit;

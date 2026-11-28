@@ -1,5 +1,6 @@
 import {readListingVisibilityPolicy} from './listing-public-eligibility';
 import {hasPublicationRestrictionSchema} from './publication-restriction-eligibility';
+import {hasLocationWithdrawalSchema} from './publication-location-withdrawal';
 import {PostgresPublicListingStore} from './postgres-public-listings';
 import {PostgresPublicWorkStore} from './postgres-public-work';
 import {PostgresPublicServiceStore} from './postgres-public-service';
@@ -39,12 +40,13 @@ export class PostgresPublicSearchStore{
      if(bytes>16777216)throw new PublicSearchBudgetError();return result;
     }};
     const postmoderation=this.options.postmoderation===true;
-    const visibility=options.verifyListingBlocks?await readListingVisibilityPolicy(tx,postmoderation):{postmoderation};
+    const visibility=options.verifyListingBlocks?await readListingVisibilityPolicy(tx,postmoderation):{postmoderation,enforceLocationWithdrawals:await hasLocationWithdrawalSchema(tx)};
+    const {enforceLocationWithdrawals}=visibility;
     const enforcePublicationRestrictions=databasesWithPublicationRestrictions.has(this.db)||await hasPublicationRestrictionSchema(tx);
     if(enforcePublicationRestrictions)databasesWithPublicationRestrictions.add(this.db);
     const listings=new PostgresPublicListingStore(tx,visibility),
-     work=new PostgresPublicWorkStore(tx,{vacancyPostmoderation:this.options.postmoderation,enforcePublicationRestrictions}),
-     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity,testPublicationLabels:true,enforcePublicationRestrictions});
+     work=new PostgresPublicWorkStore(tx,{vacancyPostmoderation:this.options.postmoderation,enforcePublicationRestrictions,enforceLocationWithdrawals}),
+     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity,testPublicationLabels:true,enforcePublicationRestrictions,enforceLocationWithdrawals});
     const scopes={listing:listings.searchScope(),work:work.searchScope(),service:services.searchScope()};
     let position:PublicSearchAnchor|null=cursor?anchorOf({...cursor,metadata:{}}):null,skip=cursor?0:(input.page-1)*24,exhausted=false;
     const accepted:Array<{candidate:Candidate;result:PublicSearchResult}>=[];

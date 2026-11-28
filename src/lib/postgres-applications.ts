@@ -8,6 +8,7 @@ import {professionFormSql} from './profession-reference';
 import {hashSessionToken} from './identity';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {hasPublicationRestrictionSchema,publicationRestrictionEligibility} from './publication-restriction-eligibility';
+import {hasLocationWithdrawalSchema,publicationWithdrawalEligibility} from './publication-location-withdrawal';
 import {readApplicationContactViewsMode} from './application-contact-views-config';
 import {PostgresPublicWorkStore} from './postgres-public-work';import {PostgresPublicServiceStore} from './postgres-public-service';
 import {enqueueNotificationInTransaction} from './postgres-notification-inbox';import type {PostgresDatabase,PostgresQueries} from './postgres';
@@ -89,7 +90,8 @@ export class PostgresApplicationStore{
   const specialist=(await tx.query<{id:string;revision:string;form:unknown}>(`select id,revision::text as revision,${professionFormSql()} as form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update`,[actor])).rows[0];
   // Re-read eligibility in separate statements after all potentially waiting resource locks.
   const enforcePublicationRestrictions=await hasPublicationRestrictionSchema(tx,'checkout');
-  const work=await new PostgresPublicWorkStore(tx,{...this.policy,enforcePublicationRestrictions}).read(kind,id);
+  const enforceLocationWithdrawals=await hasLocationWithdrawalSchema(tx);
+  const work=await new PostgresPublicWorkStore(tx,{...this.policy,enforcePublicationRestrictions,enforceLocationWithdrawals}).read(kind,id);
   if(!work)throw new ApplicationAccessError();
   if(!specialist)throw new ApplicationEligibilityError();
   let form:ServicePublicationForm;try{form=parseServicePublicationForm('specialist',specialist.form);}catch{throw new ApplicationEligibilityError();}
@@ -105,10 +107,10 @@ export class PostgresApplicationStore{
     join app.specialist_categories p on p.id=s.profession_id and p.active
      and (not(s.form ? 'professionId') or s.form->>'professionId'=p.id::text)
     where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null
-     ${publicationRestrictionEligibility('s',enforcePublicationRestrictions)}`,[specialist.id,actor,form.cityName]);
+     ${publicationRestrictionEligibility('s',enforcePublicationRestrictions)}${publicationWithdrawalEligibility('s',enforceLocationWithdrawals)}`,[specialist.id,actor,form.cityName]);
    if(references.rowCount!==1)throw new ApplicationEligibilityError();
    about=specialistAbout(form);
-  }else if(!await new PostgresPublicServiceStore(tx,{enforcePublicationRestrictions}).read('specialist',specialist.id))throw new ApplicationEligibilityError();
+  }else if(!await new PostgresPublicServiceStore(tx,{enforcePublicationRestrictions,enforceLocationWithdrawals}).read('specialist',specialist.id))throw new ApplicationEligibilityError();
   const snapshot:ApplicationProfileSnapshot={name:form.title,profession:form.professionName!,price:form.price!,skills:about?.slice(0,500).replace(/[\uD800-\uDBFF]$/,'')??form.skills!,
    ...(about!==undefined?{about}:{}),phone:form.contactPhone,email:form.email,messengerUrl:form.messengerUrl};
   return{target:{id,kind,title:work.title,revision:target.revision},specialist:{id:specialist.id,revision:specialist.revision,snapshot}};

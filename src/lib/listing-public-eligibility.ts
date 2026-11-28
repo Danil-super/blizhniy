@@ -1,4 +1,5 @@
 import type { PostgresQueries } from './postgres';
+import {hasLocationWithdrawalSchema,publicationWithdrawalEligibility} from './publication-location-withdrawal';
 
 /** Fixed SQL fragments shared by public cards and booking admission. Never accept SQL or names from callers. */
 export const publicListingSource=`from app.listings l
@@ -20,21 +21,22 @@ export const postmoderationListingSource=`from app.listings l
 export const postmoderationListingLive=`${publicListingLive} and not exists(select 1 from app.listing_blocks block where block.listing_id=l.id)`;
 
 
-export type ListingVisibilityPolicy = { postmoderation?: boolean; enforceBlocks?: boolean };
+export type ListingVisibilityPolicy = { postmoderation?: boolean; enforceBlocks?: boolean; enforceLocationWithdrawals?: boolean };
 
-export function listingVisibility({ postmoderation, enforceBlocks }: ListingVisibilityPolicy) {
+export function listingVisibility({ postmoderation, enforceBlocks, enforceLocationWithdrawals }: ListingVisibilityPolicy) {
  return {
   source: postmoderation ? postmoderationListingSource : publicListingSource,
-  eligible: `${postmoderation || enforceBlocks ? postmoderationListingLive : publicListingLive} and ${publicListingPhotos}`,
+  eligible: `${postmoderation || enforceBlocks ? postmoderationListingLive : publicListingLive} and ${publicListingPhotos}${publicationWithdrawalEligibility('l',enforceLocationWithdrawals)}`,
  };
 }
 
 // Older schemas have no block table. Once installed, the record takes precedence in either workflow.
 export async function readListingVisibilityPolicy(db: PostgresQueries, postmoderation: boolean): Promise<ListingVisibilityPolicy> {
- if (postmoderation) return { postmoderation, enforceBlocks: true };
+ const enforceLocationWithdrawals=await hasLocationWithdrawalSchema(db);
+ if (postmoderation) return { postmoderation, enforceBlocks: true, enforceLocationWithdrawals };
  const row = (await db.query<{ installed: boolean }>(
   "select to_regclass('app.listing_blocks') is not null as installed", [], "bounded-read",
  )).rows[0];
  if (typeof row?.installed !== 'boolean') throw new Error('Listing block capability unavailable');
- return { postmoderation, enforceBlocks: row.installed };
+ return { postmoderation, enforceBlocks: row.installed, enforceLocationWithdrawals };
 }

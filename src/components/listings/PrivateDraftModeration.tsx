@@ -5,7 +5,7 @@ import type {ListingModerationState} from '@/lib/postgres-listing-moderation';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {draftButton} from './PrivateDraftEditor';
 import {PrivateListingCheckout,type ListingCheckoutAttempt} from './PrivateListingCheckout';
-import {PublicationLocationWithdrawal} from '@/components/PublicationLocationWithdrawal';
+import {PublicationPrivacyActions} from '@/components/PublicationPrivacyActions';
 const labels={not_submitted:'Не отправлено на модерацию',pending:'На модерации',approved:'Одобрено модератором',rejected:'Нужны исправления',outdated:'После изменений нужна повторная модерация'};
 export function PrivateDraftModeration({owner,id,revision,disabled,checkoutAttempt,allowSubmit=true}:{owner:string;id:string;revision:string;disabled:boolean;checkoutAttempt:ListingCheckoutAttempt;allowSubmit?:boolean}){
  const [state,setState]=useState<ListingModerationState|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[uncertain,setUncertain]=useState(false);
@@ -46,5 +46,5 @@ export function PrivateDraftModeration({owner,id,revision,disabled,checkoutAttem
    </div>
    {(state?.state==='approved'||checkoutAttempt.uncertain)&&<PrivateListingCheckout owner={owner} id={id} revision={revision} attempt={checkoutAttempt}/>}
   </>}
- </section>{!allowSubmit&&<PublicationLocationWithdrawal owner={owner} kind="listing" publicationId={id}/>}</>;
+ </section>{!allowSubmit&&<PublicationPrivacyActions owner={owner} kind="listing" publicationId={id}/>}</>;
 }

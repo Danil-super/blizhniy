@@ -12,7 +12,7 @@ import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {WorkPublicationForm} from './WorkPublicationForm';
 import {WorkModerationStatus} from './WorkModerationStatus';
 import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
-import {PublicationLocationWithdrawal} from '@/components/PublicationLocationWithdrawal';
+import {PublicationPrivacyActions} from '@/components/PublicationPrivacyActions';
 
 function Editor({owner,kind,id,visible,hostedTest}:{hostedTest:boolean;owner:string;kind:WorkPublicationKind;id:string;visible:boolean}){
  const [snapshot,setSnapshot]=useState<WorkPublicationSnapshot|null>(null),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false),[cancellationPending,setCancellationPending]=useState(false);
@@ -29,7 +29,7 @@ function Editor({owner,kind,id,visible,hostedTest}:{hostedTest:boolean;owner:str
   <CheckoutCancellationFeedback focusOnConfirmation={cancellationFocus}/>
   {error?<div><p role="alert" className="my-3 text-rose-800">{error}</p><button type="button" className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>setRetry(value=>value+1)}>Повторить загрузку</button></div>:
    snapshot?<div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/>
-    {visible&&<PublicationLocationWithdrawal owner={owner} kind={kind} publicationId={snapshot.id}/>}
+    {visible&&<PublicationPrivacyActions owner={owner} kind={kind} publicationId={snapshot.id}/>}
     {snapshot.activeCheckout?<section aria-label="Исходный заказ" className="grid gap-3">
      <p className="text-sm text-slate-700">Для этой публикации есть незавершённый заказ.</p>
      {!cancellationPending&&<div><Link href={`/oplata/${snapshot.activeCheckout.paymentId}?type=${kind}`} prefetch={false} className={draftButton}>

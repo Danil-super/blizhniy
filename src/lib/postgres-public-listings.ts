@@ -34,7 +34,7 @@ export class PostgresPublicListingStore{
  private readonly source:string;
  private readonly eligible:string;
  private readonly privacyColumn:string;
- constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy&{enforceLocationWithdrawals?:boolean}={}){
+ constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy={}){
   if(typeof window!=='undefined'||options.postmoderation!==undefined&&typeof options.postmoderation!=='boolean')throw Error('Public listing storage is server-only');
   this.postmoderation=options.postmoderation===true;
   const {source,eligible}=listingVisibility(options);

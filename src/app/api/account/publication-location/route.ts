@@ -22,10 +22,12 @@ export async function POST(request: Request) {
       return error(422, "INVALID_INPUT");
     }
     const input = body as Record<string, unknown>;
-    const statusOnly = Object.hasOwn(input, "action") && input.action === "status";
-    if (Object.keys(input).length !== (statusOnly ? 4 : 3)) return error(422, "INVALID_INPUT");
+    const action = Object.hasOwn(input, "action") ? input.action : undefined;
+    const statusOnly = action === "status" || action === "publication-status";
+    const full = action === "withdraw-publication" || action === "publication-status";
+    if (Object.keys(input).length !== (statusOnly || full ? 4 : 3)) return error(422, "INVALID_INPUT");
     const { kind } = input;
-    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair"].includes(kind)) {
+    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
     }
     const publicationId = parseListingDraftId(input.publicationId);
@@ -39,8 +41,8 @@ export async function POST(request: Request) {
     if (!await limiter.allowProduction("session", ip)) return error(429, "RATE_LIMITED");
     request.signal.throwIfAborted();
     const { rows: [receipt] } = await db.query<{ withdrawnAt: string | null }>(
-      'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5) as "withdrawnAt"',
-      [hashSessionToken(token), actor, kind, publicationId, !statusOnly],
+      'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as "withdrawnAt"',
+      [hashSessionToken(token), actor, kind, publicationId, !statusOnly, full ? "publication" : "location"],
     );
     if (!receipt || (receipt.withdrawnAt === null ? !statusOnly : typeof receipt.withdrawnAt !== "string")) {
       return error(503, "LOCATION_UNAVAILABLE");
