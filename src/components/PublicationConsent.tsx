@@ -6,7 +6,7 @@ import {StoredMediaImage} from '@/components/StoredMedia';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type ContactConsentCategory,type ProfileConsentCategory,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
 import {isPublicationTermsChoice,publicationTermsChoices,type PublicationTermsChoice} from '@/lib/publication-consent-terms';
-import type {PublicationTextField} from '@/lib/publication-text-selection';
+import {publicationTextLabels,type PublicationTextField} from '@/lib/publication-text-selection';
 
 type Consent={
  value:string;
@@ -115,7 +115,17 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
   }
  }
 
- return <section aria-label={label.title} className="space-y-2 border-t border-slate-200 pt-2">
+ const supportSubject=encodeURIComponent('Условия распространения данных');
+ const supportBody=consent?encodeURIComponent([
+  'Публикация: '+consent.notice.resource,
+  'Идентификатор публикации: '+target.publicationId,
+  'Область: '+(field?publicationTextLabels[field]:label.title),
+  '',
+  'Условие: ',
+ ].join('\r\n')):null;
+
+ return <>
+ <section aria-label={label.title} className="space-y-2 border-t border-slate-200 pt-2">
   {message&&<p role="status">{message}</p>}
   {withdrawn?<p role="status">{label.hidden}</p>:
    consent===undefined?<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>{'Открыть '+label.title.toLowerCase()}</button>:
@@ -161,7 +171,7 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
       {Object.entries(publicationTermsChoices).map(([value,label])=><option key={value} value={value}>{label}</option>)}
      </select>
     </label>
-    <p>Выбранные условия будут видны в публикации. Для других условий обратитесь в поддержку.</p>
+    <p>Выбранные условия будут видны в публикации.</p>
     <label className="flex items-start gap-2">
      <input type="checkbox" className="mt-1" checked={confirmed} disabled={busy} onChange={event=>setConfirmed(event.target.checked)}/>
      <span>{consent.notice.statement}</span>
@@ -172,5 +182,11 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
     }}>Отмена</button>}
    </div>}
   {consent!==undefined&&!withdrawn&&<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>Обновить состояние согласия</button>}
- </section>;
+ </section>
+ {supportBody&&!withdrawn&&<p className="mt-2">
+  <a className="font-semibold text-blue-800 underline underline-offset-2"
+   aria-label={`Написать в поддержку об условиях · ${label.title}`}
+   href={`mailto:prostova04@yandex.ru?subject=${supportSubject}&body=${supportBody}`}>Написать в поддержку об условиях</a>
+ </p>}
+ </>;
 }

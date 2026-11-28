@@ -281,6 +281,15 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const phoneConsent=address.getByRole('region',{name:'Согласие на публикацию телефона'});
   await phoneConsent.getByRole('button',{name:'Открыть согласие на публикацию телефона'}).click();
   await phoneConsent.getByText('+79990000000',{exact:true}).waitFor();
+  const supportDraft=await address.getByRole('link',{name:'Написать в поддержку об условиях · Согласие на публикацию телефона',exact:true}).getAttribute('href',{timeout:2500});
+  const supportMail=new URL(supportDraft);
+  assert.equal(supportMail.pathname,'prostova04@yandex.ru');
+  assert.equal(supportMail.searchParams.get('subject'),'Условия распространения данных');
+  const supportBody=supportMail.searchParams.get('body');
+  assert.ok(supportBody.includes(origin+'/obyavlenie/'+items[1].id));
+  assert.ok(supportBody.includes('Согласие на публикацию телефона'));
+  assert.doesNotMatch(supportBody,/Локальный Пользователь|cabinet-ui@example\.invalid|\+79990000000/);
+  assert.ok(!supportBody.includes(owner));
   await phoneConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
   const confirmPhone=phoneConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
   assert.equal(await confirmPhone.isDisabled(),true);
