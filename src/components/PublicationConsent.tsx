@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {StoredMediaImage} from '@/components/StoredMedia';
 import {notifyAccountSessionChange} from '@/lib/local-account';
@@ -30,17 +30,35 @@ type Selection={category?:ContactConsentCategory|ProfileConsentCategory|'link';p
 
 export function PublicationConsent({category,photoId,field,...target}:PublicationPrivacyTarget&Selection){
  const label=labels[category??'location'];
+ const purposeId=useId();
  const [consent,setConsent]=useState<Consent|null>();
  const [fullName,setFullName]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [terms,setTerms]=useState<PublicationTermsChoice|''>(''),[editing,setEditing]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [withdrawn,setWithdrawn]=useState(false),[confirmWithdrawal,setConfirmWithdrawal]=useState(false);
  const lifetime=useRef<AbortController|null>(null);
+ const region=useRef<HTMLElement>(null);
+ const restoreFocus=useRef(false);
  useEffect(()=>{
   const controller=new AbortController();
   lifetime.current=controller;
   return ()=>controller.abort();
  },[]);
+
+ function keepFocusInRegion(){
+  const node=region.current;
+  if(node?.contains(document.activeElement)){
+   restoreFocus.current=true;
+   node.focus({preventScroll:true});
+  }
+ }
+
+ useEffect(()=>{
+  if(busy||!restoreFocus.current)return;
+  restoreFocus.current=false;
+  const node=region.current;
+  if(node&&document.activeElement===node)node.querySelector<HTMLElement>('[data-consent-focus]')?.focus();
+ },[busy,consent,editing,message,withdrawn]);
 
  async function request(operation:'status'|'confirm'|'withdraw'='status'){
   const controller=lifetime.current;
@@ -48,6 +66,7 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
    fingerprint:editing?consent.revisionFingerprint:consent.fingerprint,fullName:fullName.trim(),terms,
   }:null;
   if(!controller||controller.signal.aborted||busy||operation==='confirm'&&!confirmation)return;
+  keepFocusInRegion();
   setBusy(true);setMessage('');
   try{
    const profile=category==='name'||category==='avatar';
@@ -125,16 +144,17 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
  ].join('\r\n')):null;
 
  return <>
- <section aria-label={label.title} className="space-y-2 border-t border-slate-200 pt-2">
-  {message&&<p role="status">{message}</p>}
-  {withdrawn?<p role="status">{label.hidden}</p>:
-   consent===undefined?<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>{'Открыть '+label.title.toLowerCase()}</button>:
-   consent===null?<p>Чтобы разрешить публикацию, сначала {label.missing}{category==='name'||category==='avatar'?'':' в форме публикации'}.</p>:
+ <section ref={region} tabIndex={-1} aria-label={label.title} className="space-y-2 border-t border-slate-200 pt-2">
+  {message&&<p role="status" tabIndex={-1} data-consent-focus>{message}</p>}
+  {withdrawn?<p role="status" tabIndex={-1} data-consent-focus>{label.hidden}</p>:
+   consent===undefined?<button type="button" data-consent-focus className={draftButton} disabled={busy} onClick={()=>void request()}>{'Открыть '+label.title.toLowerCase()}</button>:
+   consent===null?<p tabIndex={-1} data-consent-focus>Чтобы разрешить публикацию, сначала {label.missing}{category==='name'||category==='avatar'?'':' в форме публикации'}.</p>:
    consent.expiresAt&&!editing?<div className="space-y-2">
-    <p role="status">Согласие на публикацию {label.term} действует до{' '}
+    <p role="status" tabIndex={-1} data-consent-focus>Согласие на публикацию {label.term} действует до{' '}
      {new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(consent.expiresAt))} (МСК).</p>
     {consent.terms&&<p>{publicationTermsChoices[consent.terms]}</p>}
     <button type="button" className={draftButton} disabled={busy} onClick={()=>{
+     keepFocusInRegion();
      setMessage('');setConfirmed(false);setConfirmWithdrawal(false);setTerms(consent.terms??'');setEditing(true);
     }}>Изменить условия</button>
     {category&&category!=='photo'&&<>
@@ -150,14 +170,14 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
    <div className="space-y-3">
     <h4 className="font-semibold">{label.title}</h4>
     <p>{consent.notice.operator}</p>
-    <p>{consent.notice.purpose}</p>
+    <p id={purposeId}>{consent.notice.purpose}</p>
     <p className="break-all">{consent.notice.resource}</p>
     {consent.notice.fileResource&&<p className="break-all">{consent.notice.fileResource}</p>}
     <p>{consent.notice.term}</p>
     {category==='avatar'?<StoredMediaImage src={consent.value} alt="Фото для публикации" className="h-24 w-24 rounded-lg object-cover"/>:
      category!=='photo'&&<p className="whitespace-pre-wrap break-words">{consent.value}</p>}
     <label className="block">Фамилия, имя, отчество (при наличии)
-     <input autoComplete="name" maxLength={160} value={fullName} onChange={event=>setFullName(event.target.value)}
+     <input data-consent-focus aria-describedby={purposeId} autoComplete="name" maxLength={160} value={fullName} onChange={event=>setFullName(event.target.value)}
       className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2" disabled={busy}/>
     </label>
     <p className="break-words">Подтверждённая почта для связи — {consent.email}. Имя из этой формы и почта сохраняются в записи о согласии.</p>
@@ -178,6 +198,7 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
     </label>
     <button type="button" className={draftButton} disabled={busy||!terms||!confirmed||fullName.trim().length<2} onClick={()=>void request('confirm')}>Подтвердить согласие</button>
     {editing&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{
+     keepFocusInRegion();
      setFullName('');setTerms('');setConfirmed(false);setEditing(false);
     }}>Отмена</button>}
    </div>}
