@@ -34,6 +34,7 @@ function checkpointRows(document, expectedDigest) {
         (scope === 'phone' || scope === 'messenger') && kind === 'listing' ||
         scope === 'name' && (kind === 'listing' || kind === 'specialist') ||
         scope === 'link' && ['vacancy','fair','marquee'].includes(kind) ||
+        typeof scope === 'string' && /^text-field:[a-zA-Z]+$/.test(scope) && kinds.has(kind) && textFields[kind].includes(scope.slice(11)) ||
         scope === 'avatar' && kind === 'specialist' ||
         typeof scope === 'string' && ['listing','vacancy','workRequest','fair'].includes(kind) && photoScope.test(scope) ||
         text && kinds.has(kind) && textFields[kind].includes(text[1]) && Number(text[2])<Number(text[3]);

@@ -9,6 +9,7 @@ create table app_publication_privacy.publication_consents(
  category text not null check(category='location' and kind<>'marquee' or kind='listing' and category in ('phone','messenger')
   or category='name' and kind in ('listing','specialist') or category='avatar' and kind='specialist'
   or category='link' and kind in ('vacancy','fair','marquee')
+  or category ~ '^text-field:[a-zA-Z]+$' and app_publication_privacy.is_text_field(kind,split_part(category,':',2))
   or kind in ('listing','vacancy','workRequest','fair') and category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
  subject_id uuid not null references app.users(id) on delete cascade,
  subject_name text not null,
@@ -17,6 +18,9 @@ create table app_publication_privacy.publication_consents(
  offer text not null check(offer ~ '^[a-f0-9]{64}$'),
  notice jsonb not null,
  value jsonb not null,
+ shown_text_sha256 text,
+ check(case when starts_with(category,'text-field:') then coalesce(shown_text_sha256 ~ '^[a-f0-9]{64}$',false)
+       else shown_text_sha256 is null end),
  retired boolean not null default false,
  accepted_at timestamptz not null check(isfinite(accepted_at)),
  expires_at timestamptz not null check(isfinite(expires_at) and expires_at>accepted_at)
@@ -42,6 +46,7 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
    when 'name' then 'имени из профиля' when 'avatar' then 'фото профиля'
    when 'photo' then 'выбранной фотографии'
    when 'link' then 'указанной ссылки'
+   when 'text-field' then 'показанного текста выбранного поля'
    else 'точного адреса и координат' end||' этой публикации всем посетителям БЛИЖНЕГО, в том числе без входа в аккаунт.',
   'resource','https://xn----9sbphbgks4a4a.xn--p1ai'||case p_kind
    when 'listing' then '/obyavlenie/'||p_publication::text
@@ -57,11 +62,13 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
    when 'avatar' then 'Разрешаю оператору публиковать показанное фото профиля в этой анкете.'
    when 'photo' then 'Разрешаю оператору публиковать выбранную фотографию в этой публикации.'
    when 'link' then 'Разрешаю оператору публиковать указанную ссылку в этой публикации.'
+   when 'text-field' then 'Разрешаю оператору публиковать показанный текст и оставленные в нём мои персональные сведения.'
    else 'Разрешаю оператору публиковать указанные ниже точный адрес и координаты этой публикации.' end)
   ||case when starts_with(p_category,'photo:') then jsonb_build_object(
    'attachment',substr(p_category,7),'fileResource','https://xn----9sbphbgks4a4a.xn--p1ai/api/'||
    case p_kind when 'listing' then 'listings' when 'fair' then 'service-publications' else 'work-publications' end||
-   '/'||p_publication::text||'/photos/'||substr(p_category,7)) else '{}'::jsonb end
+   '/'||p_publication::text||'/photos/'||substr(p_category,7))
+   when starts_with(p_category,'text-field:') then jsonb_build_object('field',split_part(p_category,':',2)) else '{}'::jsonb end
  $$;
 
 -- Store a fingerprint of the photo rather than a copy of the image in the consent record.
@@ -94,6 +101,12 @@ create function app_publication_privacy.location_is_consented(p_kind text,p_publ
  select app_publication_privacy.publication_is_consented(p_kind,p_publication,p_subject,'location',p_facts)
  $$;
 
+create function app_publication_privacy.text_is_consented(p_kind text,p_publication uuid,p_subject uuid,p_field text,p_value text)
+ returns boolean language sql stable set search_path=pg_catalog,pg_temp as $$
+ select app_publication_privacy.publication_is_consented(p_kind,p_publication,p_subject,'text-field:'||p_field,
+  to_jsonb(encode(sha256(convert_to(p_value,'UTF8')),'hex')))
+ $$;
+
 create function app_publication_privacy.publication_consent(
  p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_category text,p_expected text,p_name text
 ) returns jsonb language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
@@ -112,10 +125,15 @@ declare
  field_name text;
  profile_value text;
  photo_id uuid;
+ text_field text;
+ original_text text;
+ shown_text text;
+ shown_digest text;
 begin
  if p_category is null or not (p_category='location' or p_kind='listing' and p_category in ('phone','messenger')
   or p_category='name' and p_kind in ('listing','specialist') or p_category='avatar' and p_kind='specialist'
   or p_category='link' and p_kind in ('vacancy','fair','marquee')
+  or p_category ~ '^text-field:[a-zA-Z]+$' and app_publication_privacy.is_text_field(p_kind,split_part(p_category,':',2))
   or p_kind in ('listing','vacancy','workRequest','fair') and p_category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') then
   raise exception using errcode='PDW04',message='Invalid consent category';
  end if;
@@ -127,7 +145,8 @@ begin
 
  -- The existing command checks the verified owner and locks the session and publication.
  field_name:=case when p_category='location' then 'location' when p_category in ('name','avatar') then 'profileValue'
-  when starts_with(p_category,'photo:') then 'photoValue' when p_category='link' then 'linkValue' else 'contact' end;
+  when starts_with(p_category,'photo:') then 'photoValue' when p_category='link' then 'linkValue'
+  when starts_with(p_category,'text-field:') then 'textValue' else 'contact' end;
  decision:=app_publication_privacy.withdraw_location(p_hash,p_actor,p_kind,p_publication,false,p_category);
  if decision->>'withdrawnAt' is not null or exists(
   select 1 from app_publication_privacy.location_withdrawals where kind=p_kind and publication_id=p_publication and scope='publication'
@@ -140,6 +159,21 @@ begin
  end if;
 
  case
+  when field_name='textValue' then
+   text_field:=split_part(p_category,':',2);
+   case
+    when p_kind='listing' then
+     select case text_field when 'title' then l.title else l.description end into original_text
+      from app.listings l where l.id=p_publication;
+    when p_kind in ('vacancy','workRequest') then
+     select w.form->>text_field into original_text from app.work_publications w where w.id=p_publication;
+    else select s.form->>text_field into original_text from app.service_publications s where s.id=p_publication;
+   end case;
+   shown_text:=coalesce(app_publication_privacy.public_text(p_kind,p_publication,text_field,original_text),original_text);
+   if nullif(shown_text,'') is not null then
+    facts:=to_jsonb(encode(sha256(convert_to(original_text,'UTF8')),'hex'));
+    shown_digest:=encode(sha256(convert_to(shown_text,'UTF8')),'hex');
+   end if;
   when p_category='link' then
    if p_kind='vacancy' then
     select w.form into form from app.work_publications w where w.id=p_publication;
@@ -181,15 +215,15 @@ begin
   case when not c.retired and c.fingerprint=current_fingerprint and c.subject_id=p_actor and c.expires_at>confirmed_at then c.expires_at end
  into last_id,last_offer,deadline from app_publication_privacy.publication_consents c
  where c.kind=p_kind and c.publication_id=p_publication and c.category=p_category order by c.id desc limit 1;
- current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,p_kind,p_publication,p_category,current_fingerprint,last_id)::text,'UTF8')),'hex');
+ current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,p_kind,p_publication,p_category,current_fingerprint,last_id,shown_digest)::text,'UTF8')),'hex');
  if p_expected is not null then
   if p_expected<>current_offer and (deadline is null or p_expected is distinct from last_offer) then
    raise exception using errcode='PDW05',message='Location changed';
   end if;
   if deadline is null then
    deadline:=confirmed_at+interval '2160 hours';
-   insert into app_publication_privacy.publication_consents(kind,publication_id,category,subject_id,subject_name,subject_email,fingerprint,offer,notice,value,accepted_at,expires_at)
-    values(p_kind,p_publication,p_category,p_actor,p_name,email,current_fingerprint,current_offer,notice,facts,confirmed_at,deadline);
+   insert into app_publication_privacy.publication_consents(kind,publication_id,category,subject_id,subject_name,subject_email,fingerprint,offer,notice,value,shown_text_sha256,accepted_at,expires_at)
+    values(p_kind,p_publication,p_category,p_actor,p_name,email,current_fingerprint,current_offer,notice,facts,shown_digest,confirmed_at,deadline);
    last_offer:=current_offer;
   end if;
  end if;
@@ -198,7 +232,7 @@ begin
   raise exception using errcode='PDW01',message='Publication owner required';
  end if;
  return jsonb_build_object(field_name,case when p_category='avatar' then to_jsonb(profile_value)
-  when field_name='photoValue' then to_jsonb(photo_id) else facts end,
+  when field_name='photoValue' then to_jsonb(photo_id) when field_name='textValue' then to_jsonb(shown_text) else facts end,
   'notice',notice,'email',email,'fingerprint',case when deadline is null then current_offer else last_offer end,
   'expiresAt',to_char(deadline at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'));
 end;
@@ -209,11 +243,13 @@ revoke all on function app_publication_privacy.avatar_facts(text) from public;
 revoke all on function app_publication_privacy.publication_consent_notice(text,uuid,text) from public;
 revoke all on function app_publication_privacy.publication_consent_fingerprint(jsonb,jsonb) from public;
 revoke all on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) from public;
+revoke all on function app_publication_privacy.text_is_consented(text,uuid,uuid,text,text) from public;
 revoke all on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) from public;
 revoke all on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) from public;
 grant execute on function app_publication_privacy.location_facts(text,text,jsonb,jsonb,boolean) to blizhniy_runtime;
 grant execute on function app_publication_privacy.avatar_facts(text) to blizhniy_runtime;
 grant execute on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) to blizhniy_runtime;
+grant execute on function app_publication_privacy.text_is_consented(text,uuid,uuid,text,text) to blizhniy_runtime;
 grant execute on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) to blizhniy_runtime;
 grant execute on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) to blizhniy_runtime;
 commit;

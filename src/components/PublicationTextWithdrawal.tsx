@@ -5,6 +5,7 @@ import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {postPublicationPrivacy,type PublicationPrivacyTarget,type WithdrawPublicationText} from '@/lib/client-publication-privacy';
 import {publicationTextLabels,publicationTextRange,type PublicationTextField} from '@/lib/publication-text-selection';
 import {notifyAccountSessionChange} from '@/lib/local-account';
+import {PublicationConsent} from './PublicationConsent';
 
 type Field={field:PublicationTextField;text:string;visible:string;fingerprint:string};
 
@@ -20,6 +21,7 @@ function TextChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
  const [fields,setFields]=useState<Field[]>(),[field,setField]=useState<PublicationTextField>();
  const [range,setRange]=useState<{start:number;end:number}|null>(null),[confirm,setConfirm]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(false),[saved,setSaved]=useState(false);
+ const [consentEnabled,setConsentEnabled]=useState(false);
  const scope=useRef<AbortController|null>(null),result=useRef<HTMLParagraphElement>(null);
  const selected=fields?.find(item=>item.field===field);
 
@@ -46,6 +48,7 @@ function TextChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
        typeof item.visible!=='string'||typeof item.fingerprint!=='string'||!/^[0-9a-f]{64}$/.test(item.fingerprint))||
       new Set(list.map(item=>item.field)).size!==list.length)throw Error();
    setFields(list);setField(current=>list.some(item=>item.field===current)?current:list[0]?.field);
+   setConsentEnabled(data.textConsent===true);
    setSaved(!!command);
   }catch{if(!controller.signal.aborted)setError(true);}
   finally{if(!controller.signal.aborted){setBusy(false);setConfirm(false);setRange(null);}}
@@ -79,7 +82,7 @@ function TextChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
      if(next?.start!==range?.start||next?.end!==range?.end){setRange(next);setConfirm(false);setSaved(false);}
     }}/>
   </label>
-  <div><p className="font-semibold">Видимый текст</p>
+  <div><p className="font-semibold">{consentEnabled?'Текст после скрытия фрагментов':'Видимый текст'}</p>
    <p className="whitespace-pre-wrap break-words">{selected.visible||'Поле скрыто целиком.'}</p>
   </div>
   {saved&&<p ref={result} tabIndex={-1} role="status">Фрагмент скрыт.</p>}
@@ -91,5 +94,8 @@ function TextChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
    }}>{confirm?'Подтвердить скрытие фрагмента':'Скрыть выделенный фрагмент'}</button>
    {confirm&&<button className={draftButton} type="button" disabled={busy} onClick={()=>setConfirm(false)}>Оставить текст</button>}
   </div>
+  {consentEnabled&&selected.visible&&<PublicationConsent
+   key={owner+'|'+publicationId+'|'+selected.field+'|'+selected.fingerprint+'|'+selected.visible}
+   owner={owner} kind={kind} publicationId={publicationId} category="text" field={selected.field}/>}
  </div>;
 }

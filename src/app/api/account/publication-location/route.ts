@@ -6,7 +6,7 @@ import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
-import { contactConsentRequired, hasLocationWithdrawalSchema, linkConsentRequired, locationConsentRequired, photoConsentRequired, profileConsentRequired } from "@/lib/publication-location-withdrawal";
+import { contactConsentRequired, hasLocationWithdrawalSchema, linkConsentRequired, locationConsentRequired, photoConsentRequired, profileConsentRequired, textConsentRequired } from "@/lib/publication-location-withdrawal";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 export const runtime = "nodejs";
@@ -36,6 +36,10 @@ export async function POST(request: Request) {
     const link = linkStatus || linkGrant || linkWithdrawal;
     const textList = action === "texts";
     const textWrite = action === "withdraw-text";
+    const fieldStatus = action === "text-consent-status";
+    const fieldGrant = action === "confirm-text-consent";
+    const fieldWithdrawal = action === "withdraw-text-field";
+    const textConsent = fieldStatus || fieldGrant || fieldWithdrawal;
     const contactStatus = action === "contact-consent-status";
     const contactWrite = action === "confirm-contact-consent";
     const contactWithdrawal = action === "withdraw-contact";
@@ -45,15 +49,15 @@ export async function POST(request: Request) {
     const profileWithdrawal = action === "withdraw-profile-value";
     const profile = profileStatus || profileWrite || profileWithdrawal;
     const categorized = contact || profile;
-    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus || photoStatus || linkStatus;
-    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite || photoGrant || linkGrant;
+    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus || photoStatus || linkStatus || fieldStatus;
+    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite || photoGrant || linkGrant || fieldGrant;
     const consent = consentStatus || consentWrite;
     const statusOnly = action === "status" || action === "publication-status" || photoList || textList;
     const full = action === "withdraw-publication" || action === "publication-status";
     if (contact && !contactConsentRequired() || profile && !profileConsentRequired() ||
         photoConsent && !photoConsentRequired() ||
-        link && !linkConsentRequired() ||
-        consent && !categorized && !photoConsent && !link && !locationConsentRequired()) return error(404, "NOT_FOUND");
+        link && !linkConsentRequired() || textConsent && !textConsentRequired() ||
+        consent && !categorized && !photoConsent && !link && !textConsent && !locationConsentRequired()) return error(404, "NOT_FOUND");
     const { category, kind } = input;
     const linkKind = kind === "vacancy" || kind === "fair" || kind === "marquee";
     if (link && !linkKind) return error(422, "INVALID_INPUT");
@@ -61,12 +65,13 @@ export async function POST(request: Request) {
     if (profile && !(category === "name" && (kind === "listing" || kind === "specialist") ||
         category === "avatar" && kind === "specialist")) return error(422, "INVALID_INPUT");
     if (photoConsent && kind !== "listing" && kind !== "vacancy" && kind !== "workRequest" && kind !== "fair") return error(422, "INVALID_INPUT");
-    const fieldWithdrawal = contactWithdrawal || profileWithdrawal || linkWithdrawal;
-    const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || fieldWithdrawal ? 4 : 3;
-    if (Object.keys(input).length !== keys + (categorized || photoConsent ? 1 : 0) ||
+    const scopeWithdrawal = contactWithdrawal || profileWithdrawal || linkWithdrawal || fieldWithdrawal;
+    const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || scopeWithdrawal ? 4 : 3;
+    if (Object.keys(input).length !== keys + (categorized || photoConsent || textConsent ? 1 : 0) ||
         ((photoWrite || photoConsent) && !Object.hasOwn(input, 'photoId')) ||
+        (textConsent && (typeof input.field !== "string" || !Object.hasOwn(publicationTextLabels,input.field))) ||
         (textWrite && !['field','fingerprint','start','end'].every(key => Object.hasOwn(input,key)))) return error(422, "INVALID_INPUT");
-    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite || link ? ["marquee"] : [])].includes(kind)) {
+    if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite || textConsent || link ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
     }
     const publicationId = parseListingDraftId(input.publicationId);
@@ -78,9 +83,9 @@ export async function POST(request: Request) {
         Array.from(fullName).length < 2 || Array.from(fullName).length > 160)) {
       return error(422, "INVALID_INPUT");
     }
-    const fieldScope = link ? "link" : (contact && (category === "phone" || category === "messenger") ||
+    const fieldScope = textConsent ? "text-field:" + input.field : link ? "link" : (contact && (category === "phone" || category === "messenger") ||
       profile && (category === "name" || category === "avatar")) ? category : "location";
-    let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : fieldWithdrawal ? fieldScope : "location";
+    let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : scopeWithdrawal ? fieldScope : "location";
     if (photoWrite || photoConsent) {
       scope = kind === "specialist" && input.photoId === "avatar" ? "avatar" : "photo:" + parseListingPhotoIds([input.photoId])[0];
     }
@@ -108,7 +113,7 @@ export async function POST(request: Request) {
       );
       if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
       return authJson({ kind, publicationId, ...(categorized || link ? { category: fieldScope } : {}),
-        ...(photoConsent ? { photoId: scope.slice(6) } : {}), consent: row.result }, 200);
+        ...(photoConsent ? { photoId: scope.slice(6) } : {}), ...(textConsent ? { field: input.field } : {}), consent: row.result }, 200);
     }
     const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[]; texts?: unknown[] } }>(
       'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as result',
@@ -116,7 +121,8 @@ export async function POST(request: Request) {
     );
     if (photoList && Array.isArray(result?.photos)) return authJson({ kind, publicationId, photos: result.photos,
       ...(kind !== "specialist" && photoConsentRequired() ? { photoConsent: true } : {}) }, 200);
-    if (textList && Array.isArray(result?.texts)) return authJson({ kind, publicationId, texts: result.texts }, 200);
+    if (textList && Array.isArray(result?.texts)) return authJson({ kind, publicationId, texts: result.texts,
+      ...(textConsentRequired() ? { textConsent: true } : {}) }, 200);
     if (!result || (result.withdrawnAt === null ? !statusOnly : typeof result.withdrawnAt !== "string")) {
       return error(503, "LOCATION_UNAVAILABLE");
     }
@@ -126,7 +132,8 @@ export async function POST(request: Request) {
       ...(action === "publication-status" && (kind === "listing" || kind === "specialist") &&
           profileConsentRequired() && result.withdrawnAt === null ? { profileConsent: true } : {}),
       ...(action === "publication-status" && linkKind && linkConsentRequired() && result.withdrawnAt === null ? { linkConsent: true } : {}),
-      ...(fieldWithdrawal ? { category: fieldScope } : {}),
+      ...(scopeWithdrawal && !fieldWithdrawal ? { category: fieldScope } : {}),
+      ...(fieldWithdrawal ? { field: input.field } : {}),
       ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
   } catch (failure) {
     if (failure instanceof AuthRequestError) return error(failure.status, failure.code);

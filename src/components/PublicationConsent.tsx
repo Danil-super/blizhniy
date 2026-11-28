@@ -5,6 +5,7 @@ import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {StoredMediaImage} from '@/components/StoredMedia';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type ContactConsentCategory,type ProfileConsentCategory,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
+import type {PublicationTextField} from '@/lib/publication-text-selection';
 
 type Consent={
  value:string;
@@ -20,11 +21,13 @@ const labels={
  avatar:{title:'Согласие на публикацию фото профиля',term:'фото профиля',missing:'сохраните фото в профиле',hidden:'Фото профиля скрыто.'},
  photo:{title:'Согласие на публикацию выбранного фото',term:'выбранного фото',missing:'сохраните фото',hidden:'Фото скрыто.'},
  link:{title:'Согласие на публикацию ссылки',term:'ссылки',missing:'сохраните ссылку',hidden:'Ссылка скрыта.'},
+ text:{title:'Согласие на публикацию текста поля',term:'текста поля',missing:'сохраните текст',hidden:'Поле скрыто целиком.'},
 };
 
-type Selection={category?:ContactConsentCategory|ProfileConsentCategory|'link';photoId?:never}|{category:'photo';photoId:string};
+type Selection={category?:ContactConsentCategory|ProfileConsentCategory|'link';photoId?:never;field?:never}|
+ {category:'photo';photoId:string;field?:never}|{category:'text';field:PublicationTextField;photoId?:never};
 
-export function PublicationConsent({category,photoId,...target}:PublicationPrivacyTarget&Selection){
+export function PublicationConsent({category,photoId,field,...target}:PublicationPrivacyTarget&Selection){
  const label=labels[category??'location'];
  const [consent,setConsent]=useState<Consent|null>();
  const [fullName,setFullName]=useState(''),[confirmed,setConfirmed]=useState(false);
@@ -50,6 +53,9 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
     :category==='link'
     ? operation==='confirm'?{action:'confirm-link-consent' as const,...fields}
      :{action:operation==='withdraw'?'withdraw-link' as const:'link-consent-status' as const}
+    :category==='text'
+    ? operation==='confirm'?{action:'confirm-text-consent' as const,field,...fields}
+     :{action:operation==='withdraw'?'withdraw-text-field' as const:'text-consent-status' as const,field}
     :profile
     ? operation==='confirm'?{action:'confirm-profile-consent' as const,category,...fields}
      :{action:operation==='withdraw'?'withdraw-profile-value' as const:'profile-consent-status' as const,category}
@@ -69,7 +75,7 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
    const data=await response.json();
    if(controller.signal.aborted)return;
    if(data.kind!==target.kind||data.publicationId!==target.publicationId||
-      (category==='photo'?data.photoId!==photoId:category&&data.category!==category))throw Error();
+      (category==='photo'?data.photoId!==photoId:category==='text'?data.field!==field:category&&data.category!==category))throw Error();
    if(operation==='withdraw'){
     if(typeof data.withdrawnAt!=='string')throw Error();
     setWithdrawn(true);setConsent(null);setConfirmWithdrawal(false);
@@ -78,9 +84,10 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
    if(!data.consent)throw Error();
    const next=data.consent as Omit<Consent,'value'>&{
     location?:Location|null;contact?:string|null;profileValue?:string|null;photoValue?:string|null;linkValue?:string|null;withdrawnAt?:string|null;
+    textValue?:string|null;
    };
    const location=next.location;
-   const value=category==='photo'?(next.photoValue===photoId?photoId:null):category==='link'?next.linkValue:
+   const value=category==='photo'?(next.photoValue===photoId?photoId:null):category==='link'?next.linkValue:category==='text'?next.textValue:
     profile?next.profileValue:category?next.contact:location&&
     `${location.city}${location.address?', '+location.address:''}. Координаты ${location.latitude}, ${location.longitude}.`;
    if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||operation==='confirm'&&!next.expiresAt))throw Error();
@@ -125,7 +132,7 @@ export function PublicationConsent({category,photoId,...target}:PublicationPriva
     {consent.notice.fileResource&&<p className="break-all">{consent.notice.fileResource}</p>}
     <p>{consent.notice.term}</p>
     {category==='avatar'?<StoredMediaImage src={consent.value} alt="Фото для публикации" className="h-24 w-24 rounded-lg object-cover"/>:
-     category!=='photo'&&<p className="break-words">{consent.value}</p>}
+     category!=='photo'&&<p className="whitespace-pre-wrap break-words">{consent.value}</p>}
     <label className="block">Фамилия, имя, отчество (при наличии)
      <input autoComplete="name" maxLength={160} value={fullName} onChange={event=>setFullName(event.target.value)}
       className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2" disabled={busy}/>

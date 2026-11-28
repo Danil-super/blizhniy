@@ -105,14 +105,30 @@ function withdrawnText(alias:Alias,field:PublicationTextField,original:string) {
  return `app_publication_privacy.public_text(${kind},${alias}.id,'${field}',${original})`;
 }
 
+export function textConsentRequired(): boolean {
+ return process.env.BLIZHNIY_PUBLICATION_TEXT_CONSENT === "required";
+}
+
+function consentedText(alias:Alias,field:PublicationTextField,original:string,projection:string,enabled?:boolean) {
+ if(!textConsentRequired())return projection;
+ if(!enabled)return "''";
+ const kind=alias==='l'?"'listing'":`${alias}.kind`;
+ return `case when app_publication_privacy.text_is_consented(${kind},${alias}.id,${alias}.author_id,'${field}',${original})
+  then ${projection} else '' end`;
+}
+
 export function publicTextSql(alias:Alias,field:PublicationTextField,enabled?:boolean) {
  const original=originalText(alias,field);
- return enabled?`coalesce(${withdrawnText(alias,field,original)},${original})`:original;
+ const projection=enabled?`coalesce(${withdrawnText(alias,field,original)},${original})`:original;
+ return consentedText(alias,field,original,projection,enabled);
 }
 
 export function publicTextColumn(alias:Alias,enabled?:boolean) {
- if(!enabled)return '';
- const fields=textFields[alias].map(field=>`'${field}',${withdrawnText(alias,field,originalText(alias,field))}`);
+ if(!enabled&&!textConsentRequired())return '';
+ const fields=textFields[alias].map(field=>{
+  const original=originalText(alias,field);
+  return `'${field}',${consentedText(alias,field,original,withdrawnText(alias,field,original),enabled)}`;
+ });
  return `,json_build_object(${fields.join(',')}) as "publicText"`;
 }
 

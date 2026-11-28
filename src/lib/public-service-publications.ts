@@ -27,7 +27,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
   if(form.kind==='fair')return{id,participantName:(row.publicText?.title??form.title)||'Участник Ярмарки',city:form.cityName!,category:form.category!,description,productPhotos:images,
    ...(form.videoUrl&&row.linkHidden!==true?{videoUrl:form.videoUrl}:{}),phone:'',email:'',status:'published',paymentStatus:'succeeded',createdAt:row.createdAt,...location};
   const price=form.price!,display=`${price.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${price.endsWith('.00')?'':','+price.split('.')[1]} ₽`;
-  let name=form.title,specialistImages=images;
+  let name=(row.publicText?.title??form.title)||'Специалист',specialistImages=images;
   if(Object.hasOwn(row,'profileIdentity')){
    const identity=row.profileIdentity;
    if(!identity||!validProfileName(identity.name)||typeof identity.avatarDataUrl!=='string'||identity.avatarDataUrl.length>409623||

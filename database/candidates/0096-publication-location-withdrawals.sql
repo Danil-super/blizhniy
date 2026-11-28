@@ -23,6 +23,7 @@ create table app_publication_privacy.location_withdrawals(
   or scope in ('phone','messenger') and kind='listing'
   or scope='name' and kind in ('listing','specialist')
   or scope='link' and kind in ('vacancy','fair','marquee')
+  or scope ~ '^text-field:[a-zA-Z]+$' and app_publication_privacy.is_text_field(kind,split_part(scope,':',2))
   or scope='avatar' and kind='specialist'
   or kind in ('listing','vacancy','workRequest','fair') and scope ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   or scope ~ '^text:[a-zA-Z]+:[0-9a-f]{64}:(0|[1-9][0-9]{0,3}):[1-9][0-9]{0,3}$'
@@ -40,6 +41,8 @@ declare
  rendered text := '';
  cursor_at integer := 0;
 begin
+ if exists(select 1 from app_publication_privacy.location_withdrawals
+   where kind=p_kind and publication_id=p_publication and scope='text-field:'||p_field) then return '';end if;
  for mask in select split_part(scope,':',3) as fingerprint,
      split_part(scope,':',4)::integer as start_at,split_part(scope,':',5)::integer as end_at
     from app_publication_privacy.location_withdrawals
@@ -83,6 +86,7 @@ begin
    or p_scope in ('phone','messenger') and p_kind='listing'
    or p_scope='name' and p_kind in ('listing','specialist')
    or p_scope='link' and p_kind in ('vacancy','fair','marquee')
+   or p_scope ~ '^text-field:[a-zA-Z]+$' and app_publication_privacy.is_text_field(p_kind,split_part(p_scope,':',2))
    or p_scope='photos' and not p_apply and p_kind<>'marquee'
    or p_scope='avatar' and p_kind='specialist'
    or p_kind in ('listing','vacancy','workRequest','fair') and p_scope ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'

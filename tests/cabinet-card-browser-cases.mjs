@@ -32,6 +32,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let profileConsentUntil=null;
   const photoFingerprint='e'.repeat(64);
   let photoConsentUntil=null;
+  const fieldConsentFingerprint='f'.repeat(64);
+  let fieldConsentUntil=null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -67,9 +69,24 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,withdrawnAt:deadlines.archived}});
       }
       assert.deepEqual(request.postDataJSON(),{...target,action});
-      return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,texts:[
+      return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,textConsent:true,texts:[
         {field:'title',text:'До 😺 личное после',visible:visibleTitle,fingerprint:textFingerprint},
       ]}});
+    }
+    if(url.pathname==='/api/account/publication-location'&&['text-consent-status','confirm-text-consent','withdraw-text-field'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,field:'title'};
+      const {action}=request.postDataJSON();
+      assert.deepEqual(request.postDataJSON(),{...target,action,
+        ...(action==='confirm-text-consent'?{fingerprint:fieldConsentFingerprint,fullName:'Локальный Пользователь'}:{})});
+      const response={kind:target.kind,publicationId:target.publicationId,field:target.field};
+      if(action==='withdraw-text-field')return route.fulfill({json:{...response,withdrawnAt:deadlines.archived}});
+      if(action==='confirm-text-consent')fieldConsentUntil='2027-01-25T21:00:00.000001Z';
+      return route.fulfill({json:{...response,consent:{
+        textValue:visibleTitle,
+        notice:{version:'field-test',operator:'Оператор проверки',purpose:'Показ текста поля',resource:origin+'/obyavlenie/'+target.publicationId,
+          term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать показанный текст.'},
+        email:'cabinet-ui@example.invalid',fingerprint:fieldConsentFingerprint,expiresAt:fieldConsentUntil,
+      }}});
     }
     if(url.pathname==='/api/account/publication-location'&&request.postDataJSON().action==='withdraw-photo'){
       assert.equal(request.method(),'POST');
@@ -321,6 +338,19 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await address.getByRole('button',{name:'Подтвердить скрытие фрагмента',exact:true}).click();
   await address.getByText('Фрагмент скрыт.',{exact:true}).waitFor();
   await address.getByText('До 😺 … после',{exact:true}).waitFor();
+  const fieldConsent=address.getByRole('region',{name:'Согласие на публикацию текста поля'});
+  await fieldConsent.getByRole('button',{name:'Открыть согласие на публикацию текста поля'}).click();
+  await fieldConsent.getByText('До 😺 … после',{exact:true}).waitFor();
+  assert.equal(await fieldConsent.getByText('До 😺 личное после',{exact:true}).count(),0);
+  await fieldConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
+  const confirmText=fieldConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
+  assert.equal(await confirmText.isDisabled(),true);
+  await fieldConsent.getByRole('checkbox',{name:'Разрешаю публиковать показанный текст.'}).check();
+  await confirmText.click();
+  await fieldConsent.getByText(/Согласие на публикацию текста поля действует до/).waitFor();
+  await fieldConsent.getByRole('button',{name:'Отозвать согласие'}).click();
+  await fieldConsent.getByRole('button',{name:'Подтвердить отзыв'}).click();
+  await fieldConsent.getByText('Поле скрыто целиком.',{exact:true}).waitFor();
   await address.getByRole('button',{name:'Скрыть всю публикацию',exact:true}).click();
   await address.getByRole('button',{name:'Подтвердить скрытие публикации',exact:true}).click();
   await address.getByText('Публикация скрыта.',{exact:true}).waitFor();
