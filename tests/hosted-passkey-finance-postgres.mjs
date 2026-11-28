@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {mkdtemp,readFile,rm,symlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -167,6 +167,45 @@ export async function testHostedPasskeyFinance(t,{admin,config,docker,container,
    try{await check(restored,false);}finally{await owner.query('revoke select(case_id) on app_publication_restriction.restrictions from blizhniy_runtime');}
    await assert.rejects(owner.query(sql),{code:'55000'});
    await owner.query('rollback');
+   const moderation=join(directory,'publication-moderation');
+   const manifest=buildPublicationRestrictionOperator(moderation);
+   const verifyPasskey=async database=>{
+    const db=connect(database,{user:verifier,password:verifierPassword});
+    try{await verifyAdminPasskeyDatabase(db,{database});}finally{await db.close();}
+   };
+   const packagedSql=async(name,expectedDigest)=>{
+    const sql=await readFile(join(moderation,'database/candidates',name),'utf8');
+    assert.equal(createHash('sha256').update(sql).digest('hex'),expectedDigest);
+    return sql;
+   };
+   const withdrawal=await packagedSql('0096-publication-location-withdrawals.sql',manifest.locationWithdrawal.migrationSha256);
+   const consent=await packagedSql('0097-publication-location-consent.sql',manifest.locationConsent.migrationSha256);
+   assert.match(consent,/\ncommit;\n$/);
+   await owner.query(withdrawal);
+   await assert.rejects(owner.query(consent.replace(/\ncommit;\n$/,'\nselect 1/0;\ncommit;\n')),{code:'22012'});
+   await owner.query('rollback');
+   const privacyState=async db=>(await db.query(`select
+    to_regclass('app_publication_privacy.location_withdrawals') is not null as withdrawals,
+    to_regclass('app_publication_privacy.publication_consents') is not null as consents`)).rows[0];
+   assert.deepEqual(await privacyState(owner),{withdrawals:true,consents:false});
+   await check(restored);
+   await verifyPasskey(restored);
+   const inserted=await owner.query(`insert into app_publication_privacy.location_withdrawals(kind,publication_id,scope)
+    select kind,id,'location' from app.work_publications where kind in ('vacancy','workRequest') and deleted_at is null order by id limit 1`);
+   assert.equal(inserted.rowCount,1);
+   const withdrawalLedger='select kind,publication_id,scope,withdrawn_at from app_publication_privacy.location_withdrawals';
+   const withdrawals=(await owner.query(withdrawalLedger)).rows;
+   await owner.query(consent);
+   assert.deepEqual(await privacyState(owner),{withdrawals:true,consents:true});
+   assert.deepEqual((await owner.query(withdrawalLedger)).rows,withdrawals);
+   await check(restored);
+   await verifyPasskey(restored);
+   const renameSubjectKey=(from,to)=>owner.query('alter table app_publication_privacy.publication_consents rename constraint '+from+' to '+to);
+   const subjectKey='publication_consents_subject_id_fkey',driftedKey='fixture_drifted_consent_subject_fkey';
+   await renameSubjectKey(subjectKey,driftedKey);
+   try{await check(restored,false);}finally{await renameSubjectKey(driftedKey,subjectKey);}
+   await check(restored);
+
    const ledger='select kind,publication_id,restricted_revision,case_id,restricted_at from app_publication_restriction.restrictions';
    const seed=await owner.query(`insert into app_publication_restriction.restrictions(kind,publication_id,restricted_revision,case_id)
     select kind,id,revision,$1 from app.work_publications where deleted_at is null order by id limit 1`,[randomUUID()]);
@@ -175,16 +214,17 @@ export async function testHostedPasskeyFinance(t,{admin,config,docker,container,
    await admin.query('create database '+restore+' template template0');
    await admin.query('revoke all on database '+restore+' from public');
    await admin.query('grant connect on database '+restore+' to blizhniy_reconciliation_operator,blizhniy_reconciliation_monitor');
-   for(const {role} of extended)await admin.query('grant connect on database '+restore+' to '+role);
+   for(const login of [...extended.map(({role})=>role),verifier])await admin.query('grant connect on database '+restore+' to '+login);
    await docker(['exec',container,'bash','-euo','pipefail','-c',
     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
     'restore-fixture',restored,restore]);
    await check(restore);
+   await verifyPasskey(restore);
    const copy=connect(restore,{});
    try{
     assert.deepEqual((await copy.query(ledger)).rows,cases);
-    const moderation=join(directory,'publication-moderation');
-    const manifest=buildPublicationRestrictionOperator(moderation);
+    assert.deepEqual(await privacyState(copy),{withdrawals:true,consents:true});
+    assert.deepEqual((await copy.query(withdrawalLedger)).rows,withdrawals);
     const {verifyPublicationRestrictionDatabase}=await import(pathToFileURL(join(moderation,'scripts/publication-restriction-operator-role.mjs')).href);
     const password=randomBytes(32).toString('hex');
     await copy.query('alter role '+manifest.role+' login password '+pg.escapeLiteral(password));

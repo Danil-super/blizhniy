@@ -281,6 +281,12 @@ const fingerprints={
   // Same release with the reviewed passkey foreign keys and their internal triggers.
   '3b5cadc48f5583da965b9884175b99be83fdcc151b36b965b9fbb1526d298250',
   '98f97cd189b9cbe6a529cead813a060f7b2723278d12f77c6bde2bd589c0a14e',
+  // Installed and restored catalogs with the 0097 consent subject foreign key,
+  // first without and then with the passkey foreign keys.
+  'ba003dad5f56adc4cdefac4fc5241bfe0469857fd799ee93ffe4bcc2ea0ee430',
+  '19416f472a1fdb089fe394a9cffcfc16f25204ee8ffa6e8e4ee3f61eb48aeead',
+  '900e10d8f8a13afbe4ff3598576d51d7045b9f4b785bd4b501803a6e8fb1747c',
+  'dcf77c004c38ceb09cee96d5894a6f6e9c68bee6f04d263996e871283a085336',
  ],
  businessEmail:'ea84a98ca7432decaa7c35f7d008665c863e4f79e95981b17c8c337b9fa5944d',
  pushDelivery:'6406dd2a19072ef2e225785f7c0dfec34f7a894d63118d8e2665831260b26f42',
