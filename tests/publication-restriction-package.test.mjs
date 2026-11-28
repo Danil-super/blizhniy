@@ -22,6 +22,8 @@ test('the publication restriction operator package pins reviewed migrations and 
  assert.deepEqual(manifest.migrations.map(row=>row.name),['0093-publication-restrictions.sql','0094-publication-restriction-operator.sql','0095-restricted-response-delivery.sql']);
  for(const {name,sha256} of manifest.migrations)assert.equal(sha(readFileSync(join(output,'database/candidates',name))),sha256);
  assert.equal(sha(readFileSync(join(output,'database/publication-restriction-upgrade.sql'))),manifest.upgradeSha256);
+ assert.equal(sha(readFileSync(join(output,'database/candidates/0096-publication-location-withdrawals.sql'))),manifest.locationWithdrawal.migrationSha256);
+ assert.equal(sha(readFileSync(join(output,'scripts/publication-location-restore.mjs'))),manifest.locationWithdrawal.restoreToolSha256);
  assert.equal(existsSync(join(output,'src')),false);
  assert.throws(()=>buildPublicationRestrictionOperator(output));
  symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(output,'node_modules'),'dir');

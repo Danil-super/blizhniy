@@ -16,6 +16,7 @@ export async function hasLocationWithdrawalSchema(db: PostgresQueries): Promise<
 }
 
 export function locationWithdrawalColumn(alias: "l" | "w" | "s", enabled?: boolean): string {
+  if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return ',true as "locationWithdrawn"';
   if (!enabled) return "";
   const kind = alias === "l" ? "'listing'" : `${alias}.kind`;
   return `,exists(select 1 from app_publication_privacy.location_withdrawals privacy
