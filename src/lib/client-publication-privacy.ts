@@ -15,7 +15,9 @@ type Command={action?:'status'|'publication-status'|'withdraw-publication'|'phot
  {action:'contact-consent-status'|'withdraw-contact';category:ContactConsentCategory}|
  {action:'confirm-contact-consent';category:ContactConsentCategory;fingerprint:string;fullName:string}|
  {action:'profile-consent-status'|'withdraw-profile-value';category:ProfileConsentCategory}|
- {action:'confirm-profile-consent';category:ProfileConsentCategory;fingerprint:string;fullName:string};
+ {action:'confirm-profile-consent';category:ProfileConsentCategory;fingerprint:string;fullName:string}|
+ {action:'photo-consent-status';photoId:string}|
+ {action:'confirm-photo-consent';photoId:string;fingerprint:string;fullName:string};
 
 export function postPublicationPrivacy({owner,kind,publicationId}:PublicationPrivacyTarget,command:Command,signal:AbortSignal){
  return fetch('/api/account/publication-location',{

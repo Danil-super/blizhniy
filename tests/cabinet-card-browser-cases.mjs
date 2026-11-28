@@ -30,6 +30,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let phoneConsentUntil=null,phoneWithdrawnAt=null;
   const profileFingerprint='d'.repeat(64);
   let profileConsentUntil=null;
+  const photoFingerprint='e'.repeat(64);
+  let photoConsentUntil=null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -123,6 +125,20 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         email:'cabinet-ui@example.invalid',fingerprint:profileFingerprint,expiresAt:profileConsentUntil,
       }}});
     }
+    if(url.pathname==='/api/account/publication-location'&&['photo-consent-status','confirm-photo-consent'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,photoId:secondPhoto};
+      const {action}=request.postDataJSON();
+      assert.deepEqual(request.postDataJSON(),{...target,action,
+        ...(action==='confirm-photo-consent'?{fingerprint:photoFingerprint,fullName:'Локальный Пользователь'}:{})});
+      if(action==='confirm-photo-consent')photoConsentUntil='2027-01-25T21:00:00.000001Z';
+      return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,photoId:target.photoId,consent:{
+        photoValue:secondPhoto,
+        notice:{version:'photo-test',operator:'Оператор проверки',purpose:'Показ фотографии',resource:origin+'/obyavlenie/'+target.publicationId,
+          fileResource:origin+'/api/listings/'+target.publicationId+'/photos/'+secondPhoto,
+          term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать выбранное фото.'},
+        email:'cabinet-ui@example.invalid',fingerprint:photoFingerprint,expiresAt:photoConsentUntil,
+      }}});
+    }
     if (url.pathname === '/api/account/publication-location') {
       const {action, ...target} = request.postDataJSON();
       assert.equal(request.method(), 'POST');
@@ -130,7 +146,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       assert.deepEqual(target, {kind:'listing', publicationId:items[1].id, expectedOwnerId:owner});
       if(action==='photos')return route.fulfill({json:{kind:'listing',publicationId:items[1].id,photos:[
         {id:photoId,withdrawnAt:null},{id:secondPhoto,withdrawnAt:photoReceipt},
-      ]}});
+      ],photoConsent:true}});
       if(action==='withdraw-publication')publicationReceipt=deadlines.archived;
       if(action==='publication-status'||action==='withdraw-publication')
         return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt,
@@ -279,6 +295,14 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const picker=address.getByLabel('Выберите фото');
   await picker.selectOption(secondPhoto);
   await address.getByRole('img',{name:'Выбранное фото'}).waitFor();
+  const attachmentConsent=address.getByRole('region',{name:'Согласие на публикацию выбранного фото'});
+  await attachmentConsent.getByRole('button',{name:'Открыть согласие на публикацию выбранного фото'}).click();
+  await attachmentConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
+  const confirmAttachment=attachmentConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
+  assert.equal(await confirmAttachment.isDisabled(),true);
+  await attachmentConsent.getByRole('checkbox',{name:'Разрешаю публиковать выбранное фото.'}).check();
+  await confirmAttachment.click();
+  await attachmentConsent.getByText(/Согласие на публикацию выбранного фото действует до/).waitFor();
   await address.getByRole('button',{name:'Скрыть выбранное фото',exact:true}).click();
   await address.getByRole('button',{name:'Подтвердить скрытие фото',exact:true}).click();
   await address.getByText('Фото скрыто в этой публикации.',{exact:true}).waitFor();

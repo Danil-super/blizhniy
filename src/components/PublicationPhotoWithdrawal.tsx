@@ -7,6 +7,7 @@ import {postPublicationPrivacy,type PublicationPrivacyTarget} from '@/lib/client
 import {parseListingDraftCursor} from '@/lib/listing-draft-contract';
 import {parseListingPhotoIds} from '@/lib/listing-photo-contract';
 import {notifyAccountSessionChange} from '@/lib/local-account';
+import {PublicationConsent} from './PublicationConsent';
 
 type Photo={id:string;withdrawnAt:string|null};
 
@@ -23,6 +24,7 @@ export function PublicationPhotoWithdrawal(target:PublicationPrivacyTarget){
 function PhotoChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
  const [photos,setPhotos]=useState<Photo[]>(),[id,setId]=useState(''),[confirm,setConfirm]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(false);
+ const [consentEnabled,setConsentEnabled]=useState(false),[previewKey,setPreviewKey]=useState('');
  const scope=useRef<AbortController|null>(null);
  const primary=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
  const recentlySaved=useRef<string|undefined>(undefined);
@@ -54,6 +56,7 @@ function PhotoChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
     }else parseListingPhotoIds(rows.map(photo=>photo.id));
     const list=rows.map(photo=>({id:photo.id,withdrawnAt:photo.withdrawnAt===null?null:date(photo.withdrawnAt)}));
     setPhotos(list);
+    setConsentEnabled(data.photoConsent===true);
     setId(current=>list.some(photo=>photo.id===current)?current:list[0]?.id??'');
    }
   }catch{if(!controller.signal.aborted)setError(true);}
@@ -81,11 +84,14 @@ function PhotoChooser({owner,kind,publicationId}:PublicationPrivacyTarget){
   {kind!=='specialist'&&<>
    <label className="grid gap-1">Выберите фото
     <select value={id} disabled={busy} className="min-h-11 rounded border border-slate-500 bg-white px-2"
-     onChange={event=>{setId(event.currentTarget.value);setConfirm(false);}}>
+     onChange={event=>{setId(event.currentTarget.value);setPreviewKey('');setConfirm(false);}}>
      {photos.map((photo,index)=><option key={photo.id} value={photo.id}>{`Фото ${index+1}${photo.withdrawnAt?' — скрыто':''}`}</option>)}
     </select>
    </label>
-   <div className="max-w-56"><WorkCabinetPhoto key={id} owner={owner} photoId={id} title="Выбранное фото"/></div>
+   <div className="max-w-56"><WorkCabinetPhoto key={id} owner={owner} photoId={id} title="Выбранное фото"
+    onReady={()=>setPreviewKey(owner+'|'+id)}/></div>
+   {consentEnabled&&!selected.withdrawnAt&&previewKey===owner+'|'+id&&
+    <PublicationConsent key={previewKey} owner={owner} kind={kind} publicationId={publicationId} category="photo" photoId={id}/>}
   </>}
   {selected.withdrawnAt?<p ref={result} tabIndex={-1} role="status">Фото скрыто в этой публикации.</p>:<>
    {confirm&&<p>{kind==='specialist'?'Фото профиля исчезнет из публичной анкеты. Остальные сведения в анкете сохранятся.':

@@ -7,7 +7,8 @@ create table app_publication_privacy.publication_consents(
  kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair')),
  publication_id uuid not null,
  category text not null check(category='location' or kind='listing' and category in ('phone','messenger')
-  or category='name' and kind in ('listing','specialist') or category='avatar' and kind='specialist'),
+  or category='name' and kind in ('listing','specialist') or category='avatar' and kind='specialist'
+  or kind in ('listing','vacancy','workRequest','fair') and category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
  subject_id uuid not null references app.users(id) on delete cascade,
  subject_name text not null,
  subject_email text not null,
@@ -34,10 +35,11 @@ create function app_publication_privacy.location_facts(p_city text,p_address tex
 create function app_publication_privacy.publication_consent_notice(p_kind text,p_publication uuid,p_category text)
  returns jsonb language sql immutable set search_path=pg_catalog,pg_temp as $$
  select jsonb_build_object(
-  'version',p_category||'-2026-11-draft-v1',
+  'version',split_part(p_category,':',1)||'-2026-11-draft-v1',
   'operator','ООО «БЛИЖНИЙ», ИНН 2370010092, ОГРН 1202300009746, 353584, Краснодарский край, Славянский район, п. Целинный, ул. Зеленая, д. 24, оф. 6',
-  'purpose','Показ '||case p_category when 'phone' then 'номера телефона' when 'messenger' then 'ссылки на мессенджер'
+  'purpose','Показ '||case split_part(p_category,':',1) when 'phone' then 'номера телефона' when 'messenger' then 'ссылки на мессенджер'
    when 'name' then 'имени из профиля' when 'avatar' then 'фото профиля'
+   when 'photo' then 'выбранной фотографии'
    else 'точного адреса и координат' end||' этой публикации всем посетителям БЛИЖНЕГО, в том числе без входа в аккаунт.',
   'resource','https://xn----9sbphbgks4a4a.xn--p1ai'||case p_kind
    when 'listing' then '/obyavlenie/'||p_publication::text
@@ -46,11 +48,16 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
    when 'specialist' then '/specialist/'||p_publication::text
    when 'fair' then '/yarmarka-masterov' end,
   'term','90 суток с момента подтверждения. Согласие можно отозвать раньше в кабинете или через поддержку.',
-  'statement',case p_category when 'phone' then 'Разрешаю оператору публиковать указанный номер телефона в этом объявлении.'
+  'statement',case split_part(p_category,':',1) when 'phone' then 'Разрешаю оператору публиковать указанный номер телефона в этом объявлении.'
    when 'messenger' then 'Разрешаю оператору публиковать указанную ссылку на мессенджер в этом объявлении.'
    when 'name' then 'Разрешаю оператору публиковать указанное имя в этой публикации.'
    when 'avatar' then 'Разрешаю оператору публиковать показанное фото профиля в этой анкете.'
+   when 'photo' then 'Разрешаю оператору публиковать выбранную фотографию в этой публикации.'
    else 'Разрешаю оператору публиковать указанные ниже точный адрес и координаты этой публикации.' end)
+  ||case when starts_with(p_category,'photo:') then jsonb_build_object(
+   'attachment',substr(p_category,7),'fileResource','https://xn----9sbphbgks4a4a.xn--p1ai/api/'||
+   case p_kind when 'listing' then 'listings' when 'fair' then 'service-publications' else 'work-publications' end||
+   '/'||p_publication::text||'/photos/'||substr(p_category,7)) else '{}'::jsonb end
  $$;
 
 -- Store a fingerprint of the photo rather than a copy of the image in the consent record.
@@ -100,9 +107,11 @@ declare
  confirmed_at timestamptz;
  field_name text;
  profile_value text;
+ photo_id uuid;
 begin
  if p_category is null or not (p_category='location' or p_kind='listing' and p_category in ('phone','messenger')
-  or p_category='name' and p_kind in ('listing','specialist') or p_category='avatar' and p_kind='specialist') then
+  or p_category='name' and p_kind in ('listing','specialist') or p_category='avatar' and p_kind='specialist'
+  or p_kind in ('listing','vacancy','workRequest','fair') and p_category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') then
   raise exception using errcode='PDW04',message='Invalid consent category';
  end if;
  if (p_expected is null)<>(p_name is null) or p_expected is not null and (
@@ -112,7 +121,8 @@ begin
  ) then raise exception using errcode='PDW04',message='Invalid location consent';end if;
 
  -- The existing command checks the verified owner and locks the session and publication.
- field_name:=case when p_category='location' then 'location' when p_category in ('name','avatar') then 'profileValue' else 'contact' end;
+ field_name:=case when p_category='location' then 'location' when p_category in ('name','avatar') then 'profileValue'
+  when starts_with(p_category,'photo:') then 'photoValue' else 'contact' end;
  decision:=app_publication_privacy.withdraw_location(p_hash,p_actor,p_kind,p_publication,false,p_category);
  if decision->>'withdrawnAt' is not null or exists(
   select 1 from app_publication_privacy.location_withdrawals where kind=p_kind and publication_id=p_publication and scope='publication'
@@ -125,6 +135,10 @@ begin
  end if;
 
  case
+  when field_name='photoValue' then
+   photo_id:=substr(p_category,7)::uuid;
+   select to_jsonb(m.sha256) into facts from app.media_objects m
+    where m.id=photo_id and m.owner_id=p_actor and m.state='ready' for share;
   when p_category in ('name','avatar') then
    select nullif(profile->>case p_category when 'name' then 'name' else 'avatarDataUrl' end,'')
    into profile_value from app.cabinet_profiles where user_id=p_actor for share;
@@ -171,7 +185,8 @@ begin
    and expires_at>clock_timestamp() and last_seen_at>clock_timestamp()-interval '30 minutes') then
   raise exception using errcode='PDW01',message='Publication owner required';
  end if;
- return jsonb_build_object(field_name,case when p_category='avatar' then to_jsonb(profile_value) else facts end,
+ return jsonb_build_object(field_name,case when p_category='avatar' then to_jsonb(profile_value)
+  when field_name='photoValue' then to_jsonb(photo_id) else facts end,
   'notice',notice,'email',email,'fingerprint',case when deadline is null then current_offer else last_offer end,
   'expiresAt',to_char(deadline at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'));
 end;

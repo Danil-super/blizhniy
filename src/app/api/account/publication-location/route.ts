@@ -6,7 +6,7 @@ import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
-import { contactConsentRequired, hasLocationWithdrawalSchema, locationConsentRequired, profileConsentRequired } from "@/lib/publication-location-withdrawal";
+import { contactConsentRequired, hasLocationWithdrawalSchema, locationConsentRequired, photoConsentRequired, profileConsentRequired } from "@/lib/publication-location-withdrawal";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 export const runtime = "nodejs";
@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     const action = Object.hasOwn(input, "action") ? input.action : undefined;
     const photoList = action === "photos";
     const photoWrite = action === "withdraw-photo";
+    const photoStatus = action === "photo-consent-status";
+    const photoGrant = action === "confirm-photo-consent";
+    const photoConsent = photoStatus || photoGrant;
     const textList = action === "texts";
     const textWrite = action === "withdraw-text";
     const contactStatus = action === "contact-consent-status";
@@ -38,21 +41,23 @@ export async function POST(request: Request) {
     const profileWithdrawal = action === "withdraw-profile-value";
     const profile = profileStatus || profileWrite || profileWithdrawal;
     const categorized = contact || profile;
-    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus;
-    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite;
+    const consentStatus = action === "location-consent-status" || contactStatus || profileStatus || photoStatus;
+    const consentWrite = action === "confirm-location-consent" || contactWrite || profileWrite || photoGrant;
     const consent = consentStatus || consentWrite;
     const statusOnly = action === "status" || action === "publication-status" || photoList || textList;
     const full = action === "withdraw-publication" || action === "publication-status";
     if (contact && !contactConsentRequired() || profile && !profileConsentRequired() ||
-        consent && !categorized && !locationConsentRequired()) return error(404, "NOT_FOUND");
+        photoConsent && !photoConsentRequired() ||
+        consent && !categorized && !photoConsent && !locationConsentRequired()) return error(404, "NOT_FOUND");
     const { category, kind } = input;
     if (contact && (kind !== "listing" || (category !== "phone" && category !== "messenger"))) return error(422, "INVALID_INPUT");
     if (profile && !(category === "name" && (kind === "listing" || kind === "specialist") ||
         category === "avatar" && kind === "specialist")) return error(422, "INVALID_INPUT");
+    if (photoConsent && kind !== "listing" && kind !== "vacancy" && kind !== "workRequest" && kind !== "fair") return error(422, "INVALID_INPUT");
     const fieldWithdrawal = contactWithdrawal || profileWithdrawal;
     const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || fieldWithdrawal ? 4 : 3;
-    if (Object.keys(input).length !== keys + (categorized ? 1 : 0) ||
-        (photoWrite && !Object.hasOwn(input, 'photoId')) ||
+    if (Object.keys(input).length !== keys + (categorized || photoConsent ? 1 : 0) ||
+        ((photoWrite || photoConsent) && !Object.hasOwn(input, 'photoId')) ||
         (textWrite && !['field','fingerprint','start','end'].every(key => Object.hasOwn(input,key)))) return error(422, "INVALID_INPUT");
     if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
@@ -69,7 +74,7 @@ export async function POST(request: Request) {
     const fieldScope = (contact && (category === "phone" || category === "messenger") ||
       profile && (category === "name" || category === "avatar")) ? category : "location";
     let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : fieldWithdrawal ? fieldScope : "location";
-    if (photoWrite) {
+    if (photoWrite || photoConsent) {
       scope = kind === "specialist" && input.photoId === "avatar" ? "avatar" : "photo:" + parseListingPhotoIds([input.photoId])[0];
     }
     if (textWrite) {
@@ -91,17 +96,19 @@ export async function POST(request: Request) {
     if (consent) {
       const { rows: [row] } = await db.query<{ result: object }>(
         'select app_publication_privacy.publication_consent($1,$2,$3,$4,$5,$6,$7) as result',
-        [hashSessionToken(token), actor, kind, publicationId, fieldScope,
+        [hashSessionToken(token), actor, kind, publicationId, photoConsent ? scope : fieldScope,
           consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
       );
       if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
-      return authJson({ kind, publicationId, ...(categorized ? { category: fieldScope } : {}), consent: row.result }, 200);
+      return authJson({ kind, publicationId, ...(categorized ? { category: fieldScope } : {}),
+        ...(photoConsent ? { photoId: scope.slice(6) } : {}), consent: row.result }, 200);
     }
     const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[]; texts?: unknown[] } }>(
       'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as result',
       [hashSessionToken(token), actor, kind, publicationId, !statusOnly, scope],
     );
-    if (photoList && Array.isArray(result?.photos)) return authJson({ kind, publicationId, photos: result.photos }, 200);
+    if (photoList && Array.isArray(result?.photos)) return authJson({ kind, publicationId, photos: result.photos,
+      ...(kind !== "specialist" && photoConsentRequired() ? { photoConsent: true } : {}) }, 200);
     if (textList && Array.isArray(result?.texts)) return authJson({ kind, publicationId, texts: result.texts }, 200);
     if (!result || (result.withdrawnAt === null ? !statusOnly : typeof result.withdrawnAt !== "string")) {
       return error(503, "LOCATION_UNAVAILABLE");

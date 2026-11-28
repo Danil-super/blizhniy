@@ -107,15 +107,28 @@ export function publicationWithdrawalEligibility(alias: "l" | "w" | "s", enabled
   return enabled ? ` and not exists(${withdrawal(alias, "'publication'")})` : "";
 }
 
-export function publicPhotoEligibility(alias: "l" | "w" | "s", photo: "p.media_id" | "image.id", enabled?: boolean): string {
-  return enabled ? ` and not exists(${withdrawal(alias, "'photo:'||" + photo + "::text")})` : "";
+export function photoConsentRequired(): boolean {
+  return process.env.BLIZHNIY_PUBLICATION_PHOTO_CONSENT === "required";
+}
+
+export function publicPhotoEligibility(alias: Alias, photo: "p.media_id" | "image.id", enabled?: boolean): string {
+  const required=photoConsentRequired();
+  if(!enabled)return required?" and false":"";
+  const category="'photo:'||"+photo+"::text";
+  const visible=` and not exists(${withdrawal(alias,category)})`;
+  if(!required)return visible;
+  const kind=alias==='l'?"'listing'":`${alias}.kind`;
+  return visible+` and app_publication_privacy.publication_is_consented(${kind},${alias}.id,${alias}.author_id,${category},
+    (select to_jsonb(media.sha256) from app.media_objects media
+     where media.id=${photo} and media.owner_id=${alias}.author_id and media.state='ready'))`;
 }
 
 export function withdrawnPhotoColumn(alias: "w" | "s", enabled?: boolean): string {
-  if (!enabled) return "";
+  const visible=publicPhotoEligibility(alias,"p.media_id",enabled);
+  if (!visible) return "";
   const table = alias === "w" ? "app.work_publication_photos" : "app.service_publication_photos";
   return `,array(select p.media_id::text from ${table} p where p.publication_id=${alias}.id
-    and exists(${withdrawal(alias, "'photo:'||p.media_id::text")})) as "withdrawnPhotos"`;
+    and not (true${visible})) as "withdrawnPhotos"`;
 }
 
 export function publicAvatarSql(enabled?: boolean): string {

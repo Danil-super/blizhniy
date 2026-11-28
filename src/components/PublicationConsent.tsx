@@ -8,7 +8,7 @@ import {postPublicationPrivacy,type ContactConsentCategory,type ProfileConsentCa
 
 type Consent={
  value:string;
- notice:{version:string;operator:string;purpose:string;resource:string;term:string;statement:string};
+ notice:{version:string;operator:string;purpose:string;resource:string;fileResource?:string;term:string;statement:string};
  email:string;fingerprint:string;expiresAt:string|null;
 };
 type Location={city:string;address:string|null;latitude:number;longitude:number};
@@ -18,9 +18,12 @@ const labels={
  messenger:{title:'Согласие на публикацию мессенджера',term:'мессенджера',missing:'сохраните ссылку на мессенджер',hidden:'Мессенджер скрыт.'},
  name:{title:'Согласие на публикацию имени',term:'имени',missing:'сохраните имя в профиле',hidden:'Имя скрыто.'},
  avatar:{title:'Согласие на публикацию фото профиля',term:'фото профиля',missing:'сохраните фото в профиле',hidden:'Фото профиля скрыто.'},
+ photo:{title:'Согласие на публикацию выбранного фото',term:'выбранного фото',missing:'сохраните фото',hidden:'Фото скрыто.'},
 };
 
-export function PublicationConsent({category,...target}:PublicationPrivacyTarget&{category?:ContactConsentCategory|ProfileConsentCategory}){
+type Selection={category?:ContactConsentCategory|ProfileConsentCategory;photoId?:never}|{category:'photo';photoId:string};
+
+export function PublicationConsent({category,photoId,...target}:PublicationPrivacyTarget&Selection){
  const label=labels[category??'location'];
  const [consent,setConsent]=useState<Consent|null>();
  const [fullName,setFullName]=useState(''),[confirmed,setConfirmed]=useState(false);
@@ -40,7 +43,10 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
   try{
    const fields={fingerprint:consent?.fingerprint??'',fullName:fullName.trim()};
    const profile=category==='name'||category==='avatar';
-   const command=profile
+   const command=category==='photo'
+    ? operation==='confirm'?{action:'confirm-photo-consent' as const,photoId,...fields}
+     :{action:'photo-consent-status' as const,photoId}
+    :profile
     ? operation==='confirm'?{action:'confirm-profile-consent' as const,category,...fields}
      :{action:operation==='withdraw'?'withdraw-profile-value' as const:'profile-consent-status' as const,category}
     :category
@@ -58,16 +64,19 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
    if(!response.ok)throw Error();
    const data=await response.json();
    if(controller.signal.aborted)return;
-   if(data.kind!==target.kind||data.publicationId!==target.publicationId||category&&data.category!==category)throw Error();
+   if(data.kind!==target.kind||data.publicationId!==target.publicationId||
+      (category==='photo'?data.photoId!==photoId:category&&data.category!==category))throw Error();
    if(operation==='withdraw'){
     if(typeof data.withdrawnAt!=='string')throw Error();
     setWithdrawn(true);setConsent(null);setConfirmWithdrawal(false);
     return;
    }
    if(!data.consent)throw Error();
-   const next=data.consent as Omit<Consent,'value'>&{location?:Location|null;contact?:string|null;profileValue?:string|null;withdrawnAt?:string|null};
+   const next=data.consent as Omit<Consent,'value'>&{
+    location?:Location|null;contact?:string|null;profileValue?:string|null;photoValue?:string|null;withdrawnAt?:string|null;
+   };
    const location=next.location;
-   const value=profile?next.profileValue:category?next.contact:location&&
+   const value=category==='photo'?(next.photoValue===photoId?photoId:null):profile?next.profileValue:category?next.contact:location&&
     `${location.city}${location.address?', '+location.address:''}. Координаты ${location.latitude}, ${location.longitude}.`;
    if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||operation==='confirm'&&!next.expiresAt))throw Error();
    setConsent(value?{email:next.email,fingerprint:next.fingerprint,expiresAt:next.expiresAt,notice:next.notice,value}:null);
@@ -93,7 +102,7 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
    consent.expiresAt?<div className="space-y-2">
     <p role="status">Согласие на публикацию {label.term} действует до{' '}
      {new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(consent.expiresAt))} (МСК).</p>
-    {category&&<>
+    {category&&category!=='photo'&&<>
      {confirmWithdrawal&&<p>Посетители перестанут видеть эти данные в публикации. Последующее изменение этих данных не возобновит показ.</p>}
      <div className="flex flex-wrap gap-2">
       <button type="button" className={draftButton} disabled={busy} onClick={()=>{
@@ -108,9 +117,10 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
     <p>{consent.notice.operator}</p>
     <p>{consent.notice.purpose}</p>
     <p className="break-all">{consent.notice.resource}</p>
+    {consent.notice.fileResource&&<p className="break-all">{consent.notice.fileResource}</p>}
     <p>{consent.notice.term}</p>
     {category==='avatar'?<StoredMediaImage src={consent.value} alt="Фото для публикации" className="h-24 w-24 rounded-lg object-cover"/>:
-     <p className="break-words">{consent.value}</p>}
+     category!=='photo'&&<p className="break-words">{consent.value}</p>}
     <label className="block">Фамилия, имя, отчество (при наличии)
      <input autoComplete="name" maxLength={160} value={fullName} onChange={event=>setFullName(event.target.value)}
       className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2" disabled={busy}/>
