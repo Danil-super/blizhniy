@@ -59,10 +59,15 @@ test('UI classifier legacy URL resolves to the existing catalog before a wildcar
   assert.equal(detailRule.destination, '/rabota/specialisty/:path*', 'other specialist aliases keep their wildcard');
 });
 
+test('the optimizer keeps the prebuilt image glob matchers inactive', () => {
+  const config = load(source('next.config.ts'), {}, { process: { env: {} } }).default;
+  assert.equal(config.images?.localPatterns, undefined);
+});
+
 function listingPresentation() {
   const path = 'src/components/listings/ListingPages.tsx';
   const code = functionsFrom(path, ['listingImageTone', 'listingCategoryName', 'toDemoListing', 'slugifySubcategory', 'ListingDetailPage']);
-  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard', 'PublicationHeading', 'PublicationDates'];
+  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard', 'PublicationHeading', 'PublicationDates', 'PublicPublicationTerms'];
   return load(code, {}, {
     ...Object.fromEntries(componentNames.map((name) => [name, name])),
     fallbackCategories: [{ slug: 'sad-i-rasteniya', name: 'Сад и огород', children: ['Саженцы'] }],

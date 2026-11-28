@@ -1,3 +1,6 @@
+import {readListingVisibilityPolicy} from './listing-public-eligibility';
+import {hasPublicationRestrictionSchema} from './publication-restriction-eligibility';
+import {hasLocationWithdrawalSchema} from './publication-location-withdrawal';
 import {PostgresPublicListingStore} from './postgres-public-listings';
 import {PostgresPublicWorkStore} from './postgres-public-work';
 import {PostgresPublicServiceStore} from './postgres-public-service';
@@ -12,13 +15,15 @@ type Candidate=PublicSearchAnchor&{metadata:Record<string,unknown>};
 const key=(rank:number,id:string)=>rank+':'+id;
 const anchorOf=({id,rank,publishedAt,createdAt,sortOrder,parent,name}:Candidate):PublicSearchAnchor=>({id,rank,publishedAt,createdAt,sortOrder,parent,name});
 export class PublicSearchBudgetError extends PublicSearchError{}
+// Only remember installed schemas. A live migration must be detected, and a broken installed schema must fail closed.
+const databasesWithPublicationRestrictions=new WeakSet<Pick<PostgresDatabase,'readTransaction'>>();
 
 /** SQL selects only matching candidates; existing public readers authorize/materialize bounded batches. */
 export class PostgresPublicSearchStore{
  constructor(private readonly db:Pick<PostgresDatabase,'readTransaction'>,private readonly options:{postmoderation?:boolean;specialistProfileIdentity?:boolean}={}){
   if(typeof window!=='undefined')throw new PublicSearchError();
  }
- async search(value:PublicSearchInput,options:{onComplete?:()=>void;timeoutMs?:number;deadline?:number}={}):Promise<PublicSearchPage>{
+ async search(value:PublicSearchInput,options:{onComplete?:()=>void;timeoutMs?:number;deadline?:number;verifyListingBlocks?:boolean}={}):Promise<PublicSearchPage>{
   let delegated=false;
   try{
    const input=parsePublicSearchInput(value),cursor=input.cursor?decodePublicSearchCursor(input.cursor,input):null,reverse=cursor?.direction==='previous';
@@ -34,20 +39,26 @@ export class PostgresPublicSearchStore{
      const result=await transaction.query<Row>(text,values);bytes+=Buffer.byteLength(JSON.stringify(result.rows));
      if(bytes>16777216)throw new PublicSearchBudgetError();return result;
     }};
-    const listings=new PostgresPublicListingStore(tx,{postmoderation:this.options.postmoderation}),
-     work=new PostgresPublicWorkStore(tx,{vacancyPostmoderation:this.options.postmoderation}),
-     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity,testPublicationLabels:true});
+    const postmoderation=this.options.postmoderation===true;
+    const visibility=options.verifyListingBlocks?await readListingVisibilityPolicy(tx,postmoderation):{postmoderation,enforceLocationWithdrawals:await hasLocationWithdrawalSchema(tx)};
+    const {enforceLocationWithdrawals}=visibility;
+    const enforcePublicationRestrictions=databasesWithPublicationRestrictions.has(this.db)||await hasPublicationRestrictionSchema(tx);
+    if(enforcePublicationRestrictions)databasesWithPublicationRestrictions.add(this.db);
+    const listings=new PostgresPublicListingStore(tx,visibility),
+     work=new PostgresPublicWorkStore(tx,{vacancyPostmoderation:this.options.postmoderation,enforcePublicationRestrictions,enforceLocationWithdrawals}),
+     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity,testPublicationLabels:true,enforcePublicationRestrictions,enforceLocationWithdrawals});
     const scopes={listing:listings.searchScope(),work:work.searchScope(),service:services.searchScope()};
     let position:PublicSearchAnchor|null=cursor?anchorOf({...cursor,metadata:{}}):null,skip=cursor?0:(input.page-1)*24,exhausted=false;
     const accepted:Array<{candidate:Candidate;result:PublicSearchResult}>=[];
     while(accepted.length<25&&!exhausted){
-     const query=buildPublicSearchSql(input,scopes,position,reverse);
+     const query=buildPublicSearchSql(input,scopes,position,reverse,enforceLocationWithdrawals);
      const rows=(await tx.query<Candidate>(query.text,query.values)).rows;
      candidateCount+=rows.length;if(rows.length>25||candidateCount>25100)throw new PublicSearchBudgetError();
      exhausted=rows.length<25;if(!rows.length)break;
      const ids=(min:number,max=min)=>rows.filter(row=>row.rank>=min&&row.rank<=max).map(row=>parseListingDraftId(row.id));
      // Sequential reads keep each search to one checked-out connection and one SQL statement at a time.
-     const listingRows=await listings.readMany(ids(1)),workRows=await work.readMany(ids(2,3)),serviceRows=await services.readMany(ids(4,5));
+     const listingRows=await listings.readMany(ids(1)),workRows=await work.readMany(ids(2,3));
+     const serviceRows=await services.readMany(ids(4,5),rows.some(row=>row.rank===4)?undefined:'fair');
      const material=new Map<string,PublicSearchResult>();
      for(const item of listingRows){
       const candidate=rows.find(row=>row.rank===1&&row.id===item.id),category=candidate?.metadata.categoryName;

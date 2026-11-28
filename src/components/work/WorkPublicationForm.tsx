@@ -33,7 +33,7 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange,ho
    <Field name="title" label={kind==='vacancy'?'Название':'Название заказа'} defaultValue={form?.title} minLength={3} maxLength={120} placeholder={kind==='vacancy'?'Мастер по ремонту':'Нужен ремонт ванной'} required/>
    <PrimaryProfessionSelect defaultValue={form?.professionName??''} defaultId={initial?.professionId} required/>
    <ListingLocationFields cityFieldName={kind==='vacancy'?'location':'city'} defaultCity={form?.cityName??'Краснодар'} defaultAddress={form?.address??undefined}
-    defaultLat={form?.latitude??undefined} defaultLng={form?.longitude??undefined} addressLegend="Место работы" inlineControls/>
+    defaultLat={form?.latitude??undefined} defaultLng={form?.longitude??undefined} defaultExact={form?.showExactAddress} addressLegend="Место работы" inlineControls/>
     {kind==='vacancy'?<Field name="district" label="Район" defaultValue={form?.district??''} maxLength={200}/>:<input type="hidden" name="district" value={form?.district??''}/>}
    {localPayment&&kind==='vacancy'?<VacancyTermsFields salary={amountInput} schedule={vacancy?.schedule} workFormat={vacancy?.workFormat}/>:<>
     <WorkAmountField kind={kind} value={amountInput}/>

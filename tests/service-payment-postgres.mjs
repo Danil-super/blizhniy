@@ -1,4 +1,5 @@
 import {testServicePaymentGuards} from './service-payment-guard-cases.mjs';
+import {verifyRestrictedPlacementCheckout} from './publication-restriction-checkout-cases.mjs';
 // Owned disposable database. Never installs the candidate on the permanent local stand.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {randomBytes,randomUUID,randomInt} from 'node:crypto';import {readFile,readdir} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
@@ -220,6 +221,30 @@ test('service event terms and advertising slots are authoritative and once only'
    const input={paymentId:order.id,targetType:'ad_marquee'};
    assert.deepEqual(await cancellation.cancel(f.token,f.owner,input),{...input,state:'cancelled'});
    assert.equal((await store.readOrder(f.token,f.owner,order.id)).order.status,'failed');
+  });
+  await suite.test('a complaint stops fair and marquee checkout through the restricted runtime',async()=>{
+   await admin.query(await readFile(new URL('../database/candidates/0093-publication-restrictions.sql',import.meta.url),'utf8'));
+   const runtime=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_runtime',max:2}));
+   const merchant={shopId:'local-fixture-shop',isTest:true,secretKey:'test_synthetic_only'};
+   try{
+    const {PostgresServiceCheckoutStore}=load('postgres-service-checkout');
+    for(const kind of ['fair','marquee']){
+     const {owner,token,target}=await fixture(kind);
+     const store=new PostgresServiceCheckoutStore(runtime,{...merchant,siteOrigin:'https://fixture.example.invalid',receiptVatCode:1},kind);
+     const quote=await store.preview(token,owner,target,'1');
+     const input={publicationId:target,expectedRevision:'1',creationKey:randomUUID(),expectedTariffId:quote.tariff.id,
+      expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays,expectedFairDate:quote.fairEvent?.date??null};
+     await verifyRestrictedPlacementCheckout({admin,db:runtime,load,merchant,store,kind,owner,token,input,
+      unavailable:'ServiceCheckoutUnavailableError',alreadyAuthorized:kind==='marquee',concurrent:kind==='fair'});
+    }
+    const {owner,token,target}=await fixture('fair');
+    const repeatableRead={transaction:work=>runtime.transaction(async tx=>{
+     await tx.query('set transaction isolation level repeatable read');
+     return work(tx);
+    })};
+    const store=new PostgresServiceCheckoutStore(repeatableRead,{...merchant,siteOrigin:'https://fixture.example.invalid',receiptVatCode:1},'fair');
+    await assert.rejects(store.preview(token,owner,target,'1'),{message:'Publication checkout requires read committed'});
+   }finally{await runtime.close();}
   });
  }finally{
   for(const [key,value] of Object.entries(savedEnv)){if(value===undefined)delete process.env[key];else process.env[key]=value;}globalThis.fetch=previousFetch;if(db)await db.close();if(admin)await admin.end();

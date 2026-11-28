@@ -9,6 +9,7 @@ pg.Pool=class extends Base{
  }
  async query(statement){
   const sql=typeof statement==='string'?statement:statement.text,values=typeof statement==='string'?[]:statement.values;
+  if(sql==='set local jit=off')return{rows:[]};
   if(['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY','COMMIT'].includes(sql)||sql==="select set_config('statement_timeout',$1,true),set_config('transaction_timeout',$2,true)")return{rows:[]};
   if(sql.startsWith('with search_0 as materialized')){
    assert.ok(sql.includes('union all'));assert.ok(sql.includes('limit $4'));assert.equal(values[3],25);assert.equal(values[4],null);

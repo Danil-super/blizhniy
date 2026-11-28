@@ -1,3 +1,5 @@
+import type { PublicPublicationTerms } from './publication-consent-terms';
+
 export type PublicationStatus =
   | "draft"
   | "pending_payment"
@@ -61,6 +63,7 @@ export type DeliveryOptions = {
 };
 
 export type Listing = {
+  publicationTerms?: PublicPublicationTerms;
   testPublication?: boolean;
   id: string;
   slug: string;
@@ -96,6 +99,7 @@ export type Listing = {
 };
 
 export type JobVacancy = {
+  publicationTerms?: PublicPublicationTerms;
   testPublication?: boolean;
   professionId?: string;
   id: string;
@@ -135,6 +139,7 @@ export type JobVacancy = {
 };
 
 export type WorkRequest = {
+  publicationTerms?: PublicPublicationTerms;
   testPublication?: boolean;
   professionId?: string;
   id: string;
@@ -159,6 +164,7 @@ export type WorkRequest = {
 };
 
 export type SpecialistProfile = {
+  publicationTerms?: PublicPublicationTerms;
   testPublication?: boolean;
   professionId?: string;
   id: string;
@@ -228,6 +234,7 @@ export type Payment = {
 };
 
 export type FairApplication = {
+  publicationTerms?: PublicPublicationTerms;
   id: string;
   participantName: string;
   city: string;

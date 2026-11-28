@@ -118,7 +118,7 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
     "@/lib/public-runtime-config": publicRuntime,
-    "@/lib/metrica-config": load("src/lib/metrica-config.ts", { "./public-runtime-config": publicRuntime }),
+    "@/lib/metrica-config": load("src/lib/metrica-config.ts", { "./public-runtime-config": publicRuntime }, { process: { env: environment } }),
     "@/components/YandexMetrica": { YandexMetrica: props => { analytics.push(props); return null; } },
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
@@ -159,6 +159,16 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   assert.match(changed, /name="blizhniy-metrica-id" content="357912468"/);
   assert.equal(changed.includes("135790246"), false);
   assert.equal(analytics.at(-1).counterId, 357912468);
+  environment.BLIZHNIY_YANDEX_METRICA_MODE = "measurement-protocol";
+  environment.BLIZHNIY_YANDEX_METRICA_MEASUREMENT_TOKEN = "00000000-0000-4000-8000-000000000000";
+  const measured = renderToStaticMarkup(await Root({ children: null }));
+  assert.match(measured, /name="blizhniy-metrica-id" content="357912468"/);
+  assert.ok(!measured.includes(environment.BLIZHNIY_YANDEX_METRICA_MEASUREMENT_TOKEN));
+  assert.equal(analytics.at(-1).transport, "measurement-protocol");
+  assert.ok(!JSON.stringify(analytics.at(-1)).includes(environment.BLIZHNIY_YANDEX_METRICA_MEASUREMENT_TOKEN));
+  delete environment.BLIZHNIY_YANDEX_METRICA_MEASUREMENT_TOKEN;
+  assert.doesNotMatch(renderToStaticMarkup(await Root({ children: null })), /name="blizhniy-metrica-id"/);
+  delete environment.BLIZHNIY_YANDEX_METRICA_MODE;
   for (const id of [undefined, "", "0", "9007199254740992", 'synthetic-invalid-metrica\"><script>']) {
     if (id === undefined) delete environment.BLIZHNIY_YANDEX_METRICA_ID;
     else environment.BLIZHNIY_YANDEX_METRICA_ID = id;

@@ -1,16 +1,19 @@
-import {hostedRefundOperatorSocket} from './local-refund-admin-config.ts';
+import {guardedRefundOperatorSocket,hostedRefundOperatorSocket} from './local-refund-admin-config.ts';
 import {request} from 'node:http';
 import {lstat,realpath} from 'node:fs/promises';
 import {basename,dirname,isAbsolute,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {AdminRefundRejectedError,parseAdminRefundCommand,parseAdminRefundResult} from './admin-refund-contract.ts';
 import {hashSessionToken} from './identity';
+import {AuthRequestError} from './auth-http.ts';
 /** No network host/redirect/retry. A timeout may hide a committed action; reuse its original ID explicitly. */
-async function callRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal,shopId?:string,hosted=false){
+async function callRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal,shopId?:string,hosted=false,credential?:object){
  try{
+  const guarded=hosted&&socketPath===guardedRefundOperatorSocket;
   const command=parseAdminRefundCommand(value);if(!hashSessionToken(token))throw Error();
   if(shopId!==undefined&&!/^[a-zA-Z0-9_-]{1,64}$/.test(shopId))throw Error();
-  const body=JSON.stringify({token,command,...(shopId===undefined?{}:{shopId})});if(Buffer.byteLength(body)>4096)throw Error();
+  const body=JSON.stringify({token,command,credential,...(shopId===undefined?{}:{shopId})});
+  if(Buffer.byteLength(body)>(guarded?33_792:4096))throw Error();
   if(typeof process.getuid!=='function')throw Error();
   if(!hosted&&(!isAbsolute(socketPath)||Buffer.byteLength(socketPath)>100||basename(socketPath)!=='operator.sock'||
    !/^blizhniy-refund-operator-[a-zA-Z0-9]+$/.test(basename(dirname(socketPath)))||dirname(dirname(socketPath))!==tmpdir()))throw Error();
@@ -31,12 +34,15 @@ async function callRefundOperator(socketPath:string,token:string,value:unknown,s
     incoming.on('error',reject);incoming.on('aborted',()=>reject(Error()));
     incoming.on('end',()=>{try{
      if(incoming.headers['content-type']!=='application/json')throw Error();const value=JSON.parse(text+decoder.decode());
-     if(command.action==='approve'&&incoming.statusCode===409&&value?.error?.code==='REFUND_NOT_LATEST'&&Object.keys(value).join()==='error'&&Object.keys(value.error).join()==='code')throw new AdminRefundRejectedError();
+     const known=value?.error&&Object.keys(value).join()==='error'&&Object.keys(value.error).join()==='code';
+     if(command.action==='approve'&&incoming.statusCode===409&&known&&value.error.code==='REFUND_NOT_LATEST')throw new AdminRefundRejectedError();
+     if(guarded&&(command.action==='approve'||command.action==='recover')&&incoming.statusCode===403&&known&&value.error.code==='PASSKEY_REQUIRED')
+      throw new AuthRequestError(403,'PASSKEY_REQUIRED');
      if(incoming.statusCode!==200)throw Error();resolve(value);
-    }catch(error){reject(error instanceof AdminRefundRejectedError?error:Error());}});
+    }catch(error){reject(error instanceof AdminRefundRejectedError||error instanceof AuthRequestError?error:Error());}});
    });outgoing.on('error',reject);outgoing.end(body);
   });return parseAdminRefundResult(command,payload);
- }catch(error){if(error instanceof AdminRefundRejectedError)throw error;throw Error('Local refund operator unavailable');}
+ }catch(error){if(error instanceof AdminRefundRejectedError||error instanceof AuthRequestError)throw error;throw Error('Local refund operator unavailable');}
 }
 
 export function callLocalRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal,shopId?:string){
@@ -45,4 +51,8 @@ export function callLocalRefundOperator(socketPath:string,token:string,value:unk
 
 export function callHostedRefundOperator(token:string,value:unknown,shopId:string,signal?:AbortSignal){
  return callRefundOperator(hostedRefundOperatorSocket,token,value,signal,shopId,true);
+}
+
+export function callGuardedHostedRefundOperator(token:string,value:unknown,shopId:string,signal?:AbortSignal,credential?:object){
+ return callRefundOperator(guardedRefundOperatorSocket,token,value,signal,shopId,true,credential);
 }

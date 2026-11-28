@@ -6,6 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
+import {getHostedPublicationRestrictionMigrations} from './publication-test-release-plan.mjs';
 import {getHostedMarqueeQueueMigration,getHostedMarqueeAdmissionMigration,getHostedPlacementRenewalMigration,getHostedSpecialistRepeatMigration,getHostedRefundSchemaVersion,getHostedNotificationMigrations,getHostedSpecialistRefundMigration,getHostedPlacementRefundProofMigration,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
@@ -116,7 +117,6 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    if(responses){
     expectedJournal.push(...getPaidResponseMigrations());
     expectedJournal.sort((left,right)=>left.name.localeCompare(right.name,'en'));
-    await assertPaidResponseSchema(tx);
    }
    if(cancellations){
     if(!specialistTerms||!enrollment||!inbox||!bookings||!views||!responses)throw Error('Unsupported checkout cancellation deployment');
@@ -145,13 +145,15 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     if(placementRenewals)expectedJournal.push(getHostedPlacementRenewalMigration());
     if(marqueeAdmission)expectedJournal.push(getHostedMarqueeAdmissionMigration());
     if(marqueeQueue)expectedJournal.push(getHostedMarqueeQueueMigration());
-    if(hostedSchema===87)expectedJournal.push(...getHostedNotificationMigrations());
+    if(hostedSchema>=87)expectedJournal.push(...getHostedNotificationMigrations());
+    if(hostedSchema===95)expectedJournal.push(...getHostedPublicationRestrictionMigrations());
     expectedJournal.sort((a,b)=>a.name.localeCompare(b.name,'en'));
    }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
+   if(responses)await assertPaidResponseSchema(tx,{publicationRestrictions:hostedSchema===95});
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx,{hostedRefunds});
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue,notifications:hostedSchema===87});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation,marqueeRefunds,placementRefundProof,specialistRefunds,specialistRepeat,placementRenewals,marqueeAdmission,marqueeQueue,notifications:hostedSchema>=87});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

@@ -111,7 +111,7 @@ export async function testHostedPaidResponses({admin,config,workerDb,refundDb,co
     expectedSpecialistRevision:preview.specialist.revision,message:'Готовы выполнить работу по согласованному графику.'};
    return app(actor,'create',{input},{method:'PUT'});
   }
-  async function settle(actor,application,status){
+  async function settle(actor,application,status,beforeCapture){
    await admin.query('delete from app_response.enrollment');
    process.env.BLIZHNIY_PAYMENT_TEST_USER_ID=actor.id;
    await admin.query('insert into app_response.enrollment(singleton,owner_id,shop_id,vat_code) values(true,$1,$2,1)',[actor.id,merchant.shopId]);
@@ -152,6 +152,27 @@ export async function testHostedPaidResponses({admin,config,workerDb,refundDb,co
    payment.capturedAt=new Date().toISOString();
    const due=()=>admin.query('update app.payment_reconciliation_jobs set next_attempt_at=clock_timestamp() where intent_id=$1',[order.id]);
    await due();
+   if(beforeCapture){
+    const worker=compiledWorker(workerDb,merchant,fetcher,actor.id,undefined,true);
+    await beforeCapture(worker,order.id);
+    assert.deepEqual(await worker.tick(),{state:'blocked',code:'publication_blocked'});
+    assert.deepEqual(await worker.tick(),{state:'idle'});
+    const receipt=await checkout(actor,{action:'order',paymentId:order.id});
+    assert.equal(receipt.order.status,'succeeded');
+    assert.equal(receipt.deliveredAt,null);
+    assert.equal((await admin.query('select intent_id from app_response.deliveries where intent_id=$1',[order.id])).rowCount,0);
+    assert.equal((await admin.query('select event_key from app.notifications where event_key=$1',['application_paid:'+application.id])).rowCount,0);
+    await app(recipient,'read',{applicationId:application.id},{status:404});
+    assert.equal((await incoming()).items.some(row=>row.id===application.id),false);
+    assert.equal(posts,previousPosts+1);
+    assert.equal((await compensation.claim(order.id)).state,'claimed');
+    const record=await compensation.read(order.id);
+    assert.equal(record.policyVersion,'paid-response-undelivered-v1');
+    assert.equal(record.reason,'delivery-blocked');
+    assert.equal(record.deliveredAt,null);
+    assert.equal(record.contactViewAt,null);
+    return;
+   }
    if(status==='succeeded'){
     assert.deepEqual(await reconciler.tick(),{state:'deferred',code:'processing_unavailable'});
     assert.equal(deliveryReplyLost,true);
@@ -220,6 +241,77 @@ export async function testHostedPaidResponses({admin,config,workerDb,refundDb,co
   assert.equal(await publicWork.read('workRequest',order),undefined);
   assert.equal((await publicWork.read('vacancy',vacancy)).id,vacancy);
   assert.equal(posts,4);assert.equal(remote.size,4);
+  await admin.query('delete from app_response.enrollment');
+  process.env.BLIZHNIY_PAYMENT_TEST_USER_ID=first.id;
+  await admin.query('insert into app_response.enrollment(singleton,owner_id,shop_id,vat_code) values(true,$1,$2,1)',[first.id,merchant.shopId]);
+  for(const [kind,status] of [['workRequest',404],['specialist',409]]){
+   const targetId=await work('workRequest'),response=await draft(first,'workRequest',targetId);
+   const previewInput={action:'preview',applicationId:response.id,expectedRevision:response.revision};
+   const preview=await checkout(first,previewInput);
+   const input={applicationId:response.id,expectedRevision:response.revision,creationKey:randomUUID(),
+    expectedTariffId:preview.tariff.id,expectedAmount:preview.tariff.amount};
+   const order=await checkout(first,input,{method:'PUT'});
+   const restrictedId=kind==='specialist'?first.specialist:targetId;
+   const table=kind==='specialist'?'app.service_publications':'app.work_publications';
+   assert.equal((await admin.query(`insert into app_publication_restriction.restrictions(kind,publication_id,restricted_revision,case_id)
+     select kind,id,revision,$2 from ${table} where id=$1`,[restrictedId,randomUUID()])).rowCount,1);
+   await app(first,'preview',{kind:'workRequest',targetId},{status});
+   await checkout(first,previewInput,{status});
+   await checkout(first,{...input,creationKey:randomUUID()},{method:'PUT',status});
+   await checkout(first,{action:'dispatch',paymentId:order.id},{status});
+   assert.equal((await admin.query('select intent_id from app.payment_dispatch_anchors where intent_id=$1',[order.id])).rowCount,0);
+   assert.deepEqual(await checkout(first,{action:'intent',creationKey:input.creationKey}),order);
+   assert.equal((await checkout(first,{action:'order',paymentId:order.id})).order.status,'created');
+  }
+  assert.equal(posts,4);assert.equal(remote.size,4);
+  const {rows:[original]}=await admin.query("select pg_get_functiondef('app_response.deliver(uuid,uuid)'::regprocedure) as sql");
+  await admin.query(await readFile(new URL('../database/candidates/0095-restricted-response-delivery.sql',import.meta.url),'utf8'));
+  try{
+   async function restrict(db,table,id){
+    assert.equal((await db.query(`insert into app_publication_restriction.restrictions(kind,publication_id,restricted_revision,case_id)
+     select kind,id,revision,$2 from ${table} where id=$1`,[id,randomUUID()])).rowCount,1);
+   }
+   const paidVacancy=[...remote.values()].find(payment=>payment.body.metadata.targetId===vacancyResponse.id);
+   const delivered=await checkout(first,{action:'order',paymentId:paidVacancy.order});
+   await restrict(admin,'app.work_publications',vacancy);
+   assert.deepEqual(await checkout(first,{action:'order',paymentId:paidVacancy.order}),delivered);
+   assert.equal((await admin.query('select intent_id from app_response.deliveries where intent_id=$1',[paidVacancy.order])).rowCount,1);
+   assert.deepEqual(await compensation.claim(paidVacancy.order),{state:'ineligible',reason:'selected-self'});
+   for(const scope of ['vacancy','workRequest','specialist']){
+    const kind=scope==='vacancy'?'vacancy':'workRequest',targetId=await work(kind);
+    const response=await draft(second,kind,targetId);
+    await settle(second,response,'succeeded',async(worker,intentId)=>{
+     if(scope==='specialist')return restrict(admin,'app.service_publications',second.specialist);
+     if(scope==='vacancy')return restrict(admin,'app.work_publications',targetId);
+     const reviewer=await actor('Стендовый модератор');
+     await admin.query("update app.users set role='admin' where id=$1",[reviewer.id]);
+     await admin.query('update app.payment_reconciliation_jobs set attempts=11 where intent_id=$1',[intentId]);
+     const moderator=await admin.connect();
+     try{
+      await moderator.query('begin');
+      await moderator.query('select id from app.work_publications where id=$1 for update',[targetId]);
+      await restrict(moderator,'app.work_publications',targetId);
+      assert.deepEqual(await worker.tick(),{state:'blocked',code:'attempts_exhausted'});
+      await moderator.query('commit');
+     }catch(error){
+      await moderator.query('rollback');
+      throw error;
+     }finally{moderator.release();}
+     const recovery=await admin.connect();
+     try{
+      await recovery.query('begin');
+      await recovery.query('set local role blizhniy_reconciliation_operator');
+      const args=[hashSessionToken(reviewer.token),reviewer.id,randomUUID(),intentId,merchant.shopId,'Синтетическая сверка после ограничения публикации',true];
+      const {rows:[result]}=await recovery.query('select app.recover_payment_reconciliation($1,$2,$3,$4,$5,$6,$7) as result',args);
+      assert.equal(result.result.state,'scheduled');
+      await recovery.query('commit');
+     }catch(error){
+      await recovery.query('rollback');
+      throw error;
+     }finally{recovery.release();}
+    });
+   }
+  }finally{await admin.query(original.sql);}
  }finally{
   await db.close();
   for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}

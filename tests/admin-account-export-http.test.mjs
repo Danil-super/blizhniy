@@ -8,7 +8,10 @@ const origin = 'https://example.test';
 const admin = 'ad0545ab-36ca-4a21-9921-c8762d47bc3d';
 const different = 'ad0545ab-36ca-4a21-9921-c8762d47bc3a';
 const token = 'a'.repeat(64);
-const input = { expectedAdminId: admin, caseId: 'REVIEW_001' };
+const credential = { id: 'test_key', rawId: 'test_key', type: 'public-key', response: {
+  clientDataJSON: 'fixture', authenticatorData: 'fixture', signature: 'fixture',
+} };
+const input = { action: 'prepare', expectedAdminId: admin, caseId: 'REVIEW_001', credential };
 
 function request(body = input, headers = {}) {
   return new Request(origin + '/api/admin/account-export', {
@@ -27,7 +30,10 @@ test('the active administrator can approve only the case and their own session',
   const handle = createAdminAccountExportHandler({ origin }, () => ({
     allow: async () => true,
     resolve: async () => ({ id: admin, role: 'admin' }),
-  }), async (caseId, operatorToken) => calls.push({ caseId, operatorToken }));
+  }), async (caseId, operatorToken, assertion) => {
+    assert.equal(assertion.id, credential.id);
+    calls.push({ caseId, operatorToken });
+  });
   const response = await handle(request());
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -62,4 +68,29 @@ test('a preparation error returns no internal metadata or session', async () => 
   const response = await handle(request());
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: { code: 'EXPORT_UNAVAILABLE' } });
+});
+
+test('archive options and preparation have separate input and response contracts', async () => {
+  const calls = [];
+  const handle = createAdminAccountExportHandler({ origin }, () => ({
+    allow: async () => true,
+    resolve: async () => ({ id: admin, role: 'admin' }),
+  }), async (...incoming) => {
+    calls.push(incoming);
+    return { options: { challenge: 'a'.repeat(43) } };
+  });
+  const options = { action: 'options', caseId: input.caseId, expectedAdminId: admin };
+  assert.equal((await handle(request({ ...input, credential: undefined }))).status, 422);
+  assert.equal((await handle(request({ ...options, reviewDigest: 'a'.repeat(64) }))).status, 422);
+  assert.equal((await handle(request({ ...input, credential: { ...credential, rawId: 'wrong' } }))).status, 422);
+  assert.equal(calls.length, 0);
+  const response = await handle(request(options));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { options: { challenge: 'a'.repeat(43) } });
+  assert.deepEqual(calls[0], [input.caseId, token]);
+  assert.equal((await handle(request(input))).status, 200);
+  assert.equal(calls[1][0], input.caseId);
+  assert.equal(calls[1][1], token);
+  assert.equal(calls[1][2].id, credential.id);
+  assert.equal(calls[1][2].response.signature, credential.response.signature);
 });

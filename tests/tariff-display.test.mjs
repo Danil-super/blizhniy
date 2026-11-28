@@ -30,6 +30,7 @@ function page(kind, tariffs, specialistCheckout = false, readSpecialistAccountTe
     "@/components/SiteHeader": { SiteHeader: () => React.createElement("header") },
     "@/components/BrandName": { BrandName: () => "БЛИЖНИЙ" },
     "@/components/FairApplicationForm": { FairApplicationForm: () => React.createElement("form") },
+    "@/components/PublicPublicationTerms": { PublicPublicationTerms: () => assert.fail("empty fixture must not display publication terms") },
     "@/components/LocationMap": { LocationMap: () => React.createElement("div") },
     "@/lib/data": { fairCategories },
     "@/lib/fair-calendar": { nextFairEvent },

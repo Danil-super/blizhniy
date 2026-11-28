@@ -12,6 +12,8 @@ export function workPublicationModule(name,extra={}){
  const deps={'./media-read-admission.ts':mediaAdmission,'./app-session-transaction':loadAdminModule('app-session-transaction'),'./work-publication-contract.ts':contract,
   './listing-draft-contract.ts':drafts,'./media-limits.ts':limits,'./cabinet-field-validation.ts':fields,
   './listing-workflow-config':loadLocalPrimaryModule('listing-workflow-config'),
+  './publication-restriction-eligibility':loadLocalPrimaryModule('publication-restriction-eligibility'),
+  './publication-location-withdrawal':loadLocalPrimaryModule('publication-location-withdrawal'),
   './specialist-checkout-config':loadLocalPrimaryModule('specialist-checkout-config'),
   './application-contact-views-config':loadLocalPrimaryModule('application-contact-views-config'),
   './specialist-application-profile.ts':loadLocalPrimaryModule('specialist-application-profile'),

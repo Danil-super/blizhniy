@@ -354,7 +354,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             listingCount={sellerStats?.listingCount}
             soldCount={sellerStats?.soldCount}
             hasContacts={!sold && Boolean(listing.phone || listing.email || messengerHref)}
-            listingTitle={listing.title}
+            listingSlug={slug}
             profileHref={sellerProfileHref(listing)}
           />
           {hasMapPoint ? (

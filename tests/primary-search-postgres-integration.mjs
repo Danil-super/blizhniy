@@ -10,6 +10,7 @@ import {test} from 'node:test';
 import {promisify} from 'node:util';
 import pg from 'pg';
 import {getBootstrapPlan} from '../scripts/postgres-migration-plan.mjs';
+import {formModule} from './listing-form-module.mjs';
 
 const require=createRequire(import.meta.url),{loadLocalPrimaryModule:load}=require('../scripts/local-primary-modules.cjs');
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -322,6 +323,296 @@ async function runSearchFixture(suite,benchmark=false){
    assert.ok(find(await query('Заблокированная карточка'),blocked));assert.ok(find(await query('Закрытый заказ'),closed));
    assert.equal(find(await post.search({query:'Заблокированная карточка',page:1}),blocked),undefined);
    assert.equal(find(await post.search({query:'Закрытый заказ',page:1}),closed),undefined);
+   const hostedPremoderation=new PostgresPublicSearchStore(runtime,{specialistProfileIdentity:true});
+   assert.equal(find(await hostedPremoderation.search({query:'Заблокированная карточка',page:1},{verifyListingBlocks:true}),blocked),undefined);
+   assert.ok(find(await hostedPremoderation.search({query:'Закрытый заказ',page:1},{verifyListingBlocks:true}),closed));
+  });
+  await suite.test('installed complaint restrictions hide work and service results in both workflows',async()=>{
+   const records=[
+    await work('vacancy',{form:{title:'Ограниченная публикация Вакансия'}}),
+    await work('workRequest',{form:{title:'Ограниченная публикация Заказ'}}),
+    await service('specialist',{author:await account({name:'Ограниченная публикация Мастер',avatarDataUrl:''}),
+     form:{title:'Ограниченная публикация Мастер'}}),
+    await service('fair',{form:{title:'Ограниченная публикация Ярмарка'}}),
+   ];
+   await owner.query('grant select on app.payment_checkout_intents,app.payment_fulfillments to search_runtime');
+   const unaffected=await work('vacancy',{form:{title:'Ограниченная публикация Соседняя'}}),text='Ограниченная публикация';
+   const post=new PostgresPublicSearchStore(runtime,{postmoderation:true,specialistProfileIdentity:true});
+   for(const store of [search,post]){
+    const before=await store.search({query:text,page:1});
+    for(const row of [...records,unaffected])assert.ok(find(before,row),row.kind);
+   }
+   await owner.query('create role blizhniy_runtime nologin;grant blizhniy_runtime to search_runtime with inherit true, set false');
+   await owner.query(await readFile(new URL('../database/candidates/0093-publication-restrictions.sql',import.meta.url),'utf8'));
+   const restrict=(row)=>owner.query(`insert into app_publication_restriction.restrictions(kind,publication_id,restricted_revision,case_id)
+    values($1,$2,1,$3)`,[row.kind,row.id,randomUUID()]);
+   const format=parseServicePublicationForm('marquee',{title:'Ограниченная публикация рекламной строки',placementRightConfirmed:true});
+   assert.deepEqual(checkServicePublicationForm(format),[]);
+   const marquee=(await owner.query(`insert into app.service_publications(author_id,kind,creation_key,form)
+    values($1,'marquee',$2,$3) returning id,kind`,[principal,randomUUID(),format])).rows[0];
+   await stamp('service_publications',marquee.id);await approve('service_moderation',marquee.id);
+   const origin='https://publication.example.invalid';
+   const bytes=await require('sharp')({create:{width:32,height:32,channels:3,background:'#307c55'}}).webp().toBuffer();
+   let mediaReads=0,duringMediaRead;
+   const dependencies={'server-only':{},'./production-auth-config':{readProductionAuthConfig:()=>({origin})},
+    './production-auth-runtime':{getProductionAccountDatabase:async()=>({db:runtime})},
+    './production-media-runtime':{getProductionMediaFileReader:async()=>({read:async()=>{
+     mediaReads++;await duringMediaRead?.();return bytes;
+    }})},'./publication-restriction-eligibility':load('publication-restriction-eligibility'),
+    './auth-http':load('auth-http'),'./production-public-work-photo-http':load('production-public-work-photo-http')};
+   const workRuntime=formModule('production-public-work-runtime',{...dependencies,'./postgres-public-work':load('postgres-public-work')});
+   const serviceRuntime=formModule('production-public-service-runtime',{...dependencies,'./postgres-public-service':load('postgres-public-service')});
+   const workReader=await workRuntime.getProductionPublicWorkStore(),serviceReader=await serviceRuntime.getProductionPublicServiceStore();
+   const byWork=row=>row.table==='work_publications';
+   const read=row=>(byWork(row)?workReader:serviceReader).read(row.kind,row.id);
+   for(const row of [...records,marquee])assert.ok(await read(row),row.kind);
+   const attach=async row=>{
+    const mediaId=(await owner.query(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
+     values($1,$2,'image/webp',32,32,$3,$4) returning id`,[row.author??principal,randomUUID(),bytes.length,
+     createHash('sha256').update(bytes).digest('hex')])).rows[0].id;
+    await owner.query("update app.media_objects set state='ready',ready_at=clock_timestamp() where id=$1",[mediaId]);
+    await owner.query(`insert into app.${byWork(row)?'work_publication_photos':'service_publication_photos'}
+     (publication_id,media_id,position) values($1,$2,0)`,[row.id,mediaId]);
+    await owner.query(`update app.${row.table} set form=jsonb_set(form,'{photoIds}',$2::jsonb) where id=$1`,[row.id,JSON.stringify([mediaId])]);
+    return mediaId;
+   };
+   for(const row of [records[0],records[3]]){
+    const id=await attach(row);
+    const handler=byWork(row)?workRuntime.handleProductionPublicWorkPhoto:serviceRuntime.handleProductionPublicServicePhoto;
+    const request=()=>new Request(origin+'/media',{headers:{host:new URL(origin).host,'x-real-ip':'192.0.2.4'}});
+    const beforeReads=mediaReads;
+    const before=await handler(request(),row.id,id);
+    assert.equal(before.status,200);
+    assert.match(before.headers.get('cache-control'),/no-store/);
+    assert.deepEqual(Buffer.from(await before.arrayBuffer()),bytes);
+    duringMediaRead=()=>restrict(row);
+    try{assert.equal((await handler(request(),row.id,id)).status,404);}finally{duringMediaRead=undefined;}
+    assert.equal((await handler(request(),row.id,id)).status,404);
+    assert.equal(mediaReads,beforeReads+2);
+   }
+   for(const row of [records[1],records[2],marquee])await restrict(row);
+   for(const store of [search,post]){
+    const after=await store.search({query:text,page:1});
+    for(const row of records)assert.equal(find(after,row),undefined,row.kind);
+    assert.ok(find(after,unaffected));
+   }
+   await assert.rejects(runtime.query('select case_id from app_publication_restriction.restrictions'),{code:'42501'});
+   await assert.rejects(runtime.query('delete from app_publication_restriction.restrictions'),{code:'42501'});
+   for(const row of [...records,marquee]){
+    assert.equal(await read(row),undefined,row.kind);
+    assert.ok(!(await (byWork(row)?workReader:serviceReader).list(row.kind)).some(item=>item.id===row.id));
+   }
+   assert.ok((await workReader.sitemapPage('vacancy')).entries.some(row=>row.id===unaffected.id));
+   assert.ok(!(await workReader.sitemapPage('vacancy')).entries.some(row=>row.id===records[0].id));
+   assert.ok(!(await serviceReader.sitemapPage()).entries.some(row=>row.id===records[2].id));
+   assert.ok(!(await serviceReader.professionPage(profession)).items.some(row=>row.id===records[2].id));
+   await owner.query('update app.work_publications set revision=2 where id=$1',[records[0].id]);
+   await owner.query("insert into app.work_moderation(publication_id,revision,state,submitted_at,decided_at) values($1,2,'approved',now(),now())",[records[0].id]);
+   const previousMode=process.env.BLIZHNIY_LISTING_WORKFLOW;
+   process.env.BLIZHNIY_LISTING_WORKFLOW='pre-moderation';
+   try{
+    const reader=await workRuntime.getProductionPublicWorkStore();
+    assert.equal(await reader.read('vacancy',records[0].id),undefined);
+    assert.ok(await reader.read('vacancy',unaffected.id));
+   }finally{process.env.BLIZHNIY_LISTING_WORKFLOW=previousMode;}
+   await owner.query('alter table app_publication_restriction.restrictions rename to restriction_fixture');
+   try{
+    await assert.rejects(search.search({query:text,page:1}),{code:'42P01'});
+    await assert.rejects(workReader.read('vacancy',unaffected.id),{code:'42P01'});
+   }finally{await owner.query('alter table app_publication_restriction.restriction_fixture rename to restrictions');}
+
+  });
+  await suite.test('the separate operator records one authorized case for the current publication revision',async()=>{
+   const operatorPassword=randomBytes(24).toString('hex');
+   await owner.query(`create role blizhniy_publication_operator login nosuperuser nocreatedb nocreaterole noinherit
+    noreplication nobypassrls password ${pg.escapeLiteral(operatorPassword)};
+    grant connect on database blizhniy_test to blizhniy_publication_operator`);
+   const {readRefundSchema}=await import('../scripts/refund-worker-schema.mjs');
+   const catalog=()=>runtime.readTransaction(tx=>readRefundSchema(tx),{timeoutMs:5000});
+   const catalogBefore=await catalog();
+   const oldRows=(await owner.query('select to_jsonb(r) as row from app_publication_restriction.restrictions r order by case_id')).rows;
+   assert.equal(oldRows.length,5);
+   await owner.query(await readFile(new URL('../database/candidates/0094-publication-restriction-operator.sql',import.meta.url),'utf8'));
+   assert.deepEqual(await catalog(),catalogBefore);
+   const upgraded=(await owner.query(`select to_jsonb(r)-'restricted_by' as row,restricted_by
+    from app_publication_restriction.restrictions r order by case_id`)).rows;
+   assert.deepEqual(upgraded,oldRows.map(old=>({...old,restricted_by:null})));
+   assert.equal((await search.search({query:'Ограниченная публикация Вакансия',page:1})).items.length,0);
+   const operator=new PostgresDatabase(new pg.Pool({...config,user:'blizhniy_publication_operator',password:operatorPassword,max:3,
+    statement_timeout:5000,lock_timeout:1000,idle_in_transaction_session_timeout:8000}));
+   const mintSession=async(user,scope='app')=>{
+    const token=randomBytes(32).toString('hex'),hash=load('identity').hashSessionToken(token);
+    await owner.query(`insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at)
+     values($1,$2,$3,(select auth_version from app.users where id=$2),statement_timestamp()+interval '20 minutes')`,[hash,user,scope]);
+    return{user,hash,token};
+   };
+   const adminUser=async()=>{
+    const user=await account();
+    await owner.query("update app.users set role='admin' where id=$1",[user]);
+    return mintSession(user);
+   };
+   const actor=await adminUser(),other=await adminUser(),visitor=await mintSession(peer);
+   const call='select app_publication_restriction.restrict($1,$2,$3,$4,$5,$6) as receipt';
+   const args=(session,row,caseId,revision='1')=>[session.hash,session.user,row.kind,row.id,revision,caseId];
+   const apply=async(...values)=>(await operator.query(call,args(...values))).rows[0].receipt;
+   const row=await work('vacancy',{form:{title:'Карточка для ограничения оператором'}}),caseId=randomUUID();
+   try{
+    await assert.rejects(runtime.query(call,args(actor,row,caseId)),{code:'42501'});
+    await owner.query('grant blizhniy_publication_operator to search_runtime with inherit false, set true');
+    try{
+     await assert.rejects(runtime.transaction(async tx=>{
+      await tx.query('set local role blizhniy_publication_operator');
+      await tx.query(call,args(actor,row,caseId));
+     }),{code:'PZR01'});
+    }finally{await owner.query('revoke blizhniy_publication_operator from search_runtime');}
+    await assert.rejects(operator.query('select token_hash from app.sessions'),{code:'42501'});
+    await assert.rejects(operator.query('select case_id from app_publication_restriction.restrictions'),{code:'42501'});
+    await assert.rejects(operator.query('delete from app_publication_restriction.restrictions'),{code:'42501'});
+    await assert.rejects(apply(visitor,row,caseId),{code:'PZR01'});
+    await assert.rejects(apply({...actor,user:other.user},row,caseId),{code:'PZR01'});
+    await assert.rejects(apply(await mintSession(actor.user,'data-subject'),row,caseId),{code:'PZR01'});
+    await assert.rejects(apply(actor,row,null),{code:'PZR02'});
+    await assert.rejects(apply(actor,row,caseId,'2'),{code:'PZR04'});
+    await assert.rejects(apply(actor,{...row,kind:'workRequest'},caseId),{code:'PZR03'});
+    const own=await work('workRequest',{author:actor.user});
+    await assert.rejects(apply(actor,own,caseId),{code:'PZR01'});
+    const revoked=await adminUser();
+    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[revoked.user]);
+    await assert.rejects(apply(revoked,row,caseId),{code:'PZR01'});
+    const blocked=await adminUser();
+    await owner.query('update app.users set is_blocked=true where id=$1',[blocked.user]);
+    await assert.rejects(apply(blocked,row,caseId),{code:'PZR01'});
+    for(const [age,until] of [['90 minutes','-5 minutes'],['45 minutes','10 minutes']]){
+     const stale=await mintSession(actor.user);
+     await owner.query(`update app.sessions set created_at=statement_timestamp()-$2::interval,
+      last_seen_at=statement_timestamp()-$2::interval,expires_at=statement_timestamp()+$3::interval where token_hash=$1`,
+      [stale.hash,age,until]);
+     await assert.rejects(apply(stale,row,caseId),{code:'PZR01'});
+    }
+    await assert.rejects(operator.transaction(async tx=>{
+     await tx.query('set transaction isolation level repeatable read');
+     await tx.query(call,args(actor,row,caseId));
+    }),{code:'PZR01'});
+    const locker=new pg.Client(config);
+    await locker.connect();
+    try{
+     await locker.query('begin');
+     await locker.query('select id from app.work_publications where id=$1 for update',[row.id]);
+     await assert.rejects(apply(actor,row,caseId),{code:'55P03'});
+    }finally{await locker.query('rollback');await locker.end();}
+
+    const marqueeForm=parseServicePublicationForm('marquee',{title:'Синтетическое рекламное сообщение',placementRightConfirmed:true});
+    const marquee=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'marquee',$2,$3) returning id,kind",
+     [principal,randomUUID(),marqueeForm])).rows[0];
+    await stamp('service_publications',marquee.id);await approve('service_moderation',marquee.id);
+    const workPublic=new PostgresPublicWorkStore(runtime,{enforcePublicationRestrictions:true});
+    const servicePublic=new PostgresPublicServiceStore(runtime,{specialistProfileIdentity:true,enforcePublicationRestrictions:true});
+    const restricted=[row,await work('workRequest'),await service('specialist'),await service('fair'),{...marquee,table:'service_publications'}];
+    for(const item of restricted){
+     const reference=item===row?caseId:randomUUID();
+     const read=()=>(item.table==='work_publications'?workPublic:servicePublic).read(item.kind,item.id);
+     const source=async()=>(await owner.query(`select to_jsonb(p) as snapshot from app.${item.table} p where id=$1`,[item.id])).rows[0].snapshot;
+     assert.ok(await read());
+     const before=await source(),receipt=await apply(actor,item,reference);
+     assert.deepEqual(receipt,{caseId:reference,publicationId:item.id,kind:item.kind,revision:'1',restrictedAt:receipt.restrictedAt});
+     assert.match(receipt.restrictedAt,/^\d{4}-\d{2}-\d{2}T.*Z$/);
+     assert.deepEqual(await apply(actor,item,reference),receipt);
+     assert.equal(await read(),undefined);
+     assert.deepEqual(await source(),before);
+     assert.equal((await owner.query('select restricted_by from app_publication_restriction.restrictions where case_id=$1',[reference])).rows[0].restricted_by,actor.user);
+    }
+    assert.ok(await workPublic.read('workRequest',own.id));
+    await assert.rejects(apply(other,row,caseId),{code:'PZR04'});
+    await assert.rejects(apply(actor,row,randomUUID()),{code:'PZR04'});
+    const race=await service('fair');
+    await assert.rejects(apply(actor,race,caseId),{code:'PZR04'});
+    const raceCases=[randomUUID(),randomUUID()];
+    const outcome=await Promise.allSettled([apply(actor,race,raceCases[0]),apply(other,race,raceCases[1])]);
+    assert.equal(outcome.filter(result=>result.status==='fulfilled').length,1);
+    assert.ok(['PZR04','55P03'].includes(outcome.find(result=>result.status==='rejected').reason.code));
+    assert.equal((await owner.query('select case_id from app_publication_restriction.restrictions where publication_id=$1',[race.id])).rowCount,1);
+
+    const receipt=await apply(actor,row,caseId);
+    await owner.query("update app.work_publications set status='archived',revision=2,deleted_at=clock_timestamp() where id=$1",[row.id]);
+    assert.deepEqual(await apply(actor,row,caseId),receipt);
+    await assert.rejects(apply(actor,row,caseId,'2'),{code:'PZR04'});
+    const database='restriction_operator_restore';
+    await owner.query('create database restriction_operator_restore template template0');
+    await owner.query(`revoke all on database restriction_operator_restore from public;
+     grant connect on database restriction_operator_restore to search_runtime,blizhniy_publication_operator`);
+    await docker(['exec',containerId,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restoredOperator=new PostgresDatabase(new pg.Pool({...config,database,user:'blizhniy_publication_operator',password:operatorPassword,max:1}));
+    const restoredRuntime=new PostgresDatabase(new pg.Pool({...config,database,user:'search_runtime',password:runtimePassword,max:1}));
+    try{
+     assert.deepEqual((await restoredOperator.query(call,args(actor,row,caseId))).rows[0].receipt,receipt);
+     await assert.rejects(restoredRuntime.query(call,args(actor,row,caseId)),{code:'42501'});
+     const restored=new PostgresPublicServiceStore(restoredRuntime,{specialistProfileIdentity:true,enforcePublicationRestrictions:true});
+     for(const item of restricted.filter(item=>item.table==='service_publications'))assert.equal(await restored.read(item.kind,item.id),undefined);
+    }finally{await restoredOperator.close();await restoredRuntime.close();}
+    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.user]);
+    await assert.rejects(apply(actor,row,caseId),{code:'PZR01'});
+
+    const {startLocalPublicationRestrictionOperator}=await import('../scripts/local-publication-restriction-operator.mjs');
+    const {callPublicationRestrictionOperator}=load('publication-restriction-operator-client');
+    const {requestPrivateJsonOperator}=load('private-json-operator-socket');
+    const token=randomBytes(32).toString('hex'),hash=load('identity').hashSessionToken(token);
+    await owner.query(`insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at)
+     values($1,$2,'app',0,statement_timestamp()+interval '20 minutes')`,[hash,other.user]);
+    const throughSocket=await service('fair'),command={expectedAdminId:other.user,kind:throughSocket.kind,publicationId:throughSocket.id,
+     expectedRevision:'1',caseId:randomUUID()};
+    const socketDb=new PostgresDatabase(new pg.Pool({...config,user:'blizhniy_publication_operator',password:operatorPassword,max:1,
+     statement_timeout:5000,lock_timeout:1000,idle_in_transaction_session_timeout:8000}));
+    const server=await startLocalPublicationRestrictionOperator(socketDb);
+    try{
+     const execute=(credential=token,input=command)=>callPublicationRestrictionOperator(server.socketPath,credential,input);
+     const bad=await requestPrivateJsonOperator(server.socketPath,{token,command:{...command,restrictedBy:actor.user}});
+     assert.deepEqual(bad,{status:422,payload:{error:{code:'INVALID_INPUT'}}});
+     await assert.rejects(execute(hash),{code:'ADMIN_REQUIRED'});
+     await assert.rejects(execute(token,{...command,expectedRevision:'2'}),{code:'RESTRICTION_CONFLICT'});
+     assert.ok(await servicePublic.read('fair',throughSocket.id));
+     await owner.query('grant select on app.sessions to search_runtime; grant update(last_seen_at) on app.sessions to search_runtime; grant update(auth_version) on app.users to search_runtime');
+     const ownSession=await mintSession(actor.user);
+     const {createAdminPublicationRestrictionHandler}=load('admin-publication-restriction-http');
+     const origin='https://publication.example.invalid',events=[];
+     const handle=createAdminPublicationRestrictionHandler({origin},()=>({db:runtime,execute,limiter:{allowProduction:()=>true}}),event=>events.push(event));
+     const target={expectedAdminId:other.user,kind:throughSocket.kind,publicationId:throughSocket.id};
+     const inspect={action:'inspect',...target},restrict={action:'restrict',...command};
+     const send=async(input,credential=token,caller=origin)=>{
+      const response=await handle(new Request(origin+'/api/admin/publication-restriction',{method:'POST',headers:{
+       host:new URL(origin).host,origin:caller,'content-type':'application/json','x-blizhniy-request':'1','x-real-ip':'192.0.2.4',
+       ...(credential?{cookie:'__Host-blizhniy_session='+credential}:{}),
+      },body:JSON.stringify(input)}));
+      assert.equal(response.headers.get('cache-control'),'no-store');
+      return {status:response.status,body:await response.json()};
+     };
+     assert.deepEqual(await send(inspect,token,'https://other.example.invalid'),{status:403,body:{error:{code:'FORBIDDEN_ORIGIN'}}});
+     assert.deepEqual(await send(inspect,null),{status:401,body:{error:{code:'UNAUTHENTICATED'}}});
+     assert.deepEqual(await send({...inspect,expectedAdminId:visitor.user},visitor.token),{status:403,body:{error:{code:'ADMIN_REQUIRED'}}});
+     assert.deepEqual(await send({...inspect,expectedAdminId:actor.user}),{status:403,body:{error:{code:'ADMIN_REQUIRED'}}});
+     assert.deepEqual(await send({...inspect,kind:'marquee'}),{status:404,body:{error:{code:'PUBLICATION_NOT_FOUND'}}});
+     assert.deepEqual(await send({...inspect,kind:own.kind,publicationId:own.id},token),{
+      status:200,body:{kind:own.kind,publicationId:own.id,title:own.form.title,revision:'1',restricted:false},
+     });
+     assert.deepEqual(await send({...inspect,kind:own.kind,publicationId:own.id,expectedAdminId:actor.user},ownSession.token),
+      {status:403,body:{error:{code:'ADMIN_REQUIRED'}}});
+     assert.deepEqual(await send(inspect),{status:200,body:{
+      kind:target.kind,publicationId:target.publicationId,title:throughSocket.form.title,revision:'1',restricted:false,
+     }});
+     assert.deepEqual(await send({...restrict,expectedRevision:'2'}),{status:409,body:{error:{code:'RESTRICTION_CONFLICT'}}});
+     assert.ok(await servicePublic.read('fair',throughSocket.id));
+     assert.deepEqual(await send({...restrict,restrictedBy:actor.user}),{status:422,body:{error:{code:'INVALID_INPUT'}}});
+     const {status,body:received}=await send(restrict);
+     assert.equal(status,200);
+     assert.equal(received.caseId,command.caseId);
+     assert.deepEqual(await execute(),received);
+     assert.deepEqual(await send(restrict),{status:200,body:received});
+     assert.equal((await send(inspect)).body.restricted,true);
+     assert.ok(events.every(event=>!JSON.stringify(event).includes(command.caseId)));
+     assert.equal(await servicePublic.read('fair',throughSocket.id),undefined);
+    }finally{await server.close();}
+   }finally{await operator.close();}
   });
   if(benchmark)await suite.test('measured synthetic 25000-publication search: missing, popular and deep; actual EXPLAIN and two-reader concurrency',{timeout:300000},async()=>{
    // This database is the exclusively owned tmpfs fixture, not the shared/manual stand.

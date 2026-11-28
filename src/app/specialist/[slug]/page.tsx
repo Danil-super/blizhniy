@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistProfileDetail } from "@/components/SpecialistProfileDetail";
+import { PublicPublicationTerms } from "@/components/PublicPublicationTerms";
+import { PublicationComplaintLink } from "@/components/PublicationComplaintLink";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listSpecialists } from "@/lib/mock-store";
@@ -45,7 +47,11 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
     <>
       <SiteHeader />
       <ListingViewTracker listingId={`work-specialist-${specialist.id}`} />
-      <SpecialistProfileDetail publicPage specialist={{ ...specialist, hasMapPoint }} />
+      <SpecialistProfileDetail
+        publicPage
+        specialist={{ ...specialist, hasMapPoint }}
+        complaintLink={<><PublicPublicationTerms terms={specialist.publicationTerms}/><PublicationComplaintLink section="specialist" slug={specialist.id} /></>}
+      />
     </>
   );
 }

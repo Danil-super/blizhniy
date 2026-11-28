@@ -5,11 +5,15 @@ import {isHostedRefundDatabase} from './hosted-refund-target.mjs';
 import {verifyRefundOperatorDatabase} from './refund-operator-role.mjs';
 
 const require=createRequire(import.meta.url),unavailable=()=>Error('Local refund operator unavailable');
+class PasskeyRequired extends Error {
+ constructor(){super('Administrator passkey required');this.code='PASSKEY_REQUIRED';}
+}
 function loadCompiledModules(){
  return{...require('../compiled/lib/postgres.js'),...require('../compiled/lib/postgres-refund-approvals.js'),
   ...require('../compiled/lib/primary-refund-recovery.js'),...require('../compiled/lib/refund-merchant-preflight.js'),
   ...require('../compiled/lib/placement-refund-approval.js'),...require('../compiled/lib/listing-draft-contract.js'),
-  ...require('../compiled/lib/identity.js'),...require('../compiled/lib/postgres-admin-refund-journal.js'),verifyRefundOperatorDatabase,Pool:require('pg').Pool};
+  ...require('../compiled/lib/identity.js'),...require('../compiled/lib/postgres-admin-refund-journal.js'),
+  ...require('../compiled/lib/admin-passkey-operator-client.js'),verifyRefundOperatorDatabase,Pool:require('pg').Pool};
 }
 
 /** Explicit private local TEST capability. Every command rechecks admission; canonical stores authorize the live admin.
@@ -34,10 +38,12 @@ async function createRuntime(environment,options,database,certificate,hosted=fal
  try{
   const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
+  const guarded=hosted&&env.BLIZHNIY_REFUND_OPERATOR==='hosted-passkey-test-v1';
   const specialistRefunds=hosted||env.BLIZHNIY_REFUND_OPERATOR==='hosted-specialist-schema-local-test';
   const marqueeRefunds=specialistRefunds||env.BLIZHNIY_REFUND_OPERATOR==='hosted-marquee-schema-local-test';
   const hostedRefunds=hosted||(env.BLIZHNIY_REFUND_OPERATOR==='hosted-schema-local-test'||marqueeRefunds)&&database==='blizhniy_test'&&certificate===undefined;
-  const validTarget=hosted?env.BLIZHNIY_REFUND_OPERATOR==='hosted-test-v1'&&isHostedRefundDatabase(env):
+  const validTarget=hosted?(guarded?env.BLIZHNIY_ADMIN_PASSKEYS==='hosted-v1':
+   env.BLIZHNIY_REFUND_OPERATOR==='hosted-test-v1'&&env.BLIZHNIY_ADMIN_PASSKEYS===undefined)&&isHostedRefundDatabase(env):
    (env.BLIZHNIY_REFUND_OPERATOR==='local-test'||hostedRefunds)&&env.BLIZHNIY_DB_HOST==='127.0.0.1';
   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!validTarget||env.BLIZHNIY_PAYMENT_MODE!=='test'||
    env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
@@ -49,6 +55,7 @@ async function createRuntime(environment,options,database,certificate,hosted=fal
    typeof fetcher!=='function')throw unavailable();
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true,
    ...(hostedRefunds?{marqueeRefunds,specialistRefunds}:{})}),modules=loadModules();
+  if(guarded&&typeof modules.authorizeRefundPasskey!=='function')throw unavailable();
   let closed=false,active,closing;
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
   const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:hosted?'blizhniy-refund-operator':'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
@@ -57,6 +64,12 @@ async function createRuntime(environment,options,database,certificate,hosted=fal
    ...(hostedRefunds?{hostedRefunds:true}:certificate!==undefined?{localPrimary:true}:{})});
   const probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
+  async function verifyPasskey(token,command,credential){
+   if(credential===undefined)throw new PasskeyRequired();
+   try{await modules.authorizeRefundPasskey(token,command,credential);}
+   catch(error){if(error?.code==='PASSKEY_REQUIRED')throw new PasskeyRequired();throw error;}
+   if(closed)throw unavailable();
+  }
   function execute(work,merchantAdmission=false){
    if(closed||active)return Promise.reject(unavailable());
    active=Promise.resolve().then(async()=>{
@@ -64,27 +77,35 @@ async function createRuntime(environment,options,database,certificate,hosted=fal
      await verify();if(closed)throw unavailable();if(merchantAdmission)await admitMerchant();
      const result=await work();if(closed)throw unavailable();return result;
     }catch(error){
+     if(!closed&&error instanceof PasskeyRequired)throw error;
      if(!closed&&typeof modules.RefundApprovalOrderError==='function'&&error instanceof modules.RefundApprovalOrderError)throw Object.assign(unavailable(),{code:'REFUND_NOT_LATEST'});
      throw unavailable();
     }
    });
    return active.finally(()=>{active=undefined;});
   }
-  function command(kind,token,expectedAdmin,value){
+  function command(kind,token,expectedAdmin,value,credential){
    try{
     if(!modules.hashSessionToken(token))throw unavailable();
     const actor=modules.parseListingDraftId(expectedAdmin),input=kind==='approve'?modules.parsePlacementRefundApproval(value):kind==='list'?value===null?null:modules.parseListingDraftId(value):kind==='read'?modules.parseListingDraftId(value):modules.parseRefundRecovery(value);
     return execute(async()=>{
      if(kind==='list')return journal.list(token,actor,input);
-     if(kind==='approve')return approvals.approve(token,actor,input);
+     if(kind==='approve'){
+      if(guarded){await verifyPasskey(token,{action:kind,expectedAdminId:actor,input},credential);await admitMerchant();}
+      return approvals.approve(token,actor,input);
+     }
      if(kind==='read')return approvals.readForAdmin(token,actor,input);
+     if(guarded){
+      const prior=await recovery.readCompleted(token,actor,input);if(closed)throw unavailable();if(prior)return prior;
+      await verifyPasskey(token,{action:kind,expectedAdminId:actor,input},credential);
+     }
      // Read a committed terminal action even when the provider is unavailable.
      const completed=await recovery.prepare(token,actor,input);if(closed)throw unavailable();if(completed)return completed;
      await admitMerchant();return recovery.recover(token,actor,input);
-    },kind==='approve');
+    },kind==='approve'&&!guarded);
    }catch{return Promise.reject(unavailable());}
   }
-  return{...(hostedRefunds?{shopId:merchant.shopId}:{}),preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
+  return{...(hostedRefunds?{shopId:merchant.shopId}:{}),...(guarded?{passkey:true}:{}),preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
    close:()=>closing??=(async()=>{closed=true;try{await active;}catch{ /* Drain the current command before closing its pool. */ }try{await db.close();}catch{throw unavailable();}})()};
  }catch{
   try{if(db)await db.close();else if(pool)await pool.end();}catch{ /* Preserve the redacted error. */ }

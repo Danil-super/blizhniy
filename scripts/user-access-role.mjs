@@ -1,24 +1,32 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {getAdminTariffMigration,getHostedTariffPolicyMigration} from './admin-tariff-release.mjs';
-import {getAdminUserAccessMigration} from './admin-user-access-release.mjs';
+import {getAdminPasskeyMigrations,getAdminUserAccessMigration} from './admin-user-access-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertHostedRefundRelease,getHostedRefundReleasePlan} from './publication-test-release-plan.mjs';
 import {readRefundSchema,assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertFinancialSystemPrivileges} from './financial-catalog-privileges.mjs';
+import {assertAdminPasskeyCatalog} from './admin-passkey-verifier-role.mjs';
 const role='blizhniy_user_operator',signature='app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
 const tariffSignature='app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
 const hostedTariffSignature='app_admin.hosted_tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
+const guardedCatalogs={
+ passkey:['e1dbc635174ce1fb70a50203ec843c716ffdd982573ff01dda5996f84fa9f95d',
+  'fa795ff63cbd74a84f3f0b9c7392c1ae730eaf1c7fe6e3daf40eddf276c18998'],
+ 'passkey-tariffs':['0206565be50a5dfa19298734aba61dee1962007a6ecc7c930d36d73713269e04',
+  '3ed8d1842b21f3809c43650c8e26c72760737b14f50e063316123d3486ca346d'],
+};
 export function getUserAccessRolePlan(database,{tariffs=false,hosted=false}={}){
- if(typeof tariffs!=='boolean'||![false,true,'tariffs'].includes(hosted)||hosted&&tariffs||!validDatabase(database))throw Error('Invalid user operator database');
- const hostedTariffs=hosted==='tariffs',migrations=[getAdminUserAccessMigration()];
+ if(typeof tariffs!=='boolean'||![false,true,'tariffs','passkey','passkey-tariffs'].includes(hosted)||hosted&&tariffs||!validDatabase(database))throw Error('Invalid user operator database');
+ const hostedTariffs=hosted==='tariffs'||hosted==='passkey-tariffs',migrations=[getAdminUserAccessMigration()];
  if(tariffs||hostedTariffs)migrations.push(getAdminTariffMigration());
  if(hostedTariffs)migrations.push(getHostedTariffPolicyMigration());
  const signatures=[signature,...(hostedTariffs?[hostedTariffSignature]:tariffs?[tariffSignature]:[])];
  return {role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
   appJournal:hosted?getHostedRefundReleasePlan(87).map(({name,sha256})=>({name,sha256})):
    getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:migrations.map(({name,sha256})=>({name,sha256})),signatures,
+  ...(Object.hasOwn(guardedCatalogs,hosted)?{passkeyMigrations:getAdminPasskeyMigrations().map(({name,sha256})=>({name,sha256}))}:{}),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,app_admin,blizhniy_meta to ${role}`,
    `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,...signatures.map(value=>`grant execute on function ${value} to ${role}`)]};
 }
@@ -42,12 +50,19 @@ export async function verifyUserAccessDatabase(db,{database,deadline,tariffs=fal
    const tariffProfile=admin.length===2;
    if(tariffs&&!tariffProfile)throw Error();
    if(!hosted)plan=getUserAccessRolePlan(database,{tariffs:tariffProfile});
-   if(JSON.stringify(main)!==JSON.stringify(plan.appJournal)||JSON.stringify(admin)!==JSON.stringify(plan.journal))throw Error();
+   if(JSON.stringify(admin)!==JSON.stringify(plan.journal))throw Error();
    const {signatures}=plan;
-   if(hosted)await assertHostedRefundRelease(tx,main);
-   else await assertRefundSchema(tx,60,{localPrimary:true});
+   if(hosted){
+    if(![87,95].includes(await assertHostedRefundRelease(tx,main)))throw Error();
+   }else{
+    if(JSON.stringify(main)!==JSON.stringify(plan.appJournal))throw Error();
+    await assertRefundSchema(tx,60,{localPrimary:true});
+   }
    const shape=JSON.stringify(await readRefundSchema(tx,{namespace:'app_admin'}));
-   if(hosted==='tariffs'){
+   if(plan.passkeyMigrations){
+    if(!guardedCatalogs[hosted].includes(createHash('sha256').update(shape).digest('hex')))throw Error();
+    await assertAdminPasskeyCatalog(tx);
+   }else if(hosted==='tariffs'){
     if(createHash('sha256').update(shape).digest('hex')!=='84e0c174062ed18de6d102f74e06eddaf0de90172608df1365bdaabd79f45704')throw Error();
    }else{
     const expected=JSON.parse(readFileSync(new URL(tariffProfile?'../database/admin-user-access-schema-v2.json':'../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
@@ -81,7 +96,8 @@ export async function verifyUserAccessDatabase(db,{database,deadline,tariffs=fal
    const allowed=new Set(['app_admin.migrations.name:SELECT','app_admin.migrations.sha256:SELECT','blizhniy_meta.migrations.name:SELECT','blizhniy_meta.migrations.sha256:SELECT']);
    if(columns.length!==allowed.size||columns.some(row=>row.grantable!==false||!allowed.delete(row.key))||allowed.size)throw Error();
    const tables=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname not in ('pg_catalog','information_schema') and
-    (has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN') or c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE')) limit 1`);
+    case when c.relkind='S' then has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE')
+     else has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN') end limit 1`);
    const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
     has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;

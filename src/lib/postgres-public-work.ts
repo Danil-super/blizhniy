@@ -6,6 +6,8 @@ import type {JobVacancy,WorkRequest} from './types';
 import type {MediaFileRecord} from './media-files';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {professionFormSql} from './profession-reference';
+import {publicationRestrictionEligibility} from './publication-restriction-eligibility';
+import {locationWithdrawalColumn,publicationWithdrawalEligibility,publicLinkColumn,publicPhotoEligibility,publicTermsColumn,withdrawnPhotoColumn,publicTextColumn} from './publication-location-withdrawal';
 export type PublicWorkPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 const references=`from app.work_publications w
  join app.users author on author.id=w.author_id and not author.is_blocked and author.email_verified_at is not null
@@ -41,17 +43,20 @@ export class PostgresPublicWorkStore{
  private readonly source:string;
   private readonly columns:string;
   private readonly available:string;
- constructor(private readonly db:PostgresQueries,policy:{vacancyPostmoderation?:boolean}={}){
+  private readonly withdrawals:boolean;
+ constructor(private readonly db:PostgresQueries,policy:{vacancyPostmoderation?:boolean;enforcePublicationRestrictions?:boolean;enforceLocationWithdrawals?:boolean}={}){
   if(typeof window!=='undefined')throw Error('Public work storage is server-only');
   if(policy.vacancyPostmoderation&&!readPostmoderationEnabled())throw Error('Local vacancy workflow unavailable');
   const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
   this.source=policy.vacancyPostmoderation?(simulation?localSource:postmoderationSource):source;
-   this.columns=columns+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
+   this.withdrawals=policy.enforceLocationWithdrawals===true;
+   const enabled=this.withdrawals;
+   this.columns=columns+locationWithdrawalColumn('w',enabled)+withdrawnPhotoColumn('w',enabled)+publicTextColumn('w',enabled)+publicLinkColumn('w',enabled)+publicTermsColumn('w',enabled)+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
     exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
      where i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.is_test
       and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'
       and f.published_at=w.published_at and f.expires_at=w.expires_at) as "testPublication"`:'');
-   this.available=live+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
+   this.available=live+publicationRestrictionEligibility('w',policy.enforcePublicationRestrictions)+publicationWithdrawalEligibility('w',policy.enforceLocationWithdrawals)+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
  }
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
   checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
@@ -93,7 +98,7 @@ export class PostgresPublicWorkStore{
    json_build_object('id',image.id,'mimeType',image.mime_type,'width',image.width,'height',image.height,'size',image.size,'sha256',image.sha256) as record
    ${this.source} join app.work_publication_photos attachment on attachment.publication_id=w.id
    join app.media_objects image on image.id=attachment.media_id and image.owner_id=w.author_id and image.state='ready'
-    where ${this.available} and w.id=$1 and image.id=$2 limit 1`,[id,media])).rows[0];
+    where ${this.available} and w.id=$1 and image.id=$2${publicPhotoEligibility('w','image.id',this.withdrawals)} limit 1`,[id,media])).rows[0];
   if(!row||!mapPublicWorkPublication(row,Date.now())||!row.mediaIds.includes(media))return undefined;
   return{record:row.record,revision:row.revision,expiresAt:row.expiresAt!};
  }

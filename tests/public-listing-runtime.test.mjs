@@ -1,18 +1,28 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {createRequire} from 'node:module';
 import * as http from '../src/lib/auth-http.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';import {formModule} from './listing-form-module.mjs';
 const id='10000000-0000-4000-8000-000000000001',file='10000000-0000-4000-8000-000000000002',origin='https://example.invalid';
-function fixture({enabled=true,failed=false}={}){
- const admission={reads:0},db={},counts={database:0,lookups:0,reader:0,reads:0};let live=true,onRead=()=>{};
+function fixture({enabled=true,failed=false,blocksInstalled=false,catalogFailed=false,postmoderation=false}={}){
+ let catalogChecks=0;
+ const admission={reads:0},db={query:async(text,_values,mode)=>{
+  if(text.includes("to_regnamespace('app_publication_privacy')"))return{rows:[{installed:false}]};
+  catalogChecks++;
+  assert.match(text,/to_regclass\('app\.listing_blocks'\)/);
+  assert.equal(mode,'bounded-read');
+  if(catalogFailed)throw Error('Synthetic catalog unavailable');
+  return{rows:[{installed:blocksInstalled}]};
+ }},counts={database:0,lookups:0,reader:0,reads:0};let live=true,onRead=()=>{};
  const access={record:{id:file,mimeType:'image/webp',width:2,height:2,size:12,sha256:'b'.repeat(64)},revision:'1',expiresAt:'2099-01-01T00:00:00.000001Z'};
  const policy=formModule('production-public-work-photo-http',{'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./trusted-proxy-ip':proxy,'./production-media-http':{productionMediaAdmission:admission}});
  class Store{constructor(value){assert.equal(value,db);}async photoRecord(listing,media){counts.lookups++;assert.equal(listing,id);assert.equal(media,file);return live?access:undefined;}}
  const runtime=formModule('production-public-listing-runtime',{'server-only':{},'./auth-http':http,
   './production-auth-config':{readProductionAuthConfig:()=>enabled?{origin}:null},'./production-auth-runtime':{getProductionAccountDatabase:async()=>{counts.database++;if(failed)throw Error('Synthetic private database error');return{db};}},
+  './listing-public-eligibility':formModule('listing-public-eligibility'),
+  './listing-workflow-config':{readPostmoderationEnabled:()=>postmoderation},
   './postgres-public-listings':{PostgresPublicListingStore:Store},'./production-public-work-photo-http':policy,
   './production-media-runtime':{getProductionMediaFileReader:()=>{counts.reader++;return{read:async record=>{counts.reads++;assert.deepEqual(record,access.record);onRead();return Buffer.alloc(12);}};}},
  });
  const request=(headers={})=>new Request(`${origin}/api/listings/${id}/photos/${file}`,{headers:{host:'example.invalid','x-real-ip':'127.0.0.1',...headers}});
- return{runtime,counts,admission,request,hide:()=>live=false,onRead:fn=>onRead=fn,handle:headers=>runtime.handleProductionPublicListingPhoto(request(headers),id,file)};
+ return{runtime,counts,admission,request,get catalogChecks(){return catalogChecks;},hide:()=>live=false,onRead:fn=>onRead=fn,handle:headers=>runtime.handleProductionPublicListingPhoto(request(headers),id,file)};
 }
 test('ordinary public runtime uses only the restricted primary pool and serves SQL-authorized bounded no-store photos without a session',async()=>{
  const f=fixture();await f.runtime.getProductionPublicListingStore();assert.equal(f.counts.database,1);const response=await f.handle();assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/webp');assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await response.arrayBuffer()).byteLength,12);
@@ -25,4 +35,22 @@ test('ordinary photo runtime never opens the private reader for inaccessible or 
 });
 test('ordinary public runtime rejects disabled primary configuration and hides database errors without legacy access or file reads',async()=>{
  for(const options of [{enabled:false},{failed:true}]){const f=fixture(options);await assert.rejects(f.runtime.getProductionPublicListingStore());const response=await f.handle();assert.equal(response.status,options.enabled===false?404:503);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await response.text()).includes('private database'),false);assert.equal(f.counts.reader,0);}
+});
+
+
+test('production ordinary reads preserve durable blocking in either workflow and fail closed on an unreadable catalog',async()=>{
+ for(const [options,catalogChecks] of [
+  [{blocksInstalled:true},2],
+  [{blocksInstalled:false},2],
+  [{postmoderation:true,catalogFailed:true},0],
+ ]){
+  const f=fixture(options);
+  await f.runtime.getProductionPublicListingStore();
+  assert.equal((await f.handle()).status,200);
+  assert.equal(f.catalogChecks,catalogChecks);
+ }
+ const unavailable=fixture({catalogFailed:true});
+ await assert.rejects(unavailable.runtime.getProductionPublicListingStore(),/Synthetic catalog unavailable/);
+ assert.equal((await unavailable.handle()).status,503);
+ assert.equal(unavailable.counts.reader,0);
 });

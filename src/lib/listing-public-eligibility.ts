@@ -1,3 +1,6 @@
+import type { PostgresQueries } from './postgres';
+import {hasLocationWithdrawalSchema,publicationWithdrawalEligibility} from './publication-location-withdrawal';
+
 /** Fixed SQL fragments shared by public cards and booking admission. Never accept SQL or names from callers. */
 export const publicListingSource=`from app.listings l
  join app.users author on author.id=l.author_id and not author.is_blocked and author.email_verified_at is not null
@@ -16,3 +19,24 @@ export const postmoderationListingSource=`from app.listings l
  join app.categories c on c.id=l.category_id and c.active left join app.categories parent on parent.id=c.parent_id
  join app.cities city on city.id=l.city_id`;
 export const postmoderationListingLive=`${publicListingLive} and not exists(select 1 from app.listing_blocks block where block.listing_id=l.id)`;
+
+
+export type ListingVisibilityPolicy = { postmoderation?: boolean; enforceBlocks?: boolean; enforceLocationWithdrawals?: boolean };
+
+export function listingVisibility({ postmoderation, enforceBlocks, enforceLocationWithdrawals }: ListingVisibilityPolicy) {
+ return {
+  source: postmoderation ? postmoderationListingSource : publicListingSource,
+  eligible: `${postmoderation || enforceBlocks ? postmoderationListingLive : publicListingLive} and ${publicListingPhotos}${publicationWithdrawalEligibility('l',enforceLocationWithdrawals)}`,
+ };
+}
+
+// Older schemas have no block table. Once installed, the record takes precedence in either workflow.
+export async function readListingVisibilityPolicy(db: PostgresQueries, postmoderation: boolean): Promise<ListingVisibilityPolicy> {
+ const enforceLocationWithdrawals=await hasLocationWithdrawalSchema(db);
+ if (postmoderation) return { postmoderation, enforceBlocks: true, enforceLocationWithdrawals };
+ const row = (await db.query<{ installed: boolean }>(
+  "select to_regclass('app.listing_blocks') is not null as installed", [], "bounded-read",
+ )).rows[0];
+ if (typeof row?.installed !== 'boolean') throw new Error('Listing block capability unavailable');
+ return { postmoderation, enforceBlocks: row.installed, enforceLocationWithdrawals };
+}

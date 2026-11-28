@@ -3,9 +3,14 @@ import { readCheckoutCancellationEnabled } from './checkout-cancellation-contrac
 import { productionAuthOrigin } from './production-auth-config.ts';
 
 export const hostedUserAccessSocket = '/run/blizhniy-user-access/operator.sock';
+export const guardedUserAccessSocket = '/run/blizhniy-user-access-passkey/operator.sock';
 
 export function readUserAccessOperatorConfig(env: NodeJS.ProcessEnv = process.env) {
-  if (env.BLIZHNIY_USER_ACCESS_OPERATOR !== 'hosted-v1') {
+  const guarded = env.BLIZHNIY_USER_ACCESS_OPERATOR === 'hosted-passkey-v1';
+  if ((guarded || env.BLIZHNIY_ADMIN_PASSKEYS !== undefined) && (!guarded || env.BLIZHNIY_ADMIN_PASSKEYS !== 'hosted-v1')) {
+    throw new Error('Invalid hosted passkey configuration');
+  }
+  if (!guarded && env.BLIZHNIY_USER_ACCESS_OPERATOR !== 'hosted-v1') {
     const local = readLocalUserAccessOperatorConfig(env);
     return local ? { mode:'local' as const, ...local } : null;
   }
@@ -15,7 +20,11 @@ export function readUserAccessOperatorConfig(env: NodeJS.ProcessEnv = process.en
       env.BLIZHNIY_USER_ACCESS_SOCKET !== undefined) {
     throw new Error('Invalid hosted user access configuration');
   }
-  return { mode:'hosted' as const, socketPath:hostedUserAccessSocket };
+  return { mode:'hosted' as const, socketPath:guarded ? guardedUserAccessSocket : hostedUserAccessSocket };
+}
+
+export function hostedAdminPasskeysEnabled(env: NodeJS.ProcessEnv = process.env) {
+  return readUserAccessOperatorConfig(env)?.socketPath === guardedUserAccessSocket;
 }
 
 export function readTariffOperatorConfig(env: NodeJS.ProcessEnv = process.env) {

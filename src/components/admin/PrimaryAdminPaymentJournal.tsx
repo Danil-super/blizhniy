@@ -49,11 +49,11 @@ function JournalEntry({ row, actions }: { row: AdminPaymentJournalItem; actions?
   {actions && <div className="mt-2">{actions}</div>}
  </li>;
 }
-function Journal({ actor, refundActions }: { actor: string; refundActions:boolean }) {
+function Journal({ actor, refundActions, refundPasskey }: { actor: string; refundActions:boolean; refundPasskey:boolean }) {
  const [query, setQuery] = useState<AdminPaymentJournalQuery>({ expectedAdminId:actor, kind:null, status:null, after:null });
  const [completed, setCompleted] = useState<{ query:AdminPaymentJournalQuery; page?:AdminPaymentJournalPage; error?:string } | null>(null);
  const view = completed?.query === query ? completed : null;
- const actions = useAdminRefundActions(actor, refundActions, () => setQuery(current => ({ ...current })));
+ const actions = useAdminRefundActions(actor, refundActions, () => setQuery(current => ({ ...current })), false, refundPasskey);
  function navigate(next:AdminPaymentJournalQuery) {
   if (actions.working.current) return;
   actions.select(null);
@@ -102,9 +102,9 @@ function Journal({ actor, refundActions }: { actor: string; refundActions:boolea
   </div>
  </section>;
 }
-export function PrimaryAdminPaymentJournal({refundActions=false}:{refundActions?:boolean}) {
+export function PrimaryAdminPaymentJournal({refundActions=false,refundPasskey=false}:{refundActions?:boolean;refundPasskey?:boolean}) {
  const auth = usePrimaryAccountAuth();
  if (auth?.state !== 'admin' || !auth.userId) return <p role="status" className="text-sm text-slate-600">
   {auth?.state === 'loading' ? 'Проверяем права администратора…' : 'Доступ администратора не подтверждён.'}</p>;
- return <Journal key={auth.userId} actor={auth.userId} refundActions={refundActions}/>;
+ return <Journal key={auth.userId} actor={auth.userId} refundActions={refundActions} refundPasskey={refundPasskey}/>;
 }

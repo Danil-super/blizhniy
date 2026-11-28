@@ -7,6 +7,8 @@ import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-con
 import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavailableError,type ListingCheckoutInput} from './listing-checkout-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
+import {isPublicationRestricted} from './publication-restriction-eligibility';
+import {isPublicationWithdrawn} from './publication-location-withdrawal';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {readHostedPlacementRenewalOwner} from './placement-renewal-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
@@ -107,6 +109,7 @@ export class PostgresListingCheckoutStore{
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
   if(this.targetType==='specialist'){
    if((await inspectSpecialistPurchase(this.db,tx,owner,id,revision,false)).issues.length)throw new ListingCheckoutUnavailableError();
+   if(await isPublicationRestricted(tx,this.targetType,id))throw new ListingCheckoutUnavailableError();
    const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays" from app.tariffs
     where id='specialist-publication' and action='specialist_publication' and active and price>0 and duration_days between 1 and 3650`)).rows[0];
    if(!offer)throw new ListingCheckoutUnavailableError();return offer;
@@ -114,6 +117,7 @@ export class PostgresListingCheckoutStore{
   if(this.targetType!=='listing'){
    const {issues}=await inspectWorkPurchase(this.db,tx,owner,id,revision,this.targetType,false,this.policy.renewals===true);
    if(issues.length)throw new ListingCheckoutUnavailableError();
+   if(await isPublicationRestricted(tx,this.targetType,id))throw new ListingCheckoutUnavailableError();
    const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays"
     from app.tariffs where id=$1 and action=$2 and active and price>0 and duration_days between 1 and 3650`,
     this.targetType==='vacancy'?['vacancy-publication','vacancy_publication']:['work-request-publication','work_request_publication'])).rows[0];
@@ -121,6 +125,7 @@ export class PostgresListingCheckoutStore{
   }
   const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision,{allowPlaced:this.policy.renewals===true,checkBookingDates:true});
   if(!check.checksPassed||!check.tariff||check.tariff.amount==='0.00')throw new ListingCheckoutUnavailableError();
+  if(await isPublicationWithdrawn(tx,'listing',id))throw new ListingCheckoutUnavailableError();
   if(this.policy.postmoderation){
    const blocked=await tx.query('select listing_id from app.listing_blocks where listing_id=$1',[id]);
    if(blocked.rowCount!==0)throw new ListingCheckoutUnavailableError();

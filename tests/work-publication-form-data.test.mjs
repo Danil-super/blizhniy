@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readWorkPublicationFormData} from '../src/lib/work-publication-form-data.ts';
+import {publicWorkPublicationForm} from '../src/lib/work-publication-contract.ts';
 const data=values=>{const form=new FormData();for(const [key,value] of Object.entries(values))form.set(key,value);return form;};
 test('vacancy form mapping retains employer and all work details, exact salary and explicit consent',()=>{
  const form=readWorkPublicationFormData('vacancy',data({employerType:'ip',organization:'ИП Тест',inn:'123456789012',ogrnip:'123456789012345',
@@ -28,4 +29,15 @@ test('private employer and social website inputs normalize without losing form f
 });
 test('order city dropdown labels resolve to the canonical city name, not the city-plus-region display string',()=>{
  const form=readWorkPublicationFormData('workRequest',data({city:'Краснодар, Краснодарский край',title:'Заказ'}));assert.equal(form.cityName,'Краснодар');
+});
+test('editing in city-only mode preserves an existing private point without publishing it',()=>{
+ const input={locationMode:'city',privateMapPoint:'1',city:'Краснодар',address:'Стендовый адрес',lat:'45,1',lng:'38,9'};
+ for(const kind of ['vacancy','workRequest']){
+  const form=readWorkPublicationFormData(kind,data(input)),visible=publicWorkPublicationForm(form);
+  assert.deepEqual([form.showExactAddress,form.address,form.latitude,form.longitude],[false,input.address,45.1,38.9]);
+  assert.deepEqual([visible.showExactAddress,visible.address,visible.latitude,visible.longitude],[false,null,null,null]);
+  const addressOnly=readWorkPublicationFormData(kind,data({...input,lat:'',lng:''}));
+  assert.equal(addressOnly.address,input.address);
+  assert.throws(()=>readWorkPublicationFormData(kind,data({...input,lng:''})));
+ }
 });

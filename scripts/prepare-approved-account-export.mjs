@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { lstat, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import pg from 'pg';
 import { prepareApprovedProductionAccountExport } from './account-export-snapshot.mjs';
@@ -11,7 +12,8 @@ import { localArchiveMaximumBytes, readBoundedExportFile, readPrivateFile, valid
 import { packReviewedAccountReport } from './local-account-export-report.mjs';
 
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
-const {deletionObject}=load('account-deletion-contract');
+const {deletionId,deletionObject}=load('account-deletion-contract');
+const {parseAdminPasskeyEnvelope,parseAdminPasskeyOptions,passkeyOperatorRequestLimit}=load('admin-passkey-contract');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 export async function prepareOperatorArchive(db,input,{outputRoot,mediaRoot,listingViewRateSecret}){
@@ -43,9 +45,36 @@ export function bindReviewedAccountExport(input,review){
  return{operatorToken,approval,disclosure:validateLocalExportNotice(disclosure)};
 }
 
+function reviewPasskeyCommand(bound){
+ const {caseId,ownerId,operatorId,emailSha256}=deletionObject(bound.approval,['caseId','ownerId','operatorId','emailSha256']);
+ deletionId(ownerId);
+ const expectedAdminId=deletionId(operatorId);
+ assert.match(emailSha256,/^[a-f0-9]{64}$/);
+ const disclosure=Object.keys(bound.disclosure).sort().map(key=>[key,bound.disclosure[key]]);
+ return {caseId,expectedAdminId,reviewDigest:digest(JSON.stringify([ownerId,emailSha256,disclosure]))};
+}
+
+export async function reviewedAccountExportOptions(input,review,verify=load('admin-passkey-operator-client').callHostedAdminPasskey){
+ const bound=bindReviewedAccountExport(input,review);
+ const envelope=parseAdminPasskeyEnvelope({token:bound.operatorToken,command:{
+  action:'archive-options',command:reviewPasskeyCommand(bound),
+ }});
+ return parseAdminPasskeyOptions(await verify(envelope.token,envelope.command));
+}
+
+export async function authorizeReviewedAccountExport(input,review,approve=load('admin-passkey-operator-client').callHostedAdminPasskey){
+ const {caseId,operatorToken,credential}=deletionObject(input,['caseId','operatorToken','credential']);
+ const bound=bindReviewedAccountExport({caseId,operatorToken},review);
+ const envelope=parseAdminPasskeyEnvelope({token:operatorToken,command:{
+  action:'archive-approve',command:reviewPasskeyCommand(bound),credential,
+ }});
+ const result=await approve(envelope.token,envelope.command);
+ assert.equal(result.status,'approved');
+ return bound;
+}
+
 async function main(){
- const reviewed=process.argv.length===3&&process.argv[2]==='--reviewed-case';
- assert.ok(reviewed||process.argv.length===2);
+ assert.ok(process.argv.length===3&&process.argv[2]==='--reviewed-case');
  assert.equal(process.env.NODE_ENV,'production');
  const outputRoot='/run/blizhniy-account-export-work',mediaRoot='/var/lib/blizhniy-web/media';
  load('media-runtime-policy').assertMediaRuntime(process,mediaRoot);
@@ -55,26 +84,34 @@ async function main(){
  const chunks=[];
  for await(const chunk of process.stdin){
   size+=chunk.length;
-  assert.ok(size<=(reviewed?512:65536));
+  assert.ok(size<=passkeyOperatorRequestLimit);
   chunks.push(chunk);
  }
- let input=JSON.parse(Buffer.concat(chunks,size).toString('utf8'));
- let environment=process.env;
- if(reviewed){
-  const directory=process.env.CREDENTIALS_DIRECTORY;
-  assert.ok(directory&&dirname(directory)==='/run/credentials'&&
-   /^blizhniy-account-export-prepare@[^/]+\.service$/.test(basename(directory)));
-  const info=await lstat(directory);
-  assert.ok(info.isDirectory()&&info.uid===0&&info.gid===0&&[0o500,0o550].includes(info.mode&0o7777));
-  const credential=async name=>{
-   const bytes=await readBoundedExportFile(join(directory,name),65536,stat=>
-    stat.uid===0&&stat.gid===0&&stat.nlink===1&&[0o400,0o440].includes(stat.mode&0o7777));
-   assert.ok(bytes);
-   return bytes.toString('utf8');
-  };
-  input=bindReviewedAccountExport(input,JSON.parse(await credential('case.json')));
-  environment={...parseEnv(await credential('reader.env')),NODE_ENV:'production'};
+ const frame=Buffer.concat(chunks,size);
+ let request;
+ try{request=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(frame));}
+ finally{frame.fill(0);for(const chunk of chunks)chunk.fill(0);}
+ const directory=process.env.CREDENTIALS_DIRECTORY;
+ assert.ok(directory&&dirname(directory)==='/run/credentials'&&
+  /^blizhniy-account-export-prepare@[^/]+\.service$/.test(basename(directory)));
+ const info=await lstat(directory);
+ assert.ok(info.isDirectory()&&info.uid===0&&info.gid===0&&[0o500,0o550].includes(info.mode&0o7777));
+ const credential=async name=>{
+  const bytes=await readBoundedExportFile(join(directory,name),65536,stat=>
+   stat.uid===0&&stat.gid===0&&stat.nlink===1&&[0o400,0o440].includes(stat.mode&0o7777));
+  assert.ok(bytes);
+  try{return bytes.toString('utf8');}finally{bytes.fill(0);}
+ };
+ const review=JSON.parse(await credential('case.json'));
+ if(request?.action==='options'){
+  const {caseId,operatorToken}=deletionObject(request,['action','caseId','operatorToken']);
+  console.log(JSON.stringify(await reviewedAccountExportOptions({caseId,operatorToken},review)));
+  return;
  }
+ const {action,caseId,operatorToken,credential:assertion}=deletionObject(request,['action','caseId','operatorToken','credential']);
+ assert.equal(action,'prepare');
+ const input=await authorizeReviewedAccountExport({caseId,operatorToken,credential:assertion},review);
+ const environment={...parseEnv(await credential('reader.env')),NODE_ENV:'production'};
  assert.match(environment.BLIZHNIY_AUTH_RATE_SECRET,/^[a-f0-9]{64}$/);
  const {readPostgresConfig,PostgresDatabase}=load('postgres');
  const config=readPostgresConfig(environment);
@@ -82,14 +119,12 @@ async function main(){
  const db=new PostgresDatabase(new pg.Pool({...config,max:1,application_name:'blizhniy-approved-account-export'}));
  try{
   const prepared=await prepareOperatorArchive(db,input,{outputRoot,mediaRoot,listingViewRateSecret:environment.BLIZHNIY_AUTH_RATE_SECRET});
-  if(reviewed){
-   console.error(JSON.stringify({event:'approved_account_archive_prepared',directory:prepared.directory}));
-   console.log('prepared');
-  }else console.log(JSON.stringify(prepared));
+  console.error(JSON.stringify({event:'approved_account_archive_prepared',directory:prepared.directory}));
+  console.log('prepared');
  }finally{await db.close();}
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
  try{await main();}catch{
   console.error('Approved account archive was not prepared.');
   process.exitCode=1;

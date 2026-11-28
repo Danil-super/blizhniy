@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
 import {adminUserAccess} from '@/lib/client-admin-user-access';
+import {AdminPasskeyClientError,adminPasskeys} from '@/lib/client-admin-passkey';
 import {AdminUserAccessError,parseAdminUserAccessCommand,type AdminUserAccessCommand,type AdminUserAccessResult,type UserAccessChange} from '@/lib/admin-user-access-contract';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 type Props={actor:string;targetId:string;targetLabel:string;onClose:()=>void;onChanged:()=>void};
@@ -33,13 +34,32 @@ function AccessDetails({actor,targetId,targetLabel,onClose,onChanged}:Props){
   async function run(command:AdminUserAccessCommand){
     if(working.current)return;working.current=true;setBusy(true);setError('');
     const controller=new AbortController();flight.current=controller;
+    let verifyingPasskey=false;
     try{
-      const result=await adminUserAccess.execute(command,{signal:controller.signal});if(!alive.current)return;
+      let result:AdminUserAccessResult;
+      try{
+        result=await adminUserAccess.execute(command,{signal:controller.signal});
+      }catch(cause){
+        if(command.action!=='change'||!(cause instanceof AdminUserAccessError)||cause.code!=='PASSKEY_REQUIRED')throw cause;
+        controller.signal.throwIfAborted();
+        verifyingPasskey=true;
+        await adminPasskeys.approveAccess(command,controller.signal);
+        controller.signal.throwIfAborted();
+        verifyingPasskey=false;
+        result=await adminUserAccess.execute(command,{signal:controller.signal});
+      }
+      if(!alive.current)return;
       if(command.action==='recover'&&!result.receipt){setData(result);setPhase('unknown');setNotice('Запись об операции пока не найдена. Новое решение не отправлено.');return;}
       setData(result);setRole(result.user.role);setBlocked(result.user.isBlocked);setReason('');setConfirmed(false);setPending(null);setPhase('ready');
       setNotice(command.action==='recover'?'Результат операции подтверждён.':result.receipt?.changed?'Доступ обновлён. Прежние сессии пользователя отозваны.':'Решение записано без изменения доступа.');onChanged();
     }catch(cause){
-      if(!alive.current)return;const failure=cause instanceof AdminUserAccessError?cause:new AdminUserAccessError('ACCESS_UNAVAILABLE');
+      if(!alive.current)return;
+      if(verifyingPasskey){
+        if(phase==='ready')setPending(null);
+        setError(cause instanceof AdminPasskeyClientError?cause.message:'Подтверждение ключом не завершилось. Повторите попытку.');
+        return;
+      }
+      const failure=cause instanceof AdminUserAccessError?cause:new AdminUserAccessError('ACCESS_UNAVAILABLE');
       setError(failure.message);
       if(deny(failure)){setPhase('error');return;}
       if(command.action==='change'&&!['ACCESS_UNAVAILABLE','ACCESS_BUSY','RATE_LIMITED'].includes(failure.code)){

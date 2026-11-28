@@ -63,6 +63,7 @@ export function saveAnalyticsConsent(choice: Choice): boolean {
   }
   let saved = false;
   try {
+    if (choice === 'denied') clearMeasurementVisitCookie();
     document.cookie = analyticsConsentCookie(choice);
     saved = storedConsent() === choice;
   } catch { saved = false; }
@@ -121,4 +122,29 @@ export function subscribeAnalyticsConsent(listener: (choice: AnalyticsConsent) =
     listeners.delete(listener);
     if (listeners.size === 0) { stopObserving?.(); stopObserving = null; lastNotified = undefined; }
   };
+}
+
+const cookieName = '__Host-blizhniy_analytics_visit';
+const attributes = '; Path=/; Secure; SameSite=Lax';
+
+export function readMeasurementVisitCookie(cookies: string): string | null {
+  const matching = cookies.split(';').map(value => value.trim()).filter(value => value.startsWith(cookieName + '='));
+  const value = matching.length === 1 ? matching[0].slice(cookieName.length + 1) : '';
+  return /^[a-f0-9]{32}$/.test(value) ? value : null;
+}
+
+/** Independent from session, payment, account and device identifiers. */
+export function ensureMeasurementVisitCookie(): boolean {
+  try {
+    if (readMeasurementVisitCookie(document.cookie)) return true;
+    const visit = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+    document.cookie = cookieName + '=' + visit + attributes + '; Max-Age=86400';
+    return readMeasurementVisitCookie(document.cookie) === visit;
+  } catch { return false; }
+}
+
+function clearMeasurementVisitCookie() {
+  try {
+    if (readMeasurementVisitCookie(document.cookie)) document.cookie = cookieName + '=' + attributes + '; Max-Age=0';
+  } catch { /* Revocation of consent can still proceed. */ }
 }

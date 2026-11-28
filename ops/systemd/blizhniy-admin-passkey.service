@@ -1,0 +1,23 @@
+[Unit]
+Description=Blizhniy restricted administrator passkey verifier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blizhniy-passkey-verifier
+Group=blizhniy-passkey-verifier
+# The staging package is private. Install as root with group read and directory traversal, and without group write.
+WorkingDirectory=/opt/blizhniy-admin-passkey
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/blizhniy/admin-passkey/verifier.env
+UnsetEnvironment=NODE_OPTIONS NODE_TLS_REJECT_UNAUTHORIZED
+ExecStart=/opt/blizhniy-node22/bin/node /opt/blizhniy-admin-passkey/scripts/hosted-admin-passkey.mjs
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

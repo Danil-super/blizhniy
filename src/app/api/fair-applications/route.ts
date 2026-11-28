@@ -54,14 +54,17 @@ function cleanPhotos(value?: string[]) {
 }
 
 export async function GET() {
-  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return NextResponse.json({applications:await listStoredFairApplications('published')});
+  const headers = { "Cache-Control": "no-store" };
+  if (process.env.BLIZHNIY_AUTH_MODE === "postgres") {
+    return NextResponse.json({ applications: await listStoredFairApplications("published") }, { headers });
+  }
   const applications = isSupabaseRestConfigured()
     ? await listStoredFairApplications("published")
     : shouldShowFallbackContent()
       ? listFairApplications().filter((application) => application.status === "published")
       : [];
 
-  return NextResponse.json({ applications });
+  return NextResponse.json({ applications }, { headers });
 }
 
 export async function POST(request: Request) {

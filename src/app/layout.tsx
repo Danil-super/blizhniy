@@ -19,7 +19,7 @@ import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider'
 import {CookieNotice} from '@/components/CookieNotice';
 import {hasCookieNoticeAcknowledgement} from '@/lib/cookie-notice';
 import {YandexMetrica} from '@/components/YandexMetrica';
-import {getMetricaCounterId} from '@/lib/metrica-config';
+import {getMetricaCounterId, getMetricaTransport} from '@/lib/metrica-config';
 import {readWorkOwnerActionsEnabled} from '@/lib/work-owner-actions-contract';
 import {readPlacementRenewalsEnabled} from '@/lib/placement-renewal-config';
 import {readServiceCheckoutEnabled} from '@/lib/service-checkout-config';
@@ -47,7 +47,8 @@ export default async function RootLayout({
   const mode = process.env.BLIZHNIY_AUTH_MODE;
   const backend = !mode || mode === "local" ? "legacy" : mode === "postgres" ? "postgres" : "unavailable";
   const postmoderation=readPostmoderationEnabled();
-  const metricaCounterId=getMetricaCounterId();
+  const metricaTransport = getMetricaTransport();
+  const metricaCounterId = metricaTransport === null ? null : getMetricaCounterId();
   const incoming = await headers();
   const ip = getTrustedProxyIp(incoming);
   const proofExpiry = backend === "postgres" && process.env.BLIZHNIY_AUTH_REMEMBERED_CAPTCHA === "enabled" && ip
@@ -73,7 +74,7 @@ export default async function RootLayout({
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
         <CookieNotice initiallyAcknowledged={hasCookieNoticeAcknowledgement(incoming.get("cookie") ?? "")} analyticsAvailable={metricaCounterId !== null} />
-        <Suspense fallback={null}><YandexMetrica counterId={metricaCounterId} siteUrl={getPublicSiteUrl()} /></Suspense>
+        <Suspense fallback={null}><YandexMetrica counterId={metricaCounterId} transport={metricaTransport} siteUrl={getPublicSiteUrl()} /></Suspense>
         {/* Isolate lazy Flight children from host replay in Next 15's bundled renderer. */}
         <PlacementReturnNoticeProvider>
           <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>

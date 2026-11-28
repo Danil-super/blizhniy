@@ -1,22 +1,23 @@
-import {mapPublicListing,type PublicListingRow} from './public-listings';import {publicListingSource,publicListingLive,publicListingPhotos,postmoderationListingSource,postmoderationListingLive} from './listing-public-eligibility';
+import {mapPublicListing,type PublicListingRow} from './public-listings';import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
+import {listingContactVisibility,locationWithdrawalColumn,publicPhotoEligibility,publicProfileNameSql,publicTermsColumn,publicTextColumn} from './publication-location-withdrawal';
 export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
 export type PublicListingPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
 const stamp=(column:string)=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
-const columns=(coverOnly=false,postmoderation=false)=>`l.id,l.author_id as "ownerId",l.revision::text as revision,${postmoderation?'null::text':'review.revision::text'} as "approvedRevision",
+const columns=(coverOnly=false,postmoderation=false,withdrawals=false)=>`l.id,l.author_id as "ownerId",l.revision::text as revision,${postmoderation?'null::text':'review.revision::text'} as "approvedRevision",
  ${postmoderation?`exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
   where i.target_type='listing' and i.target_id=l.id and i.owner_id=l.author_id and i.is_test
    and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1' and f.published_at=l.published_at and f.expires_at=l.expires_at)`:'false'} as "testPublication",
- profile.profile->>'name' as "authorName",(c.parent_id is not null) as "isSubcategory",l.status,l.is_paid as paid,l.view_count as "viewCount",
+ ${publicProfileNameSql('l',withdrawals)} as "authorName",(c.parent_id is not null) as "isSubcategory",l.status,l.is_paid as paid,l.view_count as "viewCount",
  ${stamp('l.created_at')} as "createdAt",${stamp('l.published_at')} as "publishedAt",${stamp('l.expires_at')} as "expiresAt",
  json_build_object('kind',case l.listing_type when 'sell' then 'prodam' when 'buy' then 'kuplyu' when 'free' then 'otdam-darom' when 'rent' then 'arenda' end,
  'title',l.title,'description',l.description,'price',l.price::text,'categorySlug',coalesce(parent.slug,c.slug),
  'subcategoryName',case when c.parent_id is not null then c.name end,'cityName',city.name,'district',l.district,'address',l.address,
  'latitude',l.latitude::float8,'longitude',l.longitude::float8,'showExactAddress',l.show_exact_address,'contactPhone',l.contact_phone,'messengerUrl',l.messenger_url,'booking',l.booking) as form,
- array(select p.media_id::text from app.listing_photos p where p.listing_id=l.id order by p.position ${coverOnly?'limit 1':''}) as "mediaIds"`;
+ array(select p.media_id::text from app.listing_photos p where p.listing_id=l.id${publicPhotoEligibility('l','p.media_id',withdrawals)} order by p.position ${coverOnly?'limit 1':''}) as "mediaIds"`;
 function queryOptions(value:PublicListingQuery){
  if(!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value))||
   Reflect.ownKeys(value).some(key=>typeof key!=='string'||!['kind','city','ownerId','categorySlug','subcategoryName','limit','offset'].includes(key)))throw new ListingDraftInputError();
@@ -32,16 +33,22 @@ export class PostgresPublicListingStore{
  private readonly postmoderation:boolean;
  private readonly source:string;
  private readonly eligible:string;
- constructor(private readonly db:PostgresQueries,options:{postmoderation?:boolean}={}){
+ private readonly privacyColumn:string;
+ private readonly withdrawals:boolean;
+ constructor(private readonly db:PostgresQueries,options:ListingVisibilityPolicy={}){
   if(typeof window!=='undefined'||options.postmoderation!==undefined&&typeof options.postmoderation!=='boolean')throw Error('Public listing storage is server-only');
   this.postmoderation=options.postmoderation===true;
-  this.source=`${this.postmoderation?postmoderationListingSource:publicListingSource} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
-  this.eligible=`${this.postmoderation?postmoderationListingLive:publicListingLive} and ${publicListingPhotos}`;
+  const {source,eligible}=listingVisibility(options);
+  this.source=`${source} left join app.cabinet_profiles profile on profile.user_id=l.author_id`;
+  this.eligible=eligible;
+  const enabled=options.enforceLocationWithdrawals;
+  this.privacyColumn=locationWithdrawalColumn('l',enabled)+publicTextColumn('l',enabled)+listingContactVisibility(enabled);
+  this.withdrawals=options.enforceLocationWithdrawals===true;
  }
  private project(row:Row):Listing|null{return mapPublicListing({...row,form:{...row.form,photoIds:row.mediaIds}},Date.now(),{postmoderation:this.postmoderation});}
  async read(value:unknown):Promise<Listing|undefined>{
   let id:string;try{id=parseListingDraftId(value);}catch{return undefined;}
-  const row=(await this.db.query<Row>(`select ${columns(false,this.postmoderation)} ${this.source} where l.id=$1 and ${this.eligible} limit 1`,[id,maxListingMediaTotalSize])).rows[0];
+  const row=(await this.db.query<Row>(`select ${columns(false,this.postmoderation,this.withdrawals)}${this.privacyColumn}${publicTermsColumn('l',this.withdrawals)} ${this.source} where l.id=$1 and ${this.eligible} limit 1`,[id,maxListingMediaTotalSize])).rows[0];
   return row?this.project(row)??undefined:undefined;
  }
  private async listRows(options:PublicListingQuery){
@@ -51,7 +58,7 @@ export class PostgresPublicListingStore{
    select id,published_at,created_at from app.listings where status='published' and is_paid
    order by published_at desc,created_at desc,id desc offset 0
   ) ordered join app.listings l on l.id=ordered.id`);
-  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${source} where ${this.eligible}
+  const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation,this.withdrawals)}${this.privacyColumn} ${source} where ${this.eligible}
    and ($1::text is null or l.listing_type=$1) and ($3::uuid is null or l.author_id=$3)
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
@@ -67,7 +74,7 @@ export class PostgresPublicListingStore{
  async readMany(values:unknown[]):Promise<Listing[]>{
   if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
   const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
-  const rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${this.source}
+  const rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation,this.withdrawals)}${this.privacyColumn} ${this.source}
    where l.id=any($1::uuid[]) and ${this.eligible} limit 25`,[ids,maxListingMediaTotalSize])).rows;
   return rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
  }
@@ -79,10 +86,10 @@ export class PostgresPublicListingStore{
  }
  async photoRecord(value:unknown,file:unknown):Promise<PublicListingPhoto|undefined>{
   let id:string,media:string;try{id=parseListingDraftId(value);media=parseListingDraftId(file);}catch{return undefined;}
-  const row=(await this.db.query<Row&{record:MediaFileRecord}>(`select ${columns(false,this.postmoderation)},json_build_object('id',image.id,'mimeType',image.mime_type,'width',image.width,'height',image.height,'size',image.size,'sha256',image.sha256) as record
+  const row=(await this.db.query<Row&{record:MediaFileRecord}>(`select ${columns(false,this.postmoderation,this.withdrawals)},json_build_object('id',image.id,'mimeType',image.mime_type,'width',image.width,'height',image.height,'size',image.size,'sha256',image.sha256) as record
    ${this.source} join app.listing_photos attachment on attachment.listing_id=l.id
    join app.media_objects image on image.id=attachment.media_id and image.owner_id=l.author_id and image.state='ready'
-   where l.id=$1 and ${this.eligible} and image.id=$3 limit 1`,[id,maxListingMediaTotalSize,media])).rows[0];
+   where l.id=$1 and ${this.eligible} and image.id=$3${publicPhotoEligibility('l','image.id',this.withdrawals)} limit 1`,[id,maxListingMediaTotalSize,media])).rows[0];
   if(!row||!row.mediaIds.includes(media)||!this.project(row))return undefined;
   return{record:row.record,revision:row.revision,expiresAt:row.expiresAt!};
  }

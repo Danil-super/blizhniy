@@ -30,13 +30,16 @@ const adminNav = [
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
-function AdminNavPills({ activeHref }: { activeHref: string }) {
+const publicationComplaints = { href: "/admin/publication-restrictions", label: "Жалобы на публикации", icon: FileText };
+
+function AdminNavPills({ activeHref, showPublicationComplaints }: Pick<ShellProps,'activeHref'|'showPublicationComplaints'>) {
+  const sections = showPublicationComplaints ? [...adminNav, publicationComplaints] : adminNav;
   return (
     <nav
       className="mt-5 grid grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden"
       aria-label="Разделы админки"
     >
-      {adminNav.map((item) => {
+      {sections.map((item) => {
         const Icon = item.icon;
         const active = item.href === activeHref;
 
@@ -58,7 +61,7 @@ function AdminNavPills({ activeHref }: { activeHref: string }) {
   );
 }
 
-type ShellProps={activeHref:string;children:ReactNode;description:string;title:string};
+type ShellProps={activeHref:string;children:ReactNode;description:string;title:string;showPublicationComplaints?:boolean};
 function AdminFrame({
   children,
   description,
@@ -80,11 +83,11 @@ function AdminFrame({
 }
 
 export function AdminShell(props:ShellProps){
- return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/><div className="mt-5 sm:mt-7">{props.children}</div></AdminAuthGate></AdminFrame>;
+ return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref} showPublicationComplaints={props.showPublicationComplaints}/><div className="mt-5 sm:mt-7">{props.children}</div></AdminAuthGate></AdminFrame>;
 }
 /** Primary workspaces keep their own actor-scoped state and remove private DOM during rechecks.
  * Do not wrap their state in a gate that unmounts it on a transient session refresh.
  */
 export function AdminWorkspaceShell({recheckModerator=false,...props}:ShellProps & {recheckModerator?:boolean}){
- return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/></AdminAuthGate><div className="mt-5 sm:mt-7" data-recheck-moderator={recheckModerator || undefined}>{props.children}</div></AdminFrame>;
+ return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref} showPublicationComplaints={props.showPublicationComplaints}/></AdminAuthGate><div className="mt-5 sm:mt-7" data-recheck-moderator={recheckModerator || undefined}>{props.children}</div></AdminFrame>;
 }

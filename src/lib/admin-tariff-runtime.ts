@@ -12,7 +12,7 @@ export async function handleAdminTariffRequest(request:Request){
     return await createAdminTariffHandler(config,async()=>{
       const {db,limiter}=await getProductionAccountDatabase(config);
       return {limiter,execute:(token,command,signal)=>{
-        if(operator?.mode==='hosted')return callHostedTariffOperator(token,command,signal);
+        if(operator?.mode==='hosted')return callHostedTariffOperator(token,command,signal,operator.socketPath);
         if(operator)return callLocalTariffOperator(operator.socketPath,token,command,signal);
         return readAdminTariffs(db,token,command);
       }};

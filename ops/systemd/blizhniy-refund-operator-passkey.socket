@@ -1,0 +1,18 @@
+[Unit]
+Description=Blizhniy private TEST refund socket with passkey confirmation
+Conflicts=blizhniy-refund-operator.socket blizhniy-refund-operator.service
+After=blizhniy-refund-operator.socket blizhniy-refund-operator.service
+
+[Socket]
+ListenStream=/run/blizhniy-refund-operator-passkey/operator.sock
+SocketUser=root
+SocketGroup=blizhniy-web
+SocketMode=0660
+DirectoryMode=0755
+FileDescriptorName=operator
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

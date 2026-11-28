@@ -1,3 +1,4 @@
+import { PublicPublicationTerms } from "@/components/PublicPublicationTerms";
 import Link from "next/link";
 import Image from "next/image";
 import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video } from "lucide-react";
@@ -158,6 +159,7 @@ export async function FairHomePage() {
                 <MapPin className="h-4 w-4" />
                 {[application.city, application.showExactAddress ? application.address : application.district].filter(Boolean).join(", ")}
               </p>
+              <PublicPublicationTerms terms={application.publicationTerms} images={application.productPhotos}/>
             </article>
           ))}
         </div>

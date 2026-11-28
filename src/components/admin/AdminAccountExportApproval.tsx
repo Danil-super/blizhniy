@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { usePrimaryAccountAuth } from '@/components/auth/AccountAuthProvider';
+import { AdminPasskeyClientError, adminPasskeys } from '@/lib/client-admin-passkey';
 
 function ApprovalForm({ administratorId }: { administratorId: string }) {
   const [busy, setBusy] = useState(false);
@@ -12,20 +13,25 @@ function ApprovalForm({ administratorId }: { administratorId: string }) {
     event.preventDefault();
     if (busy || prepared) return;
     const form = new FormData(event.currentTarget);
+    const caseId = form.get('caseId');
+    if (typeof caseId !== 'string') return;
+    const command = { caseId, expectedAdminId: administratorId };
     setBusy(true);
     setMessage('');
     try {
+      const credential = await adminPasskeys.archiveAssertion(command);
       const response = await fetch('/api/admin/account-export', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-Blizhniy-Request': '1' },
-        body: JSON.stringify({ caseId: form.get('caseId'), expectedAdminId: administratorId }),
+        body: JSON.stringify({ action: 'prepare', ...command, credential }),
       });
       if (!response.ok) throw new Error('Preparation did not complete');
       setPrepared(true);
       setMessage('Архив подготовлен. Оператор проверит его и откроет скачивание в кабинете.');
-    } catch {
-      setMessage('Архив не готов. Перед повторной попыткой уточните результат у оператора.');
+    } catch (error) {
+      setMessage(error instanceof AdminPasskeyClientError ? error.message :
+        'Архив не готов. Перед повторной попыткой уточните результат у оператора.');
     } finally {
       setBusy(false);
     }
@@ -43,7 +49,7 @@ function ApprovalForm({ administratorId }: { administratorId: string }) {
         </div>
         <button type="submit" disabled={busy || prepared}
           className="min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-brand-blue disabled:opacity-50">
-          {busy ? 'Готовим архив…' : 'Подготовить архив'}
+          {busy ? 'Обрабатываем запрос…' : 'Подтвердить ключом и подготовить архив'}
         </button>
       </form>
       {message && <p role={prepared ? 'status' : 'alert'} className="mt-3 text-sm text-slate-700">{message}</p>}

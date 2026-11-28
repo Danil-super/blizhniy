@@ -15,6 +15,8 @@ function load(name,messages){
   };
   if(dependency==='@/lib/publication-time')return require('../src/lib/publication-time.ts');
   if(dependency==='./AdMarquee')return load('AdMarquee',messages);
+  if(dependency==='./PublicPublicationTerms')return load('PublicPublicationTerms',messages);
+  if(dependency==='@/lib/publication-consent-terms')return require('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('publication-consent-terms');
   return require(dependency);
  },exports);return exports;
 }
@@ -50,4 +52,13 @@ test('public paid advertising shows the scheduled start and end in Moscow time',
  assert.match(html,/ТЕСТ · Щит<\/span>/);
  assert.match(html,/<time dateTime="2026-11-23T01:23:45.000001Z">23 ноября 2026 г. в 04:23<\/time>/i);
  assert.match(html,/<time dateTime="2026-11-30T01:23:45.000001Z">30 ноября 2026 г. в 04:23<\/time>/i);
+});
+
+test('terms for a paid marquee entry are available outside the moving control',async()=>{
+ const html=await markup([{id:'fixture',text:'Тестовая строка',publishedAt:'2026-11-23T01:23:45Z',expiresAt:'2026-11-30T01:23:45Z',
+  publicationTerms:[{category:'text-field:title',terms:'view-only'}]}]);
+ const notice=html.indexOf('<details');
+ assert.ok(notice>html.indexOf('</button>')&&html.indexOf('</button>')>=0);
+ assert.match(html.slice(notice),/Условия распространения данных · Тестовая строка/);
+ assert.match(html.slice(notice),/Разрешён только просмотр/);
 });
