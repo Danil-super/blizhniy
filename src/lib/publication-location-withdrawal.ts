@@ -31,6 +31,23 @@ export function contactConsentRequired(): boolean {
   return process.env.BLIZHNIY_PUBLICATION_CONTACT_CONSENT === "required";
 }
 
+export function profileConsentRequired(): boolean {
+  return process.env.BLIZHNIY_PUBLICATION_PROFILE_CONSENT === "required";
+}
+
+function publicProfileValueSql(alias:"l"|"s",category:"name"|"avatar",value:string,fallback:string,enabled?:boolean):string {
+  const required=profileConsentRequired();
+  if(!enabled)return required?fallback:value;
+  const kind=alias==='l'?"'listing'":'s.kind';
+  const facts=category==='avatar'?`app_publication_privacy.avatar_facts(${value})`:`to_jsonb(${value})`;
+  const missing=required?` or not app_publication_privacy.publication_is_consented(${kind},${alias}.id,${alias}.author_id,'${category}',${facts})`:'';
+  return `case when exists(${withdrawal(alias, `'${category}'`)})${missing} then ${fallback} else ${value} end`;
+}
+
+export function publicProfileNameSql(alias:"l"|"s",enabled?:boolean):string {
+  return publicProfileValueSql(alias,'name',"profile.profile->>'name'",'null',enabled);
+}
+
 export function listingContactVisibility(enabled?: boolean): string {
   const consent = contactConsentRequired();
   if (!enabled) return consent ? ',true as "phoneHidden",true as "messengerHidden"' : "";
@@ -103,7 +120,7 @@ export function withdrawnPhotoColumn(alias: "w" | "s", enabled?: boolean): strin
 
 export function publicAvatarSql(enabled?: boolean): string {
   const avatar = "coalesce(profile->>'avatarDataUrl','')";
-  return enabled ? `case when exists(${withdrawal('s', "'avatar'")}) then '' else ${avatar} end` : avatar;
+  return publicProfileValueSql('s','avatar',avatar,"''",enabled);
 }
 
 export async function isPublicationWithdrawn(db: PostgresQueries, kind: string, id: string): Promise<boolean> {

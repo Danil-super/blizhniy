@@ -23,7 +23,7 @@ export function PublicationPrivacyActions(props:Props){
 function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whole:boolean}){
  const [receipt,setReceipt]=useState<string|null>(),[confirm,setConfirm]=useState(false);
  const [available,setAvailable]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false);
- const [consentEnabled,setConsentEnabled]=useState(false);
+ const [consentEnabled,setConsentEnabled]=useState<{location?:boolean;contact?:boolean;profile?:boolean}>({});
  const scope=useRef<AbortController|null>(null),button=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
  const savedHere=useRef(false);
 
@@ -44,7 +44,8 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
    const next=data.withdrawnAt===null&&statusOnly?null:
     parseListingDraftCursor({id:publicationId,updatedAt:data.withdrawnAt})!.updatedAt;
    savedHere.current=!statusOnly;
-   setConsentEnabled(statusOnly&&(whole?data.contactConsent===true:data.locationConsent===true));
+   setConsentEnabled(statusOnly?{location:!whole&&data.locationConsent===true,contact:whole&&data.contactConsent===true,
+    profile:whole&&data.profileConsent===true}:{});
    setReceipt(next);setConfirm(false);
   }catch{
    if(!controller.signal.aborted){setConfirm(false);setError(true);}
@@ -77,15 +78,21 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
      }}>{confirm?(whole?'Подтвердить скрытие публикации':'Подтвердить скрытие'):(whole?'Скрыть всю публикацию':'Скрыть точный адрес')}</button>
      {confirm&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{setConfirm(false);button.current?.focus();}}>Оставить как есть</button>}
     </div>
-    {!whole&&consentEnabled&&<PublicationConsent key={owner+'|'+kind+'|'+publicationId} owner={owner} kind={kind} publicationId={publicationId}/>}
+    {!whole&&consentEnabled.location&&<PublicationConsent key={owner+'|'+kind+'|'+publicationId} owner={owner} kind={kind} publicationId={publicationId}/>}
    </>}
  </section>
- {whole&&consentEnabled&&receipt===null&&!error&&
+ {whole&&consentEnabled.contact&&receipt===null&&!error&&
   <div className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
    <h4 className="font-semibold">Публичные контакты</h4>
    <p>Телефон и ссылку на мессенджер можно открыть для посетителей по отдельности.</p>
    <PublicationConsent key={owner+'|'+publicationId+'|phone'} owner={owner} kind={kind} publicationId={publicationId} category="phone"/>
    <PublicationConsent key={owner+'|'+publicationId+'|messenger'} owner={owner} kind={kind} publicationId={publicationId} category="messenger"/>
+  </div>}
+ {whole&&consentEnabled.profile&&receipt===null&&!error&&
+  <div className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+   <h4 className="font-semibold">Публичные данные профиля</h4>
+   <PublicationConsent key={owner+'|'+publicationId+'|name'} owner={owner} kind={kind} publicationId={publicationId} category="name"/>
+   {kind==='specialist'&&<PublicationConsent key={owner+'|'+publicationId+'|avatar'} owner={owner} kind={kind} publicationId={publicationId} category="avatar"/>}
   </div>}
  </>;
 }

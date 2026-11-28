@@ -32,6 +32,7 @@ function checkpointRows(document, expectedDigest) {
       const text = typeof scope === 'string' ? textScope.exec(scope) : null;
       const permittedScope = scope === 'publication' || scope === 'location' && kind !== 'marquee' ||
         (scope === 'phone' || scope === 'messenger') && kind === 'listing' ||
+        scope === 'name' && (kind === 'listing' || kind === 'specialist') ||
         scope === 'avatar' && kind === 'specialist' ||
         typeof scope === 'string' && ['listing','vacancy','workRequest','fair'].includes(kind) && photoScope.test(scope) ||
         text && kinds.has(kind) && textFields[kind].includes(text[1]) && Number(text[2])<Number(text[3]);

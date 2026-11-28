@@ -3,7 +3,7 @@ import {parseListingDraftId} from './listing-draft-contract.ts';import type {Spe
 import {validProfileName} from './cabinet-field-validation.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
 import type {PublicText} from './publication-location-withdrawal';
-export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null;locationWithdrawn?:boolean;publicText?:PublicText};
+export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;publicName?:string|null;avatarDataUrl:string}|null;locationWithdrawn?:boolean;publicText?:PublicText};
 export type PublicMarquee={id:string;text:string;href?:string;publishedAt:string;expiresAt:string};
 export type PublicServiceMaterial=SpecialistProfile|FairApplication|PublicMarquee;
 /** Explicit public DTO: never spread the private form or copy its owner, contacts or review. */
@@ -32,7 +32,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
    const identity=row.profileIdentity;
    if(!identity||!validProfileName(identity.name)||typeof identity.avatarDataUrl!=='string'||identity.avatarDataUrl.length>409623||
     identity.avatarDataUrl&&!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(identity.avatarDataUrl))return null;
-   name=identity.name;specialistImages=identity.avatarDataUrl?[identity.avatarDataUrl]:[];
+   name=identity.publicName===null?'Специалист':identity.name;specialistImages=identity.avatarDataUrl?[identity.avatarDataUrl]:[];
   }
   const skills=row.publicText?.skills??form.skills;
   const experience=row.publicText?.experience??form.experience;

@@ -2,8 +2,9 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
+import {StoredMediaImage} from '@/components/StoredMedia';
 import {notifyAccountSessionChange} from '@/lib/local-account';
-import {postPublicationPrivacy,type ContactConsentCategory,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
+import {postPublicationPrivacy,type ContactConsentCategory,type ProfileConsentCategory,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
 
 type Consent={
  value:string;
@@ -15,9 +16,11 @@ const labels={
  location:{title:'Согласие на публикацию точного адреса',term:'адреса',missing:'сохраните точку',hidden:''},
  phone:{title:'Согласие на публикацию телефона',term:'телефона',missing:'сохраните номер телефона',hidden:'Телефон скрыт.'},
  messenger:{title:'Согласие на публикацию мессенджера',term:'мессенджера',missing:'сохраните ссылку на мессенджер',hidden:'Мессенджер скрыт.'},
+ name:{title:'Согласие на публикацию имени',term:'имени',missing:'сохраните имя в профиле',hidden:'Имя скрыто.'},
+ avatar:{title:'Согласие на публикацию фото профиля',term:'фото профиля',missing:'сохраните фото в профиле',hidden:'Фото профиля скрыто.'},
 };
 
-export function PublicationConsent({category,...target}:PublicationPrivacyTarget&{category?:ContactConsentCategory}){
+export function PublicationConsent({category,...target}:PublicationPrivacyTarget&{category?:ContactConsentCategory|ProfileConsentCategory}){
  const label=labels[category??'location'];
  const [consent,setConsent]=useState<Consent|null>();
  const [fullName,setFullName]=useState(''),[confirmed,setConfirmed]=useState(false);
@@ -36,7 +39,11 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
   setBusy(true);setMessage('');
   try{
    const fields={fingerprint:consent?.fingerprint??'',fullName:fullName.trim()};
-   const command=category
+   const profile=category==='name'||category==='avatar';
+   const command=profile
+    ? operation==='confirm'?{action:'confirm-profile-consent' as const,category,...fields}
+     :{action:operation==='withdraw'?'withdraw-profile-value' as const:'profile-consent-status' as const,category}
+    :category
     ? operation==='confirm'?{action:'confirm-contact-consent' as const,category,...fields}
      :{action:operation==='withdraw'?'withdraw-contact' as const:'contact-consent-status' as const,category}
     : operation==='confirm'?{action:'confirm-location-consent' as const,...fields}:{action:'location-consent-status' as const};
@@ -58,9 +65,9 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
     return;
    }
    if(!data.consent)throw Error();
-   const next=data.consent as Omit<Consent,'value'>&{location?:Location|null;contact?:string|null;withdrawnAt?:string|null};
+   const next=data.consent as Omit<Consent,'value'>&{location?:Location|null;contact?:string|null;profileValue?:string|null;withdrawnAt?:string|null};
    const location=next.location;
-   const value=category?next.contact:location&&
+   const value=profile?next.profileValue:category?next.contact:location&&
     `${location.city}${location.address?', '+location.address:''}. Координаты ${location.latitude}, ${location.longitude}.`;
    if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||operation==='confirm'&&!next.expiresAt))throw Error();
    setConsent(value?{email:next.email,fingerprint:next.fingerprint,expiresAt:next.expiresAt,notice:next.notice,value}:null);
@@ -82,12 +89,12 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
   {message&&<p role="status">{message}</p>}
   {withdrawn?<p role="status">{label.hidden}</p>:
    consent===undefined?<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>{'Открыть '+label.title.toLowerCase()}</button>:
-   consent===null?<p>Чтобы разрешить публикацию, сначала {label.missing} в форме публикации.</p>:
+   consent===null?<p>Чтобы разрешить публикацию, сначала {label.missing}{category==='name'||category==='avatar'?'':' в форме публикации'}.</p>:
    consent.expiresAt?<div className="space-y-2">
     <p role="status">Согласие на публикацию {label.term} действует до{' '}
      {new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(consent.expiresAt))} (МСК).</p>
     {category&&<>
-     {confirmWithdrawal&&<p>Посетители перестанут видеть эти данные в объявлении. Изменение контакта после отзыва не возобновит показ.</p>}
+     {confirmWithdrawal&&<p>Посетители перестанут видеть эти данные в публикации. Последующее изменение этих данных не возобновит показ.</p>}
      <div className="flex flex-wrap gap-2">
       <button type="button" className={draftButton} disabled={busy} onClick={()=>{
        if(confirmWithdrawal)void request('withdraw');else setConfirmWithdrawal(true);
@@ -102,7 +109,8 @@ export function PublicationConsent({category,...target}:PublicationPrivacyTarget
     <p>{consent.notice.purpose}</p>
     <p className="break-all">{consent.notice.resource}</p>
     <p>{consent.notice.term}</p>
-    <p className="break-words">{consent.value}</p>
+    {category==='avatar'?<StoredMediaImage src={consent.value} alt="Фото для публикации" className="h-24 w-24 rounded-lg object-cover"/>:
+     <p className="break-words">{consent.value}</p>}
     <label className="block">Фамилия, имя, отчество (при наличии)
      <input autoComplete="name" maxLength={160} value={fullName} onChange={event=>setFullName(event.target.value)}
       className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2" disabled={busy}/>

@@ -8,11 +8,14 @@ export type PublicationPrivacyTarget={
 
 export type WithdrawPublicationText={action:'withdraw-text';field:PublicationTextField;fingerprint:string;start:number;end:number};
 export type ContactConsentCategory='phone'|'messenger';
+export type ProfileConsentCategory='name'|'avatar';
 type Command={action?:'status'|'publication-status'|'withdraw-publication'|'photos'|'texts'|'location-consent-status'}|
  {action:'withdraw-photo';photoId:string}|WithdrawPublicationText|
  {action:'confirm-location-consent';fingerprint:string;fullName:string}|
  {action:'contact-consent-status'|'withdraw-contact';category:ContactConsentCategory}|
- {action:'confirm-contact-consent';category:ContactConsentCategory;fingerprint:string;fullName:string};
+ {action:'confirm-contact-consent';category:ContactConsentCategory;fingerprint:string;fullName:string}|
+ {action:'profile-consent-status'|'withdraw-profile-value';category:ProfileConsentCategory}|
+ {action:'confirm-profile-consent';category:ProfileConsentCategory;fingerprint:string;fullName:string};
 
 export function postPublicationPrivacy({owner,kind,publicationId}:PublicationPrivacyTarget,command:Command,signal:AbortSignal){
  return fetch('/api/account/publication-location',{

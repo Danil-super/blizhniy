@@ -28,6 +28,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let consentUntil=null;
   const contactFingerprint='c'.repeat(64);
   let phoneConsentUntil=null,phoneWithdrawnAt=null;
+  const profileFingerprint='d'.repeat(64);
+  let profileConsentUntil=null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -106,6 +108,21 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         email:'cabinet-ui@example.invalid',fingerprint:contactFingerprint,expiresAt:phoneConsentUntil,
       }}});
     }
+    if(url.pathname==='/api/account/publication-location'&&['profile-consent-status','confirm-profile-consent','withdraw-profile-value'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'name'};
+      const {action}=request.postDataJSON();
+      assert.deepEqual(request.postDataJSON(),{...target,action,
+        ...(action==='confirm-profile-consent'?{fingerprint:profileFingerprint,fullName:'Локальный Пользователь'}:{})});
+      const response={kind:target.kind,publicationId:target.publicationId,category:target.category};
+      if(action==='withdraw-profile-value')return route.fulfill({json:{...response,withdrawnAt:deadlines.archived}});
+      if(action==='confirm-profile-consent')profileConsentUntil='2027-01-25T21:00:00.000001Z';
+      return route.fulfill({json:{...response,consent:{
+        profileValue:'Имя из профиля',
+        notice:{version:'name-test',operator:'Оператор проверки',purpose:'Показ имени',resource:origin+'/obyavlenie/'+target.publicationId,
+          term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать имя из профиля.'},
+        email:'cabinet-ui@example.invalid',fingerprint:profileFingerprint,expiresAt:profileConsentUntil,
+      }}});
+    }
     if (url.pathname === '/api/account/publication-location') {
       const {action, ...target} = request.postDataJSON();
       assert.equal(request.method(), 'POST');
@@ -117,7 +134,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       if(action==='withdraw-publication')publicationReceipt=deadlines.archived;
       if(action==='publication-status'||action==='withdraw-publication')
         return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt,
-          ...(action==='publication-status'&&!publicationReceipt?{contactConsent:true}:{})}});
+          ...(action==='publication-status'&&!publicationReceipt?{contactConsent:true,profileConsent:true}:{})}});
       assert.ok(action === undefined || action === 'status');
       if (action === undefined) addressReceipt = deadlines.archived;
       return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt,
@@ -232,6 +249,18 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await phoneConsent.getByRole('button',{name:'Подтвердить отзыв'}).click();
   await phoneConsent.getByText('Телефон скрыт.',{exact:true}).waitFor();
   await address.getByRole('button',{name:'Открыть согласие на публикацию мессенджера'}).waitFor();
+  const nameConsent=address.getByRole('region',{name:'Согласие на публикацию имени'});
+  await nameConsent.getByRole('button',{name:'Открыть согласие на публикацию имени'}).click();
+  await nameConsent.getByText('Имя из профиля',{exact:true}).waitFor();
+  await nameConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
+  const confirmName=nameConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
+  assert.equal(await confirmName.isDisabled(),true);
+  await nameConsent.getByRole('checkbox',{name:'Разрешаю публиковать имя из профиля.'}).check();
+  await confirmName.click();
+  await nameConsent.getByText(/Согласие на публикацию имени действует до/).waitFor();
+  await nameConsent.getByRole('button',{name:'Отозвать согласие'}).click();
+  await nameConsent.getByRole('button',{name:'Подтвердить отзыв'}).click();
+  await nameConsent.getByText('Имя скрыто.',{exact:true}).waitFor();
   await address.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   assert.deepEqual(await address.evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);

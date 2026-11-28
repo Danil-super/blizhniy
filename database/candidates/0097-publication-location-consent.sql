@@ -6,7 +6,8 @@ create table app_publication_privacy.publication_consents(
  id bigint generated always as identity primary key,
  kind text not null check(kind in ('listing','vacancy','workRequest','specialist','fair')),
  publication_id uuid not null,
- category text not null check(category='location' or kind='listing' and category in ('phone','messenger')),
+ category text not null check(category='location' or kind='listing' and category in ('phone','messenger')
+  or category='name' and kind in ('listing','specialist') or category='avatar' and kind='specialist'),
  subject_id uuid not null references app.users(id) on delete cascade,
  subject_name text not null,
  subject_email text not null,
@@ -36,6 +37,7 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
   'version',p_category||'-2026-11-draft-v1',
   'operator','ООО «БЛИЖНИЙ», ИНН 2370010092, ОГРН 1202300009746, 353584, Краснодарский край, Славянский район, п. Целинный, ул. Зеленая, д. 24, оф. 6',
   'purpose','Показ '||case p_category when 'phone' then 'номера телефона' when 'messenger' then 'ссылки на мессенджер'
+   when 'name' then 'имени из профиля' when 'avatar' then 'фото профиля'
    else 'точного адреса и координат' end||' этой публикации всем посетителям БЛИЖНЕГО, в том числе без входа в аккаунт.',
   'resource','https://xn----9sbphbgks4a4a.xn--p1ai'||case p_kind
    when 'listing' then '/obyavlenie/'||p_publication::text
@@ -46,7 +48,17 @@ create function app_publication_privacy.publication_consent_notice(p_kind text,p
   'term','90 суток с момента подтверждения. Согласие можно отозвать раньше в кабинете или через поддержку.',
   'statement',case p_category when 'phone' then 'Разрешаю оператору публиковать указанный номер телефона в этом объявлении.'
    when 'messenger' then 'Разрешаю оператору публиковать указанную ссылку на мессенджер в этом объявлении.'
+   when 'name' then 'Разрешаю оператору публиковать указанное имя в этой публикации.'
+   when 'avatar' then 'Разрешаю оператору публиковать показанное фото профиля в этой анкете.'
    else 'Разрешаю оператору публиковать указанные ниже точный адрес и координаты этой публикации.' end)
+ $$;
+
+-- Store a fingerprint of the photo rather than a copy of the image in the consent record.
+create function app_publication_privacy.avatar_facts(p_value text)
+ returns jsonb language sql immutable strict set search_path=pg_catalog,pg_temp as $$
+ select case when char_length(p_value) between 1 and 409623
+    and p_value ~ '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$'
+  then to_jsonb(encode(sha256(convert_to(p_value,'UTF8')),'hex')) end
  $$;
 
 create function app_publication_privacy.publication_consent_fingerprint(p_notice jsonb,p_facts jsonb)
@@ -87,8 +99,10 @@ declare
  deadline timestamptz;
  confirmed_at timestamptz;
  field_name text;
+ profile_value text;
 begin
- if p_category is null or not (p_category='location' or p_kind='listing' and p_category in ('phone','messenger')) then
+ if p_category is null or not (p_category='location' or p_kind='listing' and p_category in ('phone','messenger')
+  or p_category='name' and p_kind in ('listing','specialist') or p_category='avatar' and p_kind='specialist') then
   raise exception using errcode='PDW04',message='Invalid consent category';
  end if;
  if (p_expected is null)<>(p_name is null) or p_expected is not null and (
@@ -98,19 +112,23 @@ begin
  ) then raise exception using errcode='PDW04',message='Invalid location consent';end if;
 
  -- The existing command checks the verified owner and locks the session and publication.
- field_name:=case when p_category='location' then 'location' else 'contact' end;
+ field_name:=case when p_category='location' then 'location' when p_category in ('name','avatar') then 'profileValue' else 'contact' end;
  decision:=app_publication_privacy.withdraw_location(p_hash,p_actor,p_kind,p_publication,false,p_category);
  if decision->>'withdrawnAt' is not null or exists(
   select 1 from app_publication_privacy.location_withdrawals where kind=p_kind and publication_id=p_publication and scope='publication'
  ) then
   if p_expected is not null then raise exception using errcode='PDW05',message='Location unavailable';end if;
-  if field_name='contact' then
-   return jsonb_build_object('contact',null,'withdrawnAt',decision->>'withdrawnAt');
+  if field_name<>'location' then
+   return jsonb_build_object(field_name,null,'withdrawnAt',decision->>'withdrawnAt');
   end if;
   return jsonb_build_object('location',null);
  end if;
 
  case
+  when p_category in ('name','avatar') then
+   select nullif(profile->>case p_category when 'name' then 'name' else 'avatarDataUrl' end,'')
+   into profile_value from app.cabinet_profiles where user_id=p_actor for share;
+   facts:=case when p_category='avatar' then app_publication_privacy.avatar_facts(profile_value) else to_jsonb(profile_value) end;
   when p_category in ('phone','messenger') then
    select to_jsonb(nullif(case p_category when 'phone' then l.contact_phone else l.messenger_url end,''))
    into facts from app.listings l where l.id=p_publication;
@@ -120,7 +138,7 @@ begin
   when p_kind in ('vacancy','workRequest') then select w.form into form from app.work_publications w where w.id=p_publication;
   else select s.form into form from app.service_publications s where s.id=p_publication;
  end case;
- if p_kind<>'listing' then
+ if p_category='location' and p_kind<>'listing' then
   facts:=app_publication_privacy.location_facts(form->>'cityName',form->>'address',form->'latitude',form->'longitude',
    form->'showExactAddress'='true'::jsonb);
  end if;
@@ -149,18 +167,25 @@ begin
    last_offer:=current_offer;
   end if;
  end if;
- return jsonb_build_object(field_name,facts,'notice',notice,'email',email,'fingerprint',case when deadline is null then current_offer else last_offer end,
+ if not exists(select 1 from app.sessions where token_hash=p_hash and user_id=p_actor
+   and expires_at>clock_timestamp() and last_seen_at>clock_timestamp()-interval '30 minutes') then
+  raise exception using errcode='PDW01',message='Publication owner required';
+ end if;
+ return jsonb_build_object(field_name,case when p_category='avatar' then to_jsonb(profile_value) else facts end,
+  'notice',notice,'email',email,'fingerprint',case when deadline is null then current_offer else last_offer end,
   'expiresAt',to_char(deadline at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'));
 end;
 $$;
 
 revoke all on function app_publication_privacy.location_facts(text,text,jsonb,jsonb,boolean) from public;
+revoke all on function app_publication_privacy.avatar_facts(text) from public;
 revoke all on function app_publication_privacy.publication_consent_notice(text,uuid,text) from public;
 revoke all on function app_publication_privacy.publication_consent_fingerprint(jsonb,jsonb) from public;
 revoke all on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) from public;
 revoke all on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) from public;
 revoke all on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) from public;
 grant execute on function app_publication_privacy.location_facts(text,text,jsonb,jsonb,boolean) to blizhniy_runtime;
+grant execute on function app_publication_privacy.avatar_facts(text) to blizhniy_runtime;
 grant execute on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) to blizhniy_runtime;
 grant execute on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) to blizhniy_runtime;
 grant execute on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) to blizhniy_runtime;

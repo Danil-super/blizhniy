@@ -1,7 +1,7 @@
 import {publicSearchPattern,type PublicSearchInput} from './public-search-contract.ts';
 import type {PublicSearchAnchor} from './public-search-cursor';
 import {maxListingMediaTotalSize} from './media-limits.ts';
-import {publicTextSql} from './publication-location-withdrawal.ts';
+import {publicProfileNameSql,publicTextSql} from './publication-location-withdrawal.ts';
 type Scope={source:string;eligible:string};
 export type PublicSearchScopes={listing:Scope;work:Scope;service:Scope&{profileIdentity:boolean}};
 /** Fixed server-composed fragments only: input never selects an SQL identifier. */
@@ -14,7 +14,8 @@ export function buildPublicSearchSql(input:PublicSearchInput,scopes:PublicSearch
   textWithdrawals?publicTextSql('w','title',true):'w.title',publicTextSql('w','description',textWithdrawals),"w.form->>'cityName'",'profession.name',
   kind==='vacancy'?publicTextSql('w','organization',textWithdrawals):"'Автор заказа'",
  ]);
- const profileName=scopes.service.profileIdentity?"(select profile->>'name' from app.cabinet_profiles where user_id=s.author_id)":'s.title';
+ const profileName=scopes.service.profileIdentity
+  ?`(select coalesce(${publicProfileNameSql('s',textWithdrawals)},'Специалист') from app.cabinet_profiles profile where profile.user_id=s.author_id)`:'s.title';
  const kinds="case l.listing_type when 'sell' then 'prodam' when 'buy' then 'kuplyu' when 'free' then 'otdam-darom' when 'rent' then 'arenda' end";
  const branches=[`
   select ${pub('1','l.id','l.published_at','l.created_at',"jsonb_build_object('categoryName',coalesce(parent.name,c.name))")}

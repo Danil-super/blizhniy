@@ -1,7 +1,7 @@
 import {mapPublicListing,type PublicListingRow} from './public-listings';import {listingVisibility,type ListingVisibilityPolicy} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
-import {listingContactVisibility,locationWithdrawalColumn,publicPhotoEligibility,publicTextColumn} from './publication-location-withdrawal';
+import {listingContactVisibility,locationWithdrawalColumn,publicPhotoEligibility,publicProfileNameSql,publicTextColumn} from './publication-location-withdrawal';
 export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
 export type PublicListingPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
@@ -11,7 +11,7 @@ const columns=(coverOnly=false,postmoderation=false,withdrawals=false)=>`l.id,l.
  ${postmoderation?`exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
   where i.target_type='listing' and i.target_id=l.id and i.owner_id=l.author_id and i.is_test
    and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1' and f.published_at=l.published_at and f.expires_at=l.expires_at)`:'false'} as "testPublication",
- profile.profile->>'name' as "authorName",(c.parent_id is not null) as "isSubcategory",l.status,l.is_paid as paid,l.view_count as "viewCount",
+ ${publicProfileNameSql('l',withdrawals)} as "authorName",(c.parent_id is not null) as "isSubcategory",l.status,l.is_paid as paid,l.view_count as "viewCount",
  ${stamp('l.created_at')} as "createdAt",${stamp('l.published_at')} as "publishedAt",${stamp('l.expires_at')} as "expiresAt",
  json_build_object('kind',case l.listing_type when 'sell' then 'prodam' when 'buy' then 'kuplyu' when 'free' then 'otdam-darom' when 'rent' then 'arenda' end,
  'title',l.title,'description',l.description,'price',l.price::text,'categorySlug',coalesce(parent.slug,c.slug),
