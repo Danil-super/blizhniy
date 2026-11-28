@@ -7,7 +7,7 @@ import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
 import {PublicationPhotoWithdrawal} from './PublicationPhotoWithdrawal';
 import {PublicationTextWithdrawal} from './PublicationTextWithdrawal';
-import {PublicationLocationConsent} from './PublicationLocationConsent';
+import {PublicationConsent} from './PublicationConsent';
 
 type Props=PublicationPrivacyTarget&{showUnavailable?:boolean};
 
@@ -23,7 +23,7 @@ export function PublicationPrivacyActions(props:Props){
 function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whole:boolean}){
  const [receipt,setReceipt]=useState<string|null>(),[confirm,setConfirm]=useState(false);
  const [available,setAvailable]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false);
- const [locationConsent,setLocationConsent]=useState(false);
+ const [consentEnabled,setConsentEnabled]=useState(false);
  const scope=useRef<AbortController|null>(null),button=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
  const savedHere=useRef(false);
 
@@ -44,7 +44,7 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
    const next=data.withdrawnAt===null&&statusOnly?null:
     parseListingDraftCursor({id:publicationId,updatedAt:data.withdrawnAt})!.updatedAt;
    savedHere.current=!statusOnly;
-   setLocationConsent(statusOnly&&data.locationConsent===true);
+   setConsentEnabled(statusOnly&&(whole?data.contactConsent===true:data.locationConsent===true));
    setReceipt(next);setConfirm(false);
   }catch{
    if(!controller.signal.aborted){setConfirm(false);setError(true);}
@@ -63,7 +63,7 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
 
  if(!available)return showUnavailable&&!whole?<p className="px-3 py-2 text-sm text-slate-600">Управление публичным доступом недоступно.</p>:null;
  if(receipt===undefined&&!error&&!showUnavailable)return null;
- return <section aria-label={whole?'Доступ к публикации':'Точный адрес'} className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+ return <><section aria-label={whole?'Доступ к публикации':'Точный адрес'} className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
   {error?<><p role="status">{whole?'Не удалось подтвердить состояние публикации.':'Не удалось подтвердить состояние точного адреса.'}</p>
    <button type="button" className={draftButton} disabled={busy} onClick={()=>void request(true)}>Проверить состояние</button></>:
    receipt===undefined?<p role="status">{whole?'Проверяем доступ к публикации…':'Проверяем состояние адреса…'}</p>:
@@ -77,7 +77,15 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
      }}>{confirm?(whole?'Подтвердить скрытие публикации':'Подтвердить скрытие'):(whole?'Скрыть всю публикацию':'Скрыть точный адрес')}</button>
      {confirm&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{setConfirm(false);button.current?.focus();}}>Оставить как есть</button>}
     </div>
-    {!whole&&locationConsent&&<PublicationLocationConsent key={owner+'|'+kind+'|'+publicationId} owner={owner} kind={kind} publicationId={publicationId}/>}
+    {!whole&&consentEnabled&&<PublicationConsent key={owner+'|'+kind+'|'+publicationId} owner={owner} kind={kind} publicationId={publicationId}/>}
    </>}
- </section>;
+ </section>
+ {whole&&consentEnabled&&receipt===null&&!error&&
+  <div className="my-3 space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+   <h4 className="font-semibold">Публичные контакты</h4>
+   <p>Телефон и ссылку на мессенджер можно открыть для посетителей по отдельности.</p>
+   <PublicationConsent key={owner+'|'+publicationId+'|phone'} owner={owner} kind={kind} publicationId={publicationId} category="phone"/>
+   <PublicationConsent key={owner+'|'+publicationId+'|messenger'} owner={owner} kind={kind} publicationId={publicationId} category="messenger"/>
+  </div>}
+ </>;
 }

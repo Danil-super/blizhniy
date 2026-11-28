@@ -50,6 +50,8 @@ test('recovery refuses tampered, unexpected and duplicate records before connect
   [snapshot([row]),hash(snapshot([]))],
   [snapshot([{...row,address:'synthetic'}]),null],
   [snapshot([{...row,kind:'marquee'}]),null],
+  [snapshot([{...row,kind:'vacancy',scope:'phone'}]),null],
+  [snapshot([{...row,kind:'fair',scope:'messenger'}]),null],
   [snapshot([{...row,scope:'unknown'}]),null],
   [snapshot([]).replace('"version":4','"version":3'),null],
   [snapshot([{...row,scope:'text:organization:'+'a'.repeat(64)+':1:2'}]),null],

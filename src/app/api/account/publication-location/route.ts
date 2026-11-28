@@ -6,7 +6,7 @@ import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
-import { hasLocationWithdrawalSchema, locationConsentRequired } from "@/lib/publication-location-withdrawal";
+import { contactConsentRequired, hasLocationWithdrawalSchema, locationConsentRequired } from "@/lib/publication-location-withdrawal";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 export const runtime = "nodejs";
@@ -29,16 +29,22 @@ export async function POST(request: Request) {
     const photoWrite = action === "withdraw-photo";
     const textList = action === "texts";
     const textWrite = action === "withdraw-text";
-    const consentStatus = action === "location-consent-status";
-    const consentWrite = action === "confirm-location-consent";
+    const contactStatus = action === "contact-consent-status";
+    const contactWrite = action === "confirm-contact-consent";
+    const contactWithdrawal = action === "withdraw-contact";
+    const contact = contactStatus || contactWrite || contactWithdrawal;
+    const consentStatus = action === "location-consent-status" || contactStatus;
+    const consentWrite = action === "confirm-location-consent" || contactWrite;
     const consent = consentStatus || consentWrite;
     const statusOnly = action === "status" || action === "publication-status" || photoList || textList;
     const full = action === "withdraw-publication" || action === "publication-status";
-    if (consent && !locationConsentRequired()) return error(404, "NOT_FOUND");
-    if (Object.keys(input).length !== (textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus ? 4 : 3) ||
+    if (contact ? !contactConsentRequired() : consent && !locationConsentRequired()) return error(404, "NOT_FOUND");
+    const { category, kind } = input;
+    if (contact && (kind !== "listing" || (category !== "phone" && category !== "messenger"))) return error(422, "INVALID_INPUT");
+    const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || contactWithdrawal ? 4 : 3;
+    if (Object.keys(input).length !== keys + (contact ? 1 : 0) ||
         (photoWrite && !Object.hasOwn(input, 'photoId')) ||
         (textWrite && !['field','fingerprint','start','end'].every(key => Object.hasOwn(input,key)))) return error(422, "INVALID_INPUT");
-    const { kind } = input;
     if (typeof kind !== "string" || !["listing", "vacancy", "workRequest", "specialist", "fair", ...(full || textList || textWrite ? ["marquee"] : [])].includes(kind)) {
       return error(422, "INVALID_INPUT");
     }
@@ -51,7 +57,8 @@ export async function POST(request: Request) {
         Array.from(fullName).length < 2 || Array.from(fullName).length > 160)) {
       return error(422, "INVALID_INPUT");
     }
-    let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : "location";
+    const contactScope = category === "phone" ? "phone" : "messenger";
+    let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : contactWithdrawal ? contactScope : "location";
     if (photoWrite) {
       scope = kind === "specialist" && input.photoId === "avatar" ? "avatar" : "photo:" + parseListingPhotoIds([input.photoId])[0];
     }
@@ -73,11 +80,12 @@ export async function POST(request: Request) {
     request.signal.throwIfAborted();
     if (consent) {
       const { rows: [row] } = await db.query<{ result: object }>(
-        'select app_publication_privacy.location_consent($1,$2,$3,$4,$5,$6) as result',
-        [hashSessionToken(token), actor, kind, publicationId, consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
+        'select app_publication_privacy.publication_consent($1,$2,$3,$4,$5,$6,$7) as result',
+        [hashSessionToken(token), actor, kind, publicationId, contact ? contactScope : "location",
+          consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
       );
       if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
-      return authJson({ kind, publicationId, consent: row.result }, 200);
+      return authJson({ kind, publicationId, ...(contact ? { category: contactScope } : {}), consent: row.result }, 200);
     }
     const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[]; texts?: unknown[] } }>(
       'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as result',
@@ -90,6 +98,8 @@ export async function POST(request: Request) {
     }
     return authJson({ kind, publicationId, withdrawnAt: result.withdrawnAt,
       ...(action === "status" && locationConsentRequired() ? { locationConsent: true } : {}),
+      ...(action === "publication-status" && kind === "listing" && contactConsentRequired() && result.withdrawnAt === null ? { contactConsent: true } : {}),
+      ...(contactWithdrawal ? { category: contactScope } : {}),
       ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
   } catch (failure) {
     if (failure instanceof AuthRequestError) return error(failure.status, failure.code);

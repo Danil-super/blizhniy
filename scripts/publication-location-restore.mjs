@@ -31,6 +31,7 @@ function checkpointRows(document, expectedDigest) {
     const normalized = rows.map(({ kind, publicationId, withdrawnAt, scope }) => {
       const text = typeof scope === 'string' ? textScope.exec(scope) : null;
       const permittedScope = scope === 'publication' || scope === 'location' && kind !== 'marquee' ||
+        (scope === 'phone' || scope === 'messenger') && kind === 'listing' ||
         scope === 'avatar' && kind === 'specialist' ||
         typeof scope === 'string' && ['listing','vacancy','workRequest','fair'].includes(kind) && photoScope.test(scope) ||
         text && kinds.has(kind) && textFields[kind].includes(text[1]) && Number(text[2])<Number(text[3]);
@@ -94,10 +95,10 @@ export async function replayLocationWithdrawals(client, document, sha256) {
       where w.withdrawn_at is distinct from r."withdrawnAt") as matches`, [JSON.stringify(records)]);
     if (result?.matches !== true) throw new Error('Withdrawal checkpoint conflicts with restored data');
     const { rows: [consents] } = await client.query(
-      "select to_regclass('app_publication_privacy.location_consents') is not null as installed");
+      "select to_regclass('app_publication_privacy.publication_consents') is not null as installed");
     if (typeof consents?.installed !== 'boolean') throw new Error('Cannot verify consent schema');
     if (consents.installed) {
-      await client.query('update app_publication_privacy.location_consents set retired=true where not retired');
+      await client.query('update app_publication_privacy.publication_consents set retired=true where not retired');
     }
     await assertClosed(client);
     await client.query('commit');

@@ -20,6 +20,7 @@ create table app_publication_privacy.location_withdrawals(
  publication_id uuid not null,
  withdrawn_at timestamptz not null default clock_timestamp() check(isfinite(withdrawn_at)),
  scope text not null default 'location' check(scope='publication' or scope='location' and kind<>'marquee'
+  or scope in ('phone','messenger') and kind='listing'
   or scope='avatar' and kind='specialist'
   or kind in ('listing','vacancy','workRequest','fair') and scope ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   or scope ~ '^text:[a-zA-Z]+:[0-9a-f]{64}:(0|[1-9][0-9]{0,3}):[1-9][0-9]{0,3}$'
@@ -77,6 +78,7 @@ begin
  end if;
  if p_publication is null or p_apply is null or p_kind is null or p_kind not in ('listing','vacancy','workRequest','specialist','fair','marquee')
   or p_scope is null or not (p_scope='publication' or p_scope='location' and p_kind<>'marquee'
+   or p_scope in ('phone','messenger') and p_kind='listing'
    or p_scope='photos' and not p_apply and p_kind<>'marquee'
    or p_scope='avatar' and p_kind='specialist'
    or p_kind in ('listing','vacancy','workRequest','fair') and p_scope ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'

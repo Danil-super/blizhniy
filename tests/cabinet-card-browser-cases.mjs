@@ -26,6 +26,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const textFingerprint='a'.repeat(64);
   const locationFingerprint='b'.repeat(64);
   let consentUntil=null;
+  const contactFingerprint='c'.repeat(64);
+  let phoneConsentUntil=null,phoneWithdrawnAt=null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -85,6 +87,25 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         email:'cabinet-ui@example.invalid',fingerprint:locationFingerprint,expiresAt:consentUntil,
       }}});
     }
+    if(url.pathname==='/api/account/publication-location'&&['contact-consent-status','confirm-contact-consent','withdraw-contact'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'phone'};
+      const {action}=request.postDataJSON();
+      assert.deepEqual(request.postDataJSON(),{...target,action,
+        ...(action==='confirm-contact-consent'?{fingerprint:contactFingerprint,fullName:'Локальный Пользователь'}:{})});
+      const response={kind:target.kind,publicationId:target.publicationId,category:target.category};
+      if(action==='withdraw-contact'){
+        phoneWithdrawnAt=deadlines.archived;
+        return route.fulfill({json:{...response,withdrawnAt:phoneWithdrawnAt}});
+      }
+      if(phoneWithdrawnAt)return route.fulfill({json:{...response,consent:{contact:null,withdrawnAt:phoneWithdrawnAt}}});
+      if(action==='confirm-contact-consent')phoneConsentUntil='2027-01-25T21:00:00.000001Z';
+      return route.fulfill({json:{...response,consent:{
+        contact:'+79990000000',
+        notice:{version:'phone-test',operator:'Оператор проверки',purpose:'Показ номера',resource:origin+'/obyavlenie/'+target.publicationId,
+          term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать номер телефона.'},
+        email:'cabinet-ui@example.invalid',fingerprint:contactFingerprint,expiresAt:phoneConsentUntil,
+      }}});
+    }
     if (url.pathname === '/api/account/publication-location') {
       const {action, ...target} = request.postDataJSON();
       assert.equal(request.method(), 'POST');
@@ -95,7 +116,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       ]}});
       if(action==='withdraw-publication')publicationReceipt=deadlines.archived;
       if(action==='publication-status'||action==='withdraw-publication')
-        return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt}});
+        return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt,
+          ...(action==='publication-status'&&!publicationReceipt?{contactConsent:true}:{})}});
       assert.ok(action === undefined || action === 'status');
       if (action === undefined) addressReceipt = deadlines.archived;
       return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt,
@@ -197,6 +219,19 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await allowLocation.click();
   await address.getByText('Согласие сохранено.',{exact:true}).waitFor();
   await address.getByText(/Согласие на публикацию адреса действует до/).waitFor();
+  const phoneConsent=address.getByRole('region',{name:'Согласие на публикацию телефона'});
+  await phoneConsent.getByRole('button',{name:'Открыть согласие на публикацию телефона'}).click();
+  await phoneConsent.getByText('+79990000000',{exact:true}).waitFor();
+  await phoneConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
+  const confirmPhone=phoneConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
+  assert.equal(await confirmPhone.isDisabled(),true);
+  await phoneConsent.getByRole('checkbox',{name:'Разрешаю публиковать номер телефона.'}).check();
+  await confirmPhone.click();
+  await phoneConsent.getByText(/Согласие на публикацию телефона действует до/).waitFor();
+  await phoneConsent.getByRole('button',{name:'Отозвать согласие'}).click();
+  await phoneConsent.getByRole('button',{name:'Подтвердить отзыв'}).click();
+  await phoneConsent.getByText('Телефон скрыт.',{exact:true}).waitFor();
+  await address.getByRole('button',{name:'Открыть согласие на публикацию мессенджера'}).waitFor();
   await address.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   assert.deepEqual(await address.evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
@@ -208,6 +243,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await menu.click();
   await waiting.getByRole('button',{name:'Публичный доступ',exact:true}).click();
   await address.getByText('Точный адрес скрыт.',{exact:true}).waitFor();
+  await phoneConsent.getByRole('button',{name:'Открыть согласие на публикацию телефона'}).click();
+  await phoneConsent.getByText('Телефон скрыт.',{exact:true}).waitFor();
   const photoSection=address.locator('summary').filter({hasText:'Видимость фотографий'});
   await photoSection.click();
   const picker=address.getByLabel('Выберите фото');

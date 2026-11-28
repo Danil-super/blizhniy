@@ -27,6 +27,22 @@ export function locationConsentRequired(): boolean {
   return process.env.BLIZHNIY_PUBLICATION_LOCATION_CONSENT === "required";
 }
 
+export function contactConsentRequired(): boolean {
+  return process.env.BLIZHNIY_PUBLICATION_CONTACT_CONSENT === "required";
+}
+
+export function listingContactVisibility(enabled?: boolean): string {
+  const consent = contactConsentRequired();
+  if (!enabled) return consent ? ',true as "phoneHidden",true as "messengerHidden"' : "";
+  return ([["phone", "contact_phone"], ["messenger", "messenger_url"]] as const).map(([category, column]) => {
+    const withdrawn = `exists(${withdrawal("l", `'${category}'`)})`;
+    const allowed = consent
+      ? ` or not app_publication_privacy.publication_is_consented('listing',l.id,l.author_id,'${category}',to_jsonb(l.${column}))`
+      : "";
+    return `,(${withdrawn}${allowed}) as "${category}Hidden"`;
+  }).join("");
+}
+
 export function locationWithdrawalColumn(alias: Alias, enabled?: boolean): string {
   const consent = locationConsentRequired();
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress" || consent && !enabled) {

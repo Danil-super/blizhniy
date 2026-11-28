@@ -2,7 +2,7 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} f
 import {parseListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {formatBookingPrice} from './booking-details';import type {Listing} from './types';
 import type {PublicText} from './publication-location-withdrawal';
-export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText};
+export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText;phoneHidden?:boolean;messengerHidden?:boolean};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Public DTO allowlist, not an owner/editor snapshot. SQL must also prove current author/reference/photo eligibility. */
@@ -23,7 +23,8 @@ export function mapPublicListing(row:PublicListingRow,now:number,options:{postmo
    ...(form.district?{district:form.district}:{}),showExactAddress,hasMapPoint:showExactAddress,
    ...(showExactAddress?{...(form.address?{address:form.address}:{}),lat:form.latitude!,lng:form.longitude!}:{}),
    price:form.booking?formatBookingPrice(form.booking):money(form.price),images:form.photoIds.map(photo=>`/api/listings/${id}/photos/${photo}`),
-   ...(form.booking?{booking:form.booking}:{}),imageTone:'blue',...(form.contactPhone?{phone:form.contactPhone}:{}),...(form.messengerUrl?{messengerUrl:form.messengerUrl}:{}),
+   ...(form.booking?{booking:form.booking}:{}),imageTone:'blue',...(form.contactPhone&&row.phoneHidden!==true?{phone:form.contactPhone}:{}),
+   ...(form.messengerUrl&&row.messengerHidden!==true?{messengerUrl:form.messengerUrl}:{}),
    status:'published',paid:true,viewCount:row.viewCount,publishedAt,expiresAt};
  }catch{return null;}
 }
