@@ -17,6 +17,7 @@ export function formModule(name,extra={}){
   './app-session-transaction':loadAdminModule('app-session-transaction'),'./media-limits.ts':limits,'./listing-publication-check':publicationCheck,'./listing-workflow-config':workflow,'./booking-availability.ts':bookingAvailability,
   './work-publication-contract':loadLocalPrimaryModule('work-publication-contract'),'./vacancy-purchase-eligibility':loadLocalPrimaryModule('vacancy-purchase-eligibility'),'./postgres-work-publications':loadLocalPrimaryModule('postgres-work-publications'),...extra};
  dependencies['./publication-location-withdrawal']=loadLocalPrimaryModule('publication-location-withdrawal');
+ dependencies['./publication-consent-terms.ts']=loadLocalPrimaryModule('publication-consent-terms');
  if(name==='postgres-bookings')dependencies['./postgres-booking-expiry.ts']=bookingExpiry;
  const exports={};new Function('require','exports',ts.transpileModule(readFileSync(new URL(`../src/lib/${name}.ts`,import.meta.url),'utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},

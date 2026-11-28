@@ -1,3 +1,4 @@
+import type {PublicationTermsChoice} from './publication-consent-terms';
 import type {PublicationTextField} from './publication-text-selection';
 
 export type PublicationPrivacyTarget={
@@ -11,17 +12,17 @@ export type ContactConsentCategory='phone'|'messenger';
 export type ProfileConsentCategory='name'|'avatar';
 type Command={action?:'status'|'publication-status'|'withdraw-publication'|'photos'|'texts'|'location-consent-status'}|
  {action:'withdraw-photo';photoId:string}|WithdrawPublicationText|
- {action:'confirm-location-consent';fingerprint:string;fullName:string}|
+ {action:'confirm-location-consent';fingerprint:string;fullName:string;terms:PublicationTermsChoice}|
  {action:'contact-consent-status'|'withdraw-contact';category:ContactConsentCategory}|
- {action:'confirm-contact-consent';category:ContactConsentCategory;fingerprint:string;fullName:string}|
+ {action:'confirm-contact-consent';category:ContactConsentCategory;fingerprint:string;fullName:string;terms:PublicationTermsChoice}|
  {action:'profile-consent-status'|'withdraw-profile-value';category:ProfileConsentCategory}|
- {action:'confirm-profile-consent';category:ProfileConsentCategory;fingerprint:string;fullName:string}|
+ {action:'confirm-profile-consent';category:ProfileConsentCategory;fingerprint:string;fullName:string;terms:PublicationTermsChoice}|
  {action:'photo-consent-status';photoId:string}|
- {action:'confirm-photo-consent';photoId:string;fingerprint:string;fullName:string}|
+ {action:'confirm-photo-consent';photoId:string;fingerprint:string;fullName:string;terms:PublicationTermsChoice}|
  {action:'link-consent-status'|'withdraw-link'}|
- {action:'confirm-link-consent';fingerprint:string;fullName:string}|
+ {action:'confirm-link-consent';fingerprint:string;fullName:string;terms:PublicationTermsChoice}|
  {action:'text-consent-status'|'withdraw-text-field';field:PublicationTextField}|
- {action:'confirm-text-consent';field:PublicationTextField;fingerprint:string;fullName:string};
+ {action:'confirm-text-consent';field:PublicationTextField;fingerprint:string;fullName:string;terms:PublicationTermsChoice};
 
 export function postPublicationPrivacy({owner,kind,publicationId}:PublicationPrivacyTarget,command:Command,signal:AbortSignal){
  return fetch('/api/account/publication-location',{

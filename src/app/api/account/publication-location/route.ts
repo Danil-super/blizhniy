@@ -3,6 +3,7 @@ import { AuthRequestError, authJson, readAuthJson } from "@/lib/auth-http";
 import { hashSessionToken } from "@/lib/identity";
 import { ListingDraftInputError, parseListingDraftId } from "@/lib/listing-draft-contract";
 import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
+import { isPublicationTermsChoice } from "@/lib/publication-consent-terms";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
         category === "avatar" && kind === "specialist")) return error(422, "INVALID_INPUT");
     if (photoConsent && kind !== "listing" && kind !== "vacancy" && kind !== "workRequest" && kind !== "fair") return error(422, "INVALID_INPUT");
     const scopeWithdrawal = contactWithdrawal || profileWithdrawal || linkWithdrawal || fieldWithdrawal;
-    const keys = textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus || scopeWithdrawal ? 4 : 3;
+    const keys = textWrite ? 8 : consentWrite ? 7 : photoWrite ? 5 : statusOnly || full || consentStatus || scopeWithdrawal ? 4 : 3;
     if (Object.keys(input).length !== keys + (categorized || photoConsent || textConsent ? 1 : 0) ||
         ((photoWrite || photoConsent) && !Object.hasOwn(input, 'photoId')) ||
         (textConsent && (typeof input.field !== "string" || !Object.hasOwn(publicationTextLabels,input.field))) ||
@@ -76,9 +77,9 @@ export async function POST(request: Request) {
     }
     const publicationId = parseListingDraftId(input.publicationId);
     const actor = parseListingDraftId(input.expectedOwnerId);
-    const { fingerprint: consentFingerprint, fullName } = input;
+    const { fingerprint: consentFingerprint, fullName, terms } = input;
     if (consentWrite && (typeof consentFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(consentFingerprint) ||
-        typeof fullName !== "string" || fullName.length > 320 || !fullName.isWellFormed() ||
+        !isPublicationTermsChoice(terms) || typeof fullName !== "string" || fullName.length > 320 || !fullName.isWellFormed() ||
         fullName !== fullName.trim() || !/\p{L}/u.test(fullName) || /\p{C}/u.test(fullName) ||
         Array.from(fullName).length < 2 || Array.from(fullName).length > 160)) {
       return error(422, "INVALID_INPUT");
@@ -107,9 +108,9 @@ export async function POST(request: Request) {
     request.signal.throwIfAborted();
     if (consent) {
       const { rows: [row] } = await db.query<{ result: object }>(
-        'select app_publication_privacy.publication_consent($1,$2,$3,$4,$5,$6,$7) as result',
+        'select app_publication_privacy.publication_consent($1,$2,$3,$4,$5,$6,$7,$8) as result',
         [hashSessionToken(token), actor, kind, publicationId, photoConsent ? scope : fieldScope,
-          consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
+          consentWrite ? consentFingerprint : null, consentWrite ? fullName : null, consentWrite ? terms : null],
       );
       if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
       return authJson({ kind, publicationId, ...(categorized || link ? { category: fieldScope } : {}),

@@ -17,6 +17,7 @@ create table app_publication_privacy.publication_consents(
  fingerprint text not null check(fingerprint ~ '^[a-f0-9]{64}$'),
  offer text not null check(offer ~ '^[a-f0-9]{64}$'),
  notice jsonb not null,
+ terms text not null check(terms in ('none','no-transfer','view-only')),
  value jsonb not null,
  shown_text_sha256 text,
  check(case when starts_with(category,'text-field:') then coalesce(shown_text_sha256 ~ '^[a-f0-9]{64}$',false)
@@ -40,7 +41,7 @@ create function app_publication_privacy.location_facts(p_city text,p_address tex
 create function app_publication_privacy.publication_consent_notice(p_kind text,p_publication uuid,p_category text)
  returns jsonb language sql immutable set search_path=pg_catalog,pg_temp as $$
  select jsonb_build_object(
-  'version',split_part(p_category,':',1)||'-2026-11-draft-v1',
+  'version',split_part(p_category,':',1)||'-2026-11-draft-v2',
   'operator','ООО «БЛИЖНИЙ», ИНН 2370010092, ОГРН 1202300009746, 353584, Краснодарский край, Славянский район, п. Целинный, ул. Зеленая, д. 24, оф. 6',
   'purpose','Показ '||case split_part(p_category,':',1) when 'phone' then 'номера телефона' when 'messenger' then 'ссылки на мессенджер'
    when 'name' then 'имени из профиля' when 'avatar' then 'фото профиля'
@@ -85,15 +86,29 @@ create function app_publication_privacy.publication_consent_fingerprint(p_notice
  $$;
 
 -- Expose only the current decision. A superseded receipt never authorizes a publication.
-create function app_publication_privacy.publication_is_consented(p_kind text,p_publication uuid,p_subject uuid,p_category text,p_facts jsonb)
- returns boolean language sql stable security definer set search_path=pg_catalog,pg_temp as $$
- select coalesce((
-  select c.subject_id=p_subject and not c.retired and c.expires_at>statement_timestamp()
+create function app_publication_privacy.publication_allowed_terms(p_kind text,p_publication uuid,p_subject uuid,p_category text,p_facts jsonb)
+ returns text language sql stable strict security definer set search_path=pg_catalog,pg_temp as $$
+ select case when c.subject_id=p_subject and not c.retired and c.expires_at>statement_timestamp()
    and c.fingerprint=app_publication_privacy.publication_consent_fingerprint(
    app_publication_privacy.publication_consent_notice(p_kind,p_publication,p_category),p_facts)
+   and not exists(select 1 from app_publication_privacy.location_withdrawals w
+    where w.kind=p_kind and w.publication_id=p_publication and w.scope in (p_category,'publication'))
+   then c.terms end
   from app_publication_privacy.publication_consents c
   where c.kind=p_kind and c.publication_id=p_publication and c.category=p_category order by c.id desc limit 1
- ),false)
+ $$;
+
+create function app_publication_privacy.publication_is_consented(p_kind text,p_publication uuid,p_subject uuid,p_category text,p_facts jsonb)
+ returns boolean language sql stable set search_path=pg_catalog,pg_temp as $$
+ select app_publication_privacy.publication_allowed_terms(p_kind,p_publication,p_subject,p_category,p_facts) is not null
+ $$;
+
+create function app_publication_privacy.publication_public_terms(p_kind text,p_publication uuid,p_subject uuid,p_facts jsonb)
+ returns jsonb language sql stable strict set search_path=pg_catalog,pg_temp as $$
+ select coalesce(jsonb_agg(jsonb_build_object('category',f.key,'terms',g.terms) order by f.key),'[]'::jsonb)
+  from jsonb_each(p_facts) f
+  cross join lateral (select app_publication_privacy.publication_allowed_terms(p_kind,p_publication,p_subject,f.key,f.value) as terms) g
+  where g.terms is not null
  $$;
 
 create function app_publication_privacy.location_is_consented(p_kind text,p_publication uuid,p_subject uuid,p_facts jsonb)
@@ -108,7 +123,7 @@ create function app_publication_privacy.text_is_consented(p_kind text,p_publicat
  $$;
 
 create function app_publication_privacy.publication_consent(
- p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_category text,p_expected text,p_name text
+ p_hash text,p_actor uuid,p_kind text,p_publication uuid,p_category text,p_expected text,p_name text,p_terms text
 ) returns jsonb language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
 declare
  decision jsonb;
@@ -119,6 +134,7 @@ declare
  current_offer text;
  last_offer text;
  last_id bigint;
+ last_terms text;
  email text;
  deadline timestamptz;
  confirmed_at timestamptz;
@@ -137,8 +153,9 @@ begin
   or p_kind in ('listing','vacancy','workRequest','fair') and p_category ~ '^photo:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') then
   raise exception using errcode='PDW04',message='Invalid consent category';
  end if;
- if (p_expected is null)<>(p_name is null) or p_expected is not null and (
+ if (p_expected is null)<>(p_name is null) or (p_expected is null)<>(p_terms is null) or p_expected is not null and (
   octet_length(p_expected)<>64 or p_expected !~ '^[a-f0-9]+$'
+  or p_terms not in ('none','no-transfer','view-only')
   or char_length(p_name) not between 2 and 160 or p_name<>btrim(p_name) or p_name ~ '[[:cntrl:]]'
   or p_name !~ '[[:alpha:]]'
  ) then raise exception using errcode='PDW04',message='Invalid location consent';end if;
@@ -211,20 +228,23 @@ begin
  current_fingerprint:=app_publication_privacy.publication_consent_fingerprint(notice,facts);
  select u.email into email from app.users u where u.id=p_actor;
  confirmed_at:=clock_timestamp();
- select c.id,c.offer,
+ select c.id,c.offer,c.terms,
   case when not c.retired and c.fingerprint=current_fingerprint and c.subject_id=p_actor and c.expires_at>confirmed_at then c.expires_at end
- into last_id,last_offer,deadline from app_publication_privacy.publication_consents c
+ into last_id,last_offer,last_terms,deadline from app_publication_privacy.publication_consents c
  where c.kind=p_kind and c.publication_id=p_publication and c.category=p_category order by c.id desc limit 1;
  current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,p_kind,p_publication,p_category,current_fingerprint,last_id,shown_digest)::text,'UTF8')),'hex');
  if p_expected is not null then
-  if p_expected<>current_offer and (deadline is null or p_expected is distinct from last_offer) then
+  if p_expected<>current_offer and (deadline is null or p_expected is distinct from last_offer or p_terms is distinct from last_terms) then
    raise exception using errcode='PDW05',message='Location changed';
   end if;
-  if deadline is null then
+  if deadline is null or p_terms is distinct from last_terms then
    deadline:=confirmed_at+interval '2160 hours';
-   insert into app_publication_privacy.publication_consents(kind,publication_id,category,subject_id,subject_name,subject_email,fingerprint,offer,notice,value,shown_text_sha256,accepted_at,expires_at)
-    values(p_kind,p_publication,p_category,p_actor,p_name,email,current_fingerprint,current_offer,notice,facts,shown_digest,confirmed_at,deadline);
+   insert into app_publication_privacy.publication_consents(kind,publication_id,category,subject_id,subject_name,subject_email,fingerprint,offer,notice,terms,value,shown_text_sha256,accepted_at,expires_at)
+    values(p_kind,p_publication,p_category,p_actor,p_name,email,current_fingerprint,current_offer,notice,p_terms,facts,shown_digest,confirmed_at,deadline)
+    returning id into last_id;
    last_offer:=current_offer;
+   last_terms:=p_terms;
+   current_offer:=encode(sha256(convert_to(jsonb_build_array(p_hash,p_kind,p_publication,p_category,current_fingerprint,last_id,shown_digest)::text,'UTF8')),'hex');
   end if;
  end if;
  if not exists(select 1 from app.sessions where token_hash=p_hash and user_id=p_actor
@@ -234,6 +254,7 @@ begin
  return jsonb_build_object(field_name,case when p_category='avatar' then to_jsonb(profile_value)
   when field_name='photoValue' then to_jsonb(photo_id) when field_name='textValue' then to_jsonb(shown_text) else facts end,
   'notice',notice,'email',email,'fingerprint',case when deadline is null then current_offer else last_offer end,
+  'terms',case when deadline is not null then last_terms end,'revisionFingerprint',current_offer,
   'expiresAt',to_char(deadline at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'));
 end;
 $$;
@@ -245,11 +266,15 @@ revoke all on function app_publication_privacy.publication_consent_fingerprint(j
 revoke all on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) from public;
 revoke all on function app_publication_privacy.text_is_consented(text,uuid,uuid,text,text) from public;
 revoke all on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) from public;
-revoke all on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) from public;
+revoke all on function app_publication_privacy.publication_allowed_terms(text,uuid,uuid,text,jsonb) from public;
+revoke all on function app_publication_privacy.publication_public_terms(text,uuid,uuid,jsonb) from public;
+revoke all on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text,text) from public;
 grant execute on function app_publication_privacy.location_facts(text,text,jsonb,jsonb,boolean) to blizhniy_runtime;
 grant execute on function app_publication_privacy.avatar_facts(text) to blizhniy_runtime;
 grant execute on function app_publication_privacy.location_is_consented(text,uuid,uuid,jsonb) to blizhniy_runtime;
 grant execute on function app_publication_privacy.text_is_consented(text,uuid,uuid,text,text) to blizhniy_runtime;
 grant execute on function app_publication_privacy.publication_is_consented(text,uuid,uuid,text,jsonb) to blizhniy_runtime;
-grant execute on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text) to blizhniy_runtime;
+grant execute on function app_publication_privacy.publication_allowed_terms(text,uuid,uuid,text,jsonb) to blizhniy_runtime;
+grant execute on function app_publication_privacy.publication_public_terms(text,uuid,uuid,jsonb) to blizhniy_runtime;
+grant execute on function app_publication_privacy.publication_consent(text,uuid,text,uuid,text,text,text,text) to blizhniy_runtime;
 commit;

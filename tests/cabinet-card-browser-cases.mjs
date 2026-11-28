@@ -74,7 +74,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       ]}});
     }
     if(url.pathname==='/api/account/publication-location'&&['text-consent-status','confirm-text-consent','withdraw-text-field'].includes(request.postDataJSON().action)){
-      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,field:'title'};
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,field:'title',
+        ...(request.postDataJSON().action==='confirm-text-consent'?{terms:'none'}:{})};
       const {action}=request.postDataJSON();
       assert.deepEqual(request.postDataJSON(),{...target,action,
         ...(action==='confirm-text-consent'?{fingerprint:fieldConsentFingerprint,fullName:'Локальный Пользователь'}:{})});
@@ -85,7 +86,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         textValue:visibleTitle,
         notice:{version:'field-test',operator:'Оператор проверки',purpose:'Показ текста поля',resource:origin+'/obyavlenie/'+target.publicationId,
           term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать показанный текст.'},
-        email:'cabinet-ui@example.invalid',fingerprint:fieldConsentFingerprint,expiresAt:fieldConsentUntil,
+        email:'cabinet-ui@example.invalid',fingerprint:fieldConsentFingerprint,expiresAt:fieldConsentUntil,revisionFingerprint:fieldConsentFingerprint,terms:fieldConsentUntil?'none':null,
       }}});
     }
     if(url.pathname==='/api/account/publication-location'&&request.postDataJSON().action==='withdraw-photo'){
@@ -95,7 +96,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       return route.fulfill({json:{kind:'listing',publicationId:items[1].id,photoId:secondPhoto,withdrawnAt:photoReceipt}});
     }
     if(url.pathname==='/api/account/publication-location'&&['location-consent-status','confirm-location-consent'].includes(request.postDataJSON().action)){
-      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner};
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,
+        ...(request.postDataJSON().action==='confirm-location-consent'?{terms:'none'}:{})};
       const {action}=request.postDataJSON();
       if(action==='confirm-location-consent'){
         assert.deepEqual(request.postDataJSON(),{...target,action,fingerprint:locationFingerprint,fullName:'Локальный Пользователь'});
@@ -105,11 +107,12 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         location:{city:'Сочи',address:'Стендовый адрес',latitude:43.1,longitude:39.2},
         notice:{version:'test',operator:'Оператор проверки',purpose:'Показ точки',resource:origin+'/obyavlenie/'+target.publicationId,
           term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать указанные точный адрес и координаты.'},
-        email:'cabinet-ui@example.invalid',fingerprint:locationFingerprint,expiresAt:consentUntil,
+        email:'cabinet-ui@example.invalid',fingerprint:locationFingerprint,expiresAt:consentUntil,revisionFingerprint:locationFingerprint,terms:consentUntil?'none':null,
       }}});
     }
     if(url.pathname==='/api/account/publication-location'&&['contact-consent-status','confirm-contact-consent','withdraw-contact'].includes(request.postDataJSON().action)){
-      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'phone'};
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'phone',
+        ...(request.postDataJSON().action==='confirm-contact-consent'?{terms:'none'}:{})};
       const {action}=request.postDataJSON();
       assert.deepEqual(request.postDataJSON(),{...target,action,
         ...(action==='confirm-contact-consent'?{fingerprint:contactFingerprint,fullName:'Локальный Пользователь'}:{})});
@@ -124,11 +127,12 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         contact:'+79990000000',
         notice:{version:'phone-test',operator:'Оператор проверки',purpose:'Показ номера',resource:origin+'/obyavlenie/'+target.publicationId,
           term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать номер телефона.'},
-        email:'cabinet-ui@example.invalid',fingerprint:contactFingerprint,expiresAt:phoneConsentUntil,
+        email:'cabinet-ui@example.invalid',fingerprint:contactFingerprint,expiresAt:phoneConsentUntil,revisionFingerprint:contactFingerprint,terms:phoneConsentUntil?'none':null,
       }}});
     }
     if(url.pathname==='/api/account/publication-location'&&['profile-consent-status','confirm-profile-consent','withdraw-profile-value'].includes(request.postDataJSON().action)){
-      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'name'};
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,category:'name',
+        ...(request.postDataJSON().action==='confirm-profile-consent'?{terms:'none'}:{})};
       const {action}=request.postDataJSON();
       assert.deepEqual(request.postDataJSON(),{...target,action,
         ...(action==='confirm-profile-consent'?{fingerprint:profileFingerprint,fullName:'Локальный Пользователь'}:{})});
@@ -139,11 +143,12 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         profileValue:'Имя из профиля',
         notice:{version:'name-test',operator:'Оператор проверки',purpose:'Показ имени',resource:origin+'/obyavlenie/'+target.publicationId,
           term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать имя из профиля.'},
-        email:'cabinet-ui@example.invalid',fingerprint:profileFingerprint,expiresAt:profileConsentUntil,
+        email:'cabinet-ui@example.invalid',fingerprint:profileFingerprint,expiresAt:profileConsentUntil,revisionFingerprint:profileFingerprint,terms:profileConsentUntil?'none':null,
       }}});
     }
     if(url.pathname==='/api/account/publication-location'&&['photo-consent-status','confirm-photo-consent'].includes(request.postDataJSON().action)){
-      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,photoId:secondPhoto};
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner,photoId:secondPhoto,
+        ...(request.postDataJSON().action==='confirm-photo-consent'?{terms:'none'}:{})};
       const {action}=request.postDataJSON();
       assert.deepEqual(request.postDataJSON(),{...target,action,
         ...(action==='confirm-photo-consent'?{fingerprint:photoFingerprint,fullName:'Локальный Пользователь'}:{})});
@@ -153,7 +158,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         notice:{version:'photo-test',operator:'Оператор проверки',purpose:'Показ фотографии',resource:origin+'/obyavlenie/'+target.publicationId,
           fileResource:origin+'/api/listings/'+target.publicationId+'/photos/'+secondPhoto,
           term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать выбранное фото.'},
-        email:'cabinet-ui@example.invalid',fingerprint:photoFingerprint,expiresAt:photoConsentUntil,
+        email:'cabinet-ui@example.invalid',fingerprint:photoFingerprint,expiresAt:photoConsentUntil,revisionFingerprint:photoFingerprint,terms:photoConsentUntil?'none':null,
       }}});
     }
     if (url.pathname === '/api/account/publication-location') {
@@ -266,6 +271,10 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const locationCheckbox=address.getByRole('checkbox',{name:'Разрешаю публиковать указанные точный адрес и координаты.'});
   assert.equal(await locationCheckbox.isChecked(),false);
   await locationCheckbox.check();
+  assert.equal(await allowLocation.isDisabled(),true);
+  await address.getByLabel('Условия и запреты').selectOption('none');
+  assert.equal(await locationCheckbox.isChecked(),false);
+  await locationCheckbox.check();
   await allowLocation.click();
   await address.getByText('Согласие сохранено.',{exact:true}).waitFor();
   await address.getByText(/Согласие на публикацию адреса действует до/).waitFor();
@@ -275,6 +284,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await phoneConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
   const confirmPhone=phoneConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
   assert.equal(await confirmPhone.isDisabled(),true);
+  await phoneConsent.getByLabel('Условия и запреты').selectOption('none');
   await phoneConsent.getByRole('checkbox',{name:'Разрешаю публиковать номер телефона.'}).check();
   await confirmPhone.click();
   await phoneConsent.getByText(/Согласие на публикацию телефона действует до/).waitFor();
@@ -288,6 +298,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await nameConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
   const confirmName=nameConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
   assert.equal(await confirmName.isDisabled(),true);
+  await nameConsent.getByLabel('Условия и запреты').selectOption('none');
   await nameConsent.getByRole('checkbox',{name:'Разрешаю публиковать имя из профиля.'}).check();
   await confirmName.click();
   await nameConsent.getByText(/Согласие на публикацию имени действует до/).waitFor();
@@ -317,6 +328,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await attachmentConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
   const confirmAttachment=attachmentConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
   assert.equal(await confirmAttachment.isDisabled(),true);
+  await attachmentConsent.getByLabel('Условия и запреты').selectOption('none');
   await attachmentConsent.getByRole('checkbox',{name:'Разрешаю публиковать выбранное фото.'}).check();
   await confirmAttachment.click();
   await attachmentConsent.getByText(/Согласие на публикацию выбранного фото действует до/).waitFor();
@@ -345,6 +357,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await fieldConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
   const confirmText=fieldConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
   assert.equal(await confirmText.isDisabled(),true);
+  await fieldConsent.getByLabel('Условия и запреты').selectOption('none');
   await fieldConsent.getByRole('checkbox',{name:'Разрешаю публиковать показанный текст.'}).check();
   await confirmText.click();
   await fieldConsent.getByText(/Согласие на публикацию текста поля действует до/).waitFor();

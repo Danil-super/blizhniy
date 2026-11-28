@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ClipboardList, MapPin, Wrench } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
+import { PublicPublicationTerms } from "@/components/PublicPublicationTerms";
 import { PublicationComplaintLink } from "@/components/PublicationComplaintLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
@@ -118,6 +119,7 @@ export default async function Page({ params }: PageProps) {
                   )}
                 </div>
                 <div className="mt-3">
+                  <PublicPublicationTerms terms={request.publicationTerms} images={request.images}/>
                   <PublicationComplaintLink section="rabota/zakazy" slug={request.id} />
                 </div>
               </section>

@@ -5,12 +5,13 @@ import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {StoredMediaImage} from '@/components/StoredMedia';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type ContactConsentCategory,type ProfileConsentCategory,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
+import {isPublicationTermsChoice,publicationTermsChoices,type PublicationTermsChoice} from '@/lib/publication-consent-terms';
 import type {PublicationTextField} from '@/lib/publication-text-selection';
 
 type Consent={
  value:string;
  notice:{version:string;operator:string;purpose:string;resource:string;fileResource?:string;term:string;statement:string};
- email:string;fingerprint:string;expiresAt:string|null;
+ email:string;fingerprint:string;revisionFingerprint:string;expiresAt:string|null;terms:PublicationTermsChoice|null;
 };
 type Location={city:string;address:string|null;latitude:number;longitude:number};
 const labels={
@@ -31,6 +32,7 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
  const label=labels[category??'location'];
  const [consent,setConsent]=useState<Consent|null>();
  const [fullName,setFullName]=useState(''),[confirmed,setConfirmed]=useState(false);
+ const [terms,setTerms]=useState<PublicationTermsChoice|''>(''),[editing,setEditing]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [withdrawn,setWithdrawn]=useState(false),[confirmWithdrawal,setConfirmWithdrawal]=useState(false);
  const lifetime=useRef<AbortController|null>(null);
@@ -42,32 +44,34 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
 
  async function request(operation:'status'|'confirm'|'withdraw'='status'){
   const controller=lifetime.current;
-  if(!controller||controller.signal.aborted||busy)return;
+  const confirmation=operation==='confirm'&&consent&&terms?{
+   fingerprint:editing?consent.revisionFingerprint:consent.fingerprint,fullName:fullName.trim(),terms,
+  }:null;
+  if(!controller||controller.signal.aborted||busy||operation==='confirm'&&!confirmation)return;
   setBusy(true);setMessage('');
   try{
-   const fields={fingerprint:consent?.fingerprint??'',fullName:fullName.trim()};
    const profile=category==='name'||category==='avatar';
    const command=category==='photo'
-    ? operation==='confirm'?{action:'confirm-photo-consent' as const,photoId,...fields}
+    ? confirmation?{action:'confirm-photo-consent' as const,photoId,...confirmation}
      :{action:'photo-consent-status' as const,photoId}
     :category==='link'
-    ? operation==='confirm'?{action:'confirm-link-consent' as const,...fields}
+    ? confirmation?{action:'confirm-link-consent' as const,...confirmation}
      :{action:operation==='withdraw'?'withdraw-link' as const:'link-consent-status' as const}
     :category==='text'
-    ? operation==='confirm'?{action:'confirm-text-consent' as const,field,...fields}
+    ? confirmation?{action:'confirm-text-consent' as const,field,...confirmation}
      :{action:operation==='withdraw'?'withdraw-text-field' as const:'text-consent-status' as const,field}
     :profile
-    ? operation==='confirm'?{action:'confirm-profile-consent' as const,category,...fields}
+    ? confirmation?{action:'confirm-profile-consent' as const,category,...confirmation}
      :{action:operation==='withdraw'?'withdraw-profile-value' as const:'profile-consent-status' as const,category}
     :category
-    ? operation==='confirm'?{action:'confirm-contact-consent' as const,category,...fields}
+    ? confirmation?{action:'confirm-contact-consent' as const,category,...confirmation}
      :{action:operation==='withdraw'?'withdraw-contact' as const:'contact-consent-status' as const,category}
-    : operation==='confirm'?{action:'confirm-location-consent' as const,...fields}:{action:'location-consent-status' as const};
+    : confirmation?{action:'confirm-location-consent' as const,...confirmation}:{action:'location-consent-status' as const};
    const response=await postPublicationPrivacy(target,command,controller.signal);
    if(controller.signal.aborted)return;
    if(response.status===401)notifyAccountSessionChange(false);
    if(response.status===409){
-    setConsent(undefined);setConfirmed(false);
+    setConsent(undefined);setConfirmed(false);setTerms('');setEditing(false);
     setMessage('Данные изменились. Откройте согласие заново.');
     return;
    }
@@ -90,8 +94,13 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
    const value=category==='photo'?(next.photoValue===photoId?photoId:null):category==='link'?next.linkValue:category==='text'?next.textValue:
     profile?next.profileValue:category?next.contact:location&&
     `${location.city}${location.address?', '+location.address:''}. Координаты ${location.latitude}, ${location.longitude}.`;
-   if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||operation==='confirm'&&!next.expiresAt))throw Error();
-   setConsent(value?{email:next.email,fingerprint:next.fingerprint,expiresAt:next.expiresAt,notice:next.notice,value}:null);
+   if(!value&&operation==='confirm'||value&&(!/^[0-9a-f]{64}$/.test(next.fingerprint)||
+     !/^[0-9a-f]{64}$/.test(next.revisionFingerprint)||
+     (next.expiresAt? !isPublicationTermsChoice(next.terms):next.terms!==null)||
+     operation==='confirm'&&(!next.expiresAt||next.terms!==terms)))throw Error();
+   setConsent(value?{email:next.email,fingerprint:next.fingerprint,revisionFingerprint:next.revisionFingerprint,
+    terms:next.terms,expiresAt:next.expiresAt,notice:next.notice,value}:null);
+   setTerms('');setEditing(false);
    setWithdrawn(typeof next.withdrawnAt==='string');
    setConfirmed(false);
    setConfirmWithdrawal(false);
@@ -111,9 +120,13 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
   {withdrawn?<p role="status">{label.hidden}</p>:
    consent===undefined?<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>{'Открыть '+label.title.toLowerCase()}</button>:
    consent===null?<p>Чтобы разрешить публикацию, сначала {label.missing}{category==='name'||category==='avatar'?'':' в форме публикации'}.</p>:
-   consent.expiresAt?<div className="space-y-2">
+   consent.expiresAt&&!editing?<div className="space-y-2">
     <p role="status">Согласие на публикацию {label.term} действует до{' '}
      {new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(consent.expiresAt))} (МСК).</p>
+    {consent.terms&&<p>{publicationTermsChoices[consent.terms]}</p>}
+    <button type="button" className={draftButton} disabled={busy} onClick={()=>{
+     setMessage('');setConfirmed(false);setConfirmWithdrawal(false);setTerms(consent.terms??'');setEditing(true);
+    }}>Изменить условия</button>
     {category&&category!=='photo'&&<>
      {confirmWithdrawal&&<p>Посетители перестанут видеть эти данные в публикации. Последующее изменение этих данных не возобновит показ.</p>}
      <div className="flex flex-wrap gap-2">
@@ -138,11 +151,25 @@ export function PublicationConsent({category,photoId,field,...target}:Publicatio
       className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2" disabled={busy}/>
     </label>
     <p className="break-words">Подтверждённая почта для связи — {consent.email}. Имя из этой формы и почта сохраняются в записи о согласии.</p>
+    <label className="block">Условия и запреты
+     <select value={terms} disabled={busy} className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-2"
+      onChange={event=>{
+       const choice=event.target.value;
+       setTerms(isPublicationTermsChoice(choice)?choice:'');setConfirmed(false);
+      }}>
+      <option value="">Выберите условия</option>
+      {Object.entries(publicationTermsChoices).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+     </select>
+    </label>
+    <p>Выбранные условия будут видны в публикации. Для других условий обратитесь в поддержку.</p>
     <label className="flex items-start gap-2">
      <input type="checkbox" className="mt-1" checked={confirmed} disabled={busy} onChange={event=>setConfirmed(event.target.checked)}/>
      <span>{consent.notice.statement}</span>
     </label>
-    <button type="button" className={draftButton} disabled={busy||!confirmed||fullName.trim().length<2} onClick={()=>void request('confirm')}>Подтвердить согласие</button>
+    <button type="button" className={draftButton} disabled={busy||!terms||!confirmed||fullName.trim().length<2} onClick={()=>void request('confirm')}>Подтвердить согласие</button>
+    {editing&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{
+     setFullName('');setTerms('');setConfirmed(false);setEditing(false);
+    }}>Отмена</button>}
    </div>}
   {consent!==undefined&&!withdrawn&&<button type="button" className={draftButton} disabled={busy} onClick={()=>void request()}>Обновить состояние согласия</button>}
  </section>;

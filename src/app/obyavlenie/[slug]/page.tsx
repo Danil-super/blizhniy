@@ -35,5 +35,5 @@ export default async function Page({ params }: PageProps) {
   const storedListing = await getStoredListingById(slug, { publicOnly: true });
   const bookingRequests = process.env.BLIZHNIY_AUTH_MODE !== 'postgres' && storedListing?.booking ? await listBookingAvailabilityForListing(slug) : [];
 
-  return <ListingDetailPage bookingRequests={bookingRequests} slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
+  return <ListingDetailPage bookingRequests={bookingRequests} publicationTerms={storedListing?.publicationTerms} slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
 }

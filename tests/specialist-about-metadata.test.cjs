@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),test=require('node:test'),{readFileSy
 function metadata(specialist){
  const out={},deps={
   '@/lib/publication-open-graph':require('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('publication-open-graph'),
-  'next/navigation':{},'react/jsx-runtime':{},'@/components/SiteHeader':{},'@/components/SpecialistProfileDetail':{},'@/components/PublicationComplaintLink':{},'@/components/listings/ListingViewTracker':{},'@/lib/map-location':{},
+  'next/navigation':{},'react/jsx-runtime':{},'@/components/SiteHeader':{},'@/components/SpecialistProfileDetail':{},'@/components/PublicationComplaintLink':{},'@/components/PublicPublicationTerms':{},'@/components/listings/ListingViewTracker':{},'@/lib/map-location':{},
   '@/lib/mock-store':{listSpecialists:()=>[]},'@/lib/runtime-mode':{shouldShowFallbackContent:()=>false},'@/lib/specialist-profile-store':{getStoredSpecialistProfileById:async()=>specialist},
  };
  new Function('exports','require',ts.transpileModule(readFileSync('src/app/specialist/[slug]/page.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText)(out,name=>{assert.ok(Object.hasOwn(deps,name),name);return deps[name];});

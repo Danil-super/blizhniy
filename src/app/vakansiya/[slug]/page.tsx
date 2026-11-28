@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BriefcaseBusiness, MapPin, Wrench } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
+import { PublicPublicationTerms } from "@/components/PublicPublicationTerms";
 import { PublicationComplaintLink } from "@/components/PublicationComplaintLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -154,6 +155,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                 )}
               </div>
               <div className="mt-3">
+                <PublicPublicationTerms terms={vacancy.publicationTerms} images={vacancy.images}/>
                 <PublicationComplaintLink section="vakansiya" slug={vacancy.id} />
               </div>
             </section>

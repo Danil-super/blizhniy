@@ -40,6 +40,8 @@ import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
+import type { PublicPublicationTerms as Terms } from "@/lib/publication-consent-terms";
+import { PublicPublicationTerms } from "@/components/PublicPublicationTerms";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
@@ -1626,7 +1628,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
   );
 }
 
-export function ListingDetailPage({ bookingRequests = [], slug, listingOverride }: { bookingRequests?: BookingAvailability[]; slug: string; listingOverride?: DemoListing }) {
+export function ListingDetailPage({ bookingRequests = [], slug, listingOverride, publicationTerms }: { bookingRequests?: BookingAvailability[]; slug: string; listingOverride?: DemoListing; publicationTerms?: Terms }) {
   const listing = listingOverride ?? findListingBySlug(slug);
   const listingHref = `/obyavlenie/${listing?.slug ?? slug}`;
 
@@ -1708,6 +1710,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                 </div>
               </dl>
             </div>
+            <PublicPublicationTerms terms={publicationTerms} images={listing.images}/>
           </section>
 
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">

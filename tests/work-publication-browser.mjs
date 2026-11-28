@@ -129,7 +129,8 @@ test('work publication production pages preserve complete forms and use Russian 
     const body=request.postDataJSON();
     if(url.pathname==='/api/account/publication-location'&&['link-consent-status','confirm-link-consent','withdraw-link'].includes(body.action)){
      const {action}=body;
-     const target={kind:'vacancy',publicationId:chosen.vacancy.id,expectedOwnerId:state.active};
+     const target={kind:'vacancy',publicationId:chosen.vacancy.id,expectedOwnerId:state.active,
+      ...(action==='confirm-link-consent'?{terms:'none'}:{})};
      const fingerprint='f'.repeat(64);
      assert.deepEqual(body,{...target,action,...(action==='confirm-link-consent'?{fingerprint,fullName:'Стендовый Пользователь'}:{})});
      assert.equal(kind,'vacancy');
@@ -139,7 +140,8 @@ test('work publication production pages preserve complete forms and use Russian 
       linkValue:'https://example.invalid/work-fixture',
       notice:{version:'link-test',operator:'Оператор проверки',purpose:'Показ ссылки',resource:origin+'/vakansiya/'+body.publicationId,
        term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать указанную ссылку.'},
-      email:'fixture@example.invalid',fingerprint,expiresAt:action==='confirm-link-consent'?'2027-01-25T21:00:00.000001Z':null,
+      email:'fixture@example.invalid',fingerprint,revisionFingerprint:fingerprint,terms:action==='confirm-link-consent'?'none':null,
+      expiresAt:action==='confirm-link-consent'?'2027-01-25T21:00:00.000001Z':null,
      }}});
     }
     if(url.pathname==='/api/account/publication-location'&&['publication-status','withdraw-publication'].includes(body.action)){
@@ -372,6 +374,7 @@ test('work publication production pages preserve complete forms and use Russian 
      await linkConsent.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Стендовый Пользователь');
      const confirmLink=linkConsent.getByRole('button',{name:'Подтвердить согласие',exact:true});
      assert.equal(await confirmLink.isDisabled(),true);
+     await linkConsent.getByLabel('Условия и запреты').selectOption('none');
      await linkConsent.getByRole('checkbox',{name:'Разрешаю публиковать указанную ссылку.'}).check();
      await confirmLink.click();
      await linkConsent.getByText(/Согласие на публикацию ссылки действует до/).waitFor();

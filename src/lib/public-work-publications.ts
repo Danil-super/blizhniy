@@ -2,7 +2,8 @@ import {parseWorkPublicationForm,checkWorkPublicationForm,type WorkPublicationKi
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {JobVacancy,WorkRequest} from './types';
 import type {PublicText} from './publication-location-withdrawal';
-export type PublicWorkRow={id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText;linkHidden?:boolean};
+import {parsePublicPublicationTerms} from './publication-consent-terms.ts';
+export type PublicWorkRow={publicationTerms?:unknown;id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];withdrawnPhotos?:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean;testPublication?:boolean;locationWithdrawn?:boolean;publicText?:PublicText;linkHidden?:boolean};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Final public DTO boundary: no contacts, identifiers of owners or unchecked private form spread. */
@@ -15,8 +16,9 @@ export function mapPublicWorkPublication(row:PublicWorkRow,now:number):JobVacanc
    !Number.isFinite(Date.parse(row.createdAt))||checkWorkPublicationForm(form).length||!form.cityName||!form.professionName||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.photoIds))return null;
   const images=form.photoIds.filter(photo=>!row.withdrawnPhotos?.includes(photo)).map(photo=>`/api/work-publications/${id}/photos/${photo}`);
   const showExactAddress=form.showExactAddress&&row.locationWithdrawn!==true;
+  const publicationTerms=parsePublicPublicationTerms(row.publicationTerms);
   const title=(row.publicText?.title??form.title)||(form.kind==='vacancy'?'Вакансия':'Заказ');
-  const common={id,...(row.testPublication===true?{testPublication:true}:{}),title:row.testPublication===true?`ТЕСТ · ${title}`:title,description:row.publicText?.description??form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
+  const common={id,...(publicationTerms?{publicationTerms}:{}),...(row.testPublication===true?{testPublication:true}:{}),title:row.testPublication===true?`ТЕСТ · ${title}`:title,description:row.publicText?.description??form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
    ...(form.district?{district:form.district}:{}),showExactAddress,
    ...(showExactAddress?{address:form.address!,lat:form.latitude!,lng:form.longitude!}:{}),images,status:'published' as const,createdAt:row.createdAt,publishedAt:row.publishedAt!};
   if(form.kind==='workRequest')return{...common,author:'Автор заказа',budget:money(form.budget),...(row.contentEdited!==false&&row.updatedAt&&Number.isFinite(Date.parse(row.updatedAt))&&Date.parse(row.updatedAt)>published?{updatedAt:row.updatedAt}:{})};

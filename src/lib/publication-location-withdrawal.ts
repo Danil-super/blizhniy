@@ -132,6 +132,46 @@ export function publicTextColumn(alias:Alias,enabled?:boolean) {
  return `,json_build_object(${fields.join(',')}) as "publicText"`;
 }
 
+export function publicTermsColumn(alias:Alias,enabled?:boolean):string {
+ if(!enabled)return '';
+ const kind=alias==='l'?"'listing'":`${alias}.kind`;
+ const facts:string[]=[];
+ if(locationConsentRequired()){
+  const args=alias==='l'?"city.name,l.address,to_jsonb(l.latitude::float8),to_jsonb(l.longitude::float8),l.show_exact_address":
+   `${alias}.form->>'cityName',${alias}.form->>'address',${alias}.form->'latitude',${alias}.form->'longitude',${alias}.form->'showExactAddress'='true'::jsonb`;
+  facts.push(`'location',app_publication_privacy.location_facts(${args})`);
+ }
+ if(alias==='l'){
+  if(contactConsentRequired())facts.push("'phone',to_jsonb(l.contact_phone),'messenger',to_jsonb(l.messenger_url)");
+  if(profileConsentRequired())facts.push("'name',to_jsonb(profile.profile->>'name')");
+ }
+ if(alias==='s'&&profileConsentRequired()){
+  const profile="from app.cabinet_profiles profile where profile.user_id=s.author_id and s.kind='specialist'";
+  facts.push(`'name',(select to_jsonb(profile.profile->>'name') ${profile})`,
+   `'avatar',(select app_publication_privacy.avatar_facts(profile.profile->>'avatarDataUrl') ${profile})`);
+ }
+ if(alias!=='l'&&linkConsentRequired()){
+  const raw=alias==='w'?"w.form->>'website'":"s.form->>case s.kind when 'marquee' then 'href' else 'videoUrl' end";
+  facts.push(`'link',to_jsonb(${raw})`);
+ }
+ if(textConsentRequired()){
+  for(const field of textFields[alias]){
+   const raw=originalText(alias,field);
+   facts.push(`'text-field:${field}',case when nullif(coalesce(${withdrawnText(alias,field,raw)},${raw}),'') is not null
+    then to_jsonb(encode(sha256(convert_to(${raw},'UTF8')),'hex')) end`);
+  }
+ }
+ const photos=photoConsentRequired();
+ if(!facts.length&&!photos)return '';
+ const attachment=alias==='l'?{table:'listing_photos',key:'listing_id'}:
+  {table:alias==='w'?'work_publication_photos':'service_publication_photos',key:'publication_id'};
+ const photoFacts=photos?`||coalesce((select jsonb_object_agg('photo:'||p.media_id::text,to_jsonb(m.sha256))
+  from app.${attachment.table} p join app.media_objects m on m.id=p.media_id and m.owner_id=${alias}.author_id and m.state='ready'
+  where p.${attachment.key}=${alias}.id),'{}'::jsonb)`:'';
+ return `,app_publication_privacy.publication_public_terms(${kind},${alias}.id,${alias}.author_id,
+  jsonb_strip_nulls(jsonb_build_object(${facts.join(',')}))${photoFacts}) as "publicationTerms"`;
+}
+
 export function publicationWithdrawalEligibility(alias: "l" | "w" | "s", enabled?: boolean): string {
   if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return " and false";
   return enabled ? ` and not exists(${withdrawal(alias, "'publication'")})` : "";

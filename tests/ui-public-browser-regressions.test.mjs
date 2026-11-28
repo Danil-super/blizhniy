@@ -67,7 +67,7 @@ test('the optimizer keeps the prebuilt image glob matchers inactive', () => {
 function listingPresentation() {
   const path = 'src/components/listings/ListingPages.tsx';
   const code = functionsFrom(path, ['listingImageTone', 'listingCategoryName', 'toDemoListing', 'slugifySubcategory', 'ListingDetailPage']);
-  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard', 'PublicationHeading', 'PublicationDates'];
+  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard', 'PublicationHeading', 'PublicationDates', 'PublicPublicationTerms'];
   return load(code, {}, {
     ...Object.fromEntries(componentNames.map((name) => [name, name])),
     fallbackCategories: [{ slug: 'sad-i-rasteniya', name: 'Сад и огород', children: ['Саженцы'] }],
