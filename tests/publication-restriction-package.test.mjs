@@ -24,6 +24,7 @@ test('the publication restriction operator package pins reviewed migrations and 
  assert.equal(sha(readFileSync(join(output,'database/publication-restriction-upgrade.sql'))),manifest.upgradeSha256);
  assert.equal(sha(readFileSync(join(output,'database/candidates/0096-publication-location-withdrawals.sql'))),manifest.locationWithdrawal.migrationSha256);
  assert.equal(sha(readFileSync(join(output,'scripts/publication-location-restore.mjs'))),manifest.locationWithdrawal.restoreToolSha256);
+ assert.equal(sha(readFileSync(join(output,'database/candidates/0097-publication-location-consent.sql'))),manifest.locationConsent.migrationSha256);
  assert.equal(existsSync(join(output,'src')),false);
  assert.throws(()=>buildPublicationRestrictionOperator(output));
  symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(output,'node_modules'),'dir');

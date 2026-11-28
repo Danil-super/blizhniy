@@ -13,6 +13,7 @@ const scripts=['hosted-publication-restriction-operator.mjs','hosted-operator-so
  'publication-restriction-operator-role.mjs','paid-response-schema.mjs','refund-worker-schema.mjs','financial-catalog-privileges.mjs'];
 const locationTool='scripts/publication-location-restore.mjs';
 const locationMigration='database/candidates/0096-publication-location-withdrawals.sql';
+const consentMigration='database/candidates/0097-publication-location-consent.sql';
 
 /** Offline package. The destination must be new and the lock comes from the application release. */
 export function buildPublicationRestrictionOperator(destination){
@@ -42,6 +43,8 @@ export function buildPublicationRestrictionOperator(destination){
  const withdrawalTool=readFileSync(join(root,locationTool)),withdrawalMigration=readFileSync(join(root,locationMigration));
  write(locationTool,withdrawalTool);
  write(locationMigration,withdrawalMigration);
+ const consent=readFileSync(join(root,consentMigration));
+ write(consentMigration,consent);
  for(const name of units)copyFileSync(join(root,'ops/systemd',name),join(destination,'ops',name));
  const {name,version,dependencies,devDependencies,overrides}=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
  write('package.json',JSON.stringify({name,version,private:true,type:'commonjs',dependencies,devDependencies,overrides})+'\n');
@@ -49,7 +52,8 @@ export function buildPublicationRestrictionOperator(destination){
  write('package-lock.json',lock);
  const manifest={version:1,role:publicationRestrictionRole,typescript:ts.version,
   migrations:migrations.map(({name,sha256})=>({name,sha256})),upgradeSha256:sha(upgrade),dependencyLock:sha(lock),
-  locationWithdrawal:{migrationSha256:sha(withdrawalMigration),restoreToolSha256:sha(withdrawalTool)}};
+  locationWithdrawal:{migrationSha256:sha(withdrawalMigration),restoreToolSha256:sha(withdrawalTool)},
+  locationConsent:{migrationSha256:sha(consent)}};
  write('manifest.json',JSON.stringify(manifest)+'\n');
  return manifest;
 }

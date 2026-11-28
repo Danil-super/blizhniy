@@ -7,6 +7,7 @@ import {notifyAccountSessionChange} from '@/lib/local-account';
 import {postPublicationPrivacy,type PublicationPrivacyTarget} from '@/lib/client-publication-privacy';
 import {PublicationPhotoWithdrawal} from './PublicationPhotoWithdrawal';
 import {PublicationTextWithdrawal} from './PublicationTextWithdrawal';
+import {PublicationLocationConsent} from './PublicationLocationConsent';
 
 type Props=PublicationPrivacyTarget&{showUnavailable?:boolean};
 
@@ -22,6 +23,7 @@ export function PublicationPrivacyActions(props:Props){
 function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whole:boolean}){
  const [receipt,setReceipt]=useState<string|null>(),[confirm,setConfirm]=useState(false);
  const [available,setAvailable]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false);
+ const [locationConsent,setLocationConsent]=useState(false);
  const scope=useRef<AbortController|null>(null),button=useRef<HTMLButtonElement>(null),result=useRef<HTMLParagraphElement>(null);
  const savedHere=useRef(false);
 
@@ -42,6 +44,7 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
    const next=data.withdrawnAt===null&&statusOnly?null:
     parseListingDraftCursor({id:publicationId,updatedAt:data.withdrawnAt})!.updatedAt;
    savedHere.current=!statusOnly;
+   setLocationConsent(statusOnly&&data.locationConsent===true);
    setReceipt(next);setConfirm(false);
   }catch{
    if(!controller.signal.aborted){setConfirm(false);setError(true);}
@@ -74,6 +77,7 @@ function Withdrawal({owner,kind,publicationId,showUnavailable,whole}:Props&{whol
      }}>{confirm?(whole?'Подтвердить скрытие публикации':'Подтвердить скрытие'):(whole?'Скрыть всю публикацию':'Скрыть точный адрес')}</button>
      {confirm&&<button type="button" className={draftButton} disabled={busy} onClick={()=>{setConfirm(false);button.current?.focus();}}>Оставить как есть</button>}
     </div>
+    {!whole&&locationConsent&&<PublicationLocationConsent key={owner+'|'+kind+'|'+publicationId} owner={owner} kind={kind} publicationId={publicationId}/>}
    </>}
  </section>;
 }

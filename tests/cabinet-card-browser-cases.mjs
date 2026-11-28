@@ -24,6 +24,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   let photoReceipt = null;
   let visibleTitle='До 😺 личное после';
   const textFingerprint='a'.repeat(64);
+  const locationFingerprint='b'.repeat(64);
+  let consentUntil=null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -69,6 +71,20 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       photoReceipt=deadlines.archived;
       return route.fulfill({json:{kind:'listing',publicationId:items[1].id,photoId:secondPhoto,withdrawnAt:photoReceipt}});
     }
+    if(url.pathname==='/api/account/publication-location'&&['location-consent-status','confirm-location-consent'].includes(request.postDataJSON().action)){
+      const target={kind:'listing',publicationId:items[1].id,expectedOwnerId:owner};
+      const {action}=request.postDataJSON();
+      if(action==='confirm-location-consent'){
+        assert.deepEqual(request.postDataJSON(),{...target,action,fingerprint:locationFingerprint,fullName:'Локальный Пользователь'});
+        consentUntil='2027-01-25T21:00:00.000001Z';
+      }else assert.deepEqual(request.postDataJSON(),{...target,action});
+      return route.fulfill({json:{kind:target.kind,publicationId:target.publicationId,consent:{
+        location:{city:'Сочи',address:'Стендовый адрес',latitude:43.1,longitude:39.2},
+        notice:{version:'test',operator:'Оператор проверки',purpose:'Показ точки',resource:origin+'/obyavlenie/'+target.publicationId,
+          term:'90 суток с момента подтверждения',statement:'Разрешаю публиковать указанные точный адрес и координаты.'},
+        email:'cabinet-ui@example.invalid',fingerprint:locationFingerprint,expiresAt:consentUntil,
+      }}});
+    }
     if (url.pathname === '/api/account/publication-location') {
       const {action, ...target} = request.postDataJSON();
       assert.equal(request.method(), 'POST');
@@ -82,7 +98,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
         return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:publicationReceipt}});
       assert.ok(action === undefined || action === 'status');
       if (action === undefined) addressReceipt = deadlines.archived;
-      return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt}});
+      return route.fulfill({json:{kind:'listing', publicationId:items[1].id, withdrawnAt:addressReceipt,
+        ...(action==='status'?{locationConsent:true}:{})}});
     }
     writes.push(url.pathname);
     return route.fulfill({status: 404, json: {error: {code: 'NOT_FOUND'}}});
@@ -168,6 +185,18 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await page.setViewportSize({width:320,height:900});
   await menu.click();
   await waiting.getByRole('button',{name:'Публичный доступ',exact:true}).click();
+  await address.getByRole('button',{name:'Открыть согласие на публикацию точного адреса',exact:true}).click();
+  await address.getByText('Сочи, Стендовый адрес. Координаты 43.1, 39.2.',{exact:true}).waitFor();
+  const allowLocation=address.getByRole('button',{name:'Подтвердить согласие',exact:true});
+  assert.equal(await allowLocation.isDisabled(),true);
+  await address.getByRole('textbox',{name:'Фамилия, имя, отчество (при наличии)'}).fill('Локальный Пользователь');
+  assert.equal(await allowLocation.isDisabled(),true);
+  const locationCheckbox=address.getByRole('checkbox',{name:'Разрешаю публиковать указанные точный адрес и координаты.'});
+  assert.equal(await locationCheckbox.isChecked(),false);
+  await locationCheckbox.check();
+  await allowLocation.click();
+  await address.getByText('Согласие сохранено.',{exact:true}).waitFor();
+  await address.getByText(/Согласие на публикацию адреса действует до/).waitFor();
   await address.getByRole('button',{name:'Скрыть точный адрес',exact:true}).click();
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   assert.deepEqual(await address.evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);

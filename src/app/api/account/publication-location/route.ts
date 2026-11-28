@@ -6,7 +6,7 @@ import { parseListingPhotoIds } from "@/lib/listing-photo-contract";
 import { publicationTextLabels } from "@/lib/publication-text-selection";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { getProductionAccountDatabase } from "@/lib/production-auth-runtime";
-import { hasLocationWithdrawalSchema } from "@/lib/publication-location-withdrawal";
+import { hasLocationWithdrawalSchema, locationConsentRequired } from "@/lib/publication-location-withdrawal";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 export const runtime = "nodejs";
@@ -29,9 +29,13 @@ export async function POST(request: Request) {
     const photoWrite = action === "withdraw-photo";
     const textList = action === "texts";
     const textWrite = action === "withdraw-text";
+    const consentStatus = action === "location-consent-status";
+    const consentWrite = action === "confirm-location-consent";
+    const consent = consentStatus || consentWrite;
     const statusOnly = action === "status" || action === "publication-status" || photoList || textList;
     const full = action === "withdraw-publication" || action === "publication-status";
-    if (Object.keys(input).length !== (textWrite ? 8 : photoWrite ? 5 : statusOnly || full ? 4 : 3) ||
+    if (consent && !locationConsentRequired()) return error(404, "NOT_FOUND");
+    if (Object.keys(input).length !== (textWrite ? 8 : consentWrite ? 6 : photoWrite ? 5 : statusOnly || full || consentStatus ? 4 : 3) ||
         (photoWrite && !Object.hasOwn(input, 'photoId')) ||
         (textWrite && !['field','fingerprint','start','end'].every(key => Object.hasOwn(input,key)))) return error(422, "INVALID_INPUT");
     const { kind } = input;
@@ -40,6 +44,13 @@ export async function POST(request: Request) {
     }
     const publicationId = parseListingDraftId(input.publicationId);
     const actor = parseListingDraftId(input.expectedOwnerId);
+    const { fingerprint: consentFingerprint, fullName } = input;
+    if (consentWrite && (typeof consentFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(consentFingerprint) ||
+        typeof fullName !== "string" || fullName.length > 320 || !fullName.isWellFormed() ||
+        fullName !== fullName.trim() || !/\p{L}/u.test(fullName) || /\p{C}/u.test(fullName) ||
+        Array.from(fullName).length < 2 || Array.from(fullName).length > 160)) {
+      return error(422, "INVALID_INPUT");
+    }
     let scope = full ? "publication" : photoList ? "photos" : textList ? "texts" : "location";
     if (photoWrite) {
       scope = kind === "specialist" && input.photoId === "avatar" ? "avatar" : "photo:" + parseListingPhotoIds([input.photoId])[0];
@@ -60,6 +71,14 @@ export async function POST(request: Request) {
     if (!await hasLocationWithdrawalSchema(db)) return error(404, "NOT_FOUND");
     if (!await limiter.allowProduction("session", ip)) return error(429, "RATE_LIMITED");
     request.signal.throwIfAborted();
+    if (consent) {
+      const { rows: [row] } = await db.query<{ result: object }>(
+        'select app_publication_privacy.location_consent($1,$2,$3,$4,$5,$6) as result',
+        [hashSessionToken(token), actor, kind, publicationId, consentWrite ? consentFingerprint : null, consentWrite ? fullName : null],
+      );
+      if (!row?.result) return error(503, "LOCATION_UNAVAILABLE");
+      return authJson({ kind, publicationId, consent: row.result }, 200);
+    }
     const { rows: [{ result } = {}] } = await db.query<{ result: { withdrawnAt?: string | null; photos?: unknown[]; texts?: unknown[] } }>(
       'select app_publication_privacy.withdraw_location($1,$2,$3,$4,$5,$6) as result',
       [hashSessionToken(token), actor, kind, publicationId, !statusOnly, scope],
@@ -69,7 +88,9 @@ export async function POST(request: Request) {
     if (!result || (result.withdrawnAt === null ? !statusOnly : typeof result.withdrawnAt !== "string")) {
       return error(503, "LOCATION_UNAVAILABLE");
     }
-    return authJson({ kind, publicationId, withdrawnAt: result.withdrawnAt, ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
+    return authJson({ kind, publicationId, withdrawnAt: result.withdrawnAt,
+      ...(action === "status" && locationConsentRequired() ? { locationConsent: true } : {}),
+      ...(photoWrite ? { photoId: scope === "avatar" ? scope : scope.slice(6) } : {}) }, 200);
   } catch (failure) {
     if (failure instanceof AuthRequestError) return error(failure.status, failure.code);
     if (failure instanceof ListingDraftInputError) return error(422, "INVALID_INPUT");
@@ -77,6 +98,8 @@ export async function POST(request: Request) {
       if (failure.code === "PDW01") return error(403, "OWNER_REQUIRED");
       if (failure.code === "PDW02") return error(404, "NOT_FOUND");
       if (failure.code === "PDW03") return error(409, "TEXT_CHANGED");
+      if (failure.code === "PDW04") return error(422, "INVALID_INPUT");
+      if (failure.code === "PDW05") return error(409, "LOCATION_CHANGED");
     }
     return error(503, "LOCATION_UNAVAILABLE");
   }

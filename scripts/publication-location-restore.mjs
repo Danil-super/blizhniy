@@ -93,6 +93,12 @@ export async function replayLocationWithdrawals(client, document, sha256) {
       left join ${table} w on w.kind=r.kind and w.publication_id=r."publicationId" and w.scope=r.scope
       where w.withdrawn_at is distinct from r."withdrawnAt") as matches`, [JSON.stringify(records)]);
     if (result?.matches !== true) throw new Error('Withdrawal checkpoint conflicts with restored data');
+    const { rows: [consents] } = await client.query(
+      "select to_regclass('app_publication_privacy.location_consents') is not null as installed");
+    if (typeof consents?.installed !== 'boolean') throw new Error('Cannot verify consent schema');
+    if (consents.installed) {
+      await client.query('update app_publication_privacy.location_consents set retired=true where not retired');
+    }
     await assertClosed(client);
     await client.query('commit');
     return { count: records.length, inserted, reopenAuthorized: false };

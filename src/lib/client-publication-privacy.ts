@@ -7,7 +7,9 @@ export type PublicationPrivacyTarget={
 };
 
 export type WithdrawPublicationText={action:'withdraw-text';field:PublicationTextField;fingerprint:string;start:number;end:number};
-type Command={action?:'status'|'publication-status'|'withdraw-publication'|'photos'|'texts'}|{action:'withdraw-photo';photoId:string}|WithdrawPublicationText;
+type Command={action?:'status'|'publication-status'|'withdraw-publication'|'photos'|'texts'|'location-consent-status'}|
+ {action:'withdraw-photo';photoId:string}|WithdrawPublicationText|
+ {action:'confirm-location-consent';fingerprint:string;fullName:string};
 
 export function postPublicationPrivacy({owner,kind,publicationId}:PublicationPrivacyTarget,command:Command,signal:AbortSignal){
  return fetch('/api/account/publication-location',{

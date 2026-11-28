@@ -23,10 +23,24 @@ export async function hasLocationWithdrawalSchema(db: PostgresQueries): Promise<
   return row.installed;
 }
 
-export function locationWithdrawalColumn(alias: "l" | "w" | "s", enabled?: boolean): string {
-  if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress") return ',true as "locationWithdrawn"';
+export function locationConsentRequired(): boolean {
+  return process.env.BLIZHNIY_PUBLICATION_LOCATION_CONSENT === "required";
+}
+
+export function locationWithdrawalColumn(alias: Alias, enabled?: boolean): string {
+  const consent = locationConsentRequired();
+  if (process.env.BLIZHNIY_PUBLICATION_LOCATION_WITHDRAWALS === "suppress" || consent && !enabled) {
+    return ',true as "locationWithdrawn"';
+  }
   if (!enabled) return "";
-  return `,exists(${withdrawal(alias, "'location'")}) as "locationWithdrawn"`;
+  const withdrawn = `exists(${withdrawal(alias, "'location'")})`;
+  if (!consent) return `,${withdrawn} as "locationWithdrawn"`;
+  const kind = alias === "l" ? "'listing'" : `${alias}.kind`;
+  const args = alias === "l"
+    ? "city.name,l.address,to_jsonb(l.latitude::float8),to_jsonb(l.longitude::float8),l.show_exact_address"
+    : `${alias}.form->>'cityName',${alias}.form->>'address',${alias}.form->'latitude',${alias}.form->'longitude',${alias}.form->'showExactAddress'='true'::jsonb`;
+  return `,(${withdrawn} or not app_publication_privacy.location_is_consented(${kind},${alias}.id,${alias}.author_id,
+    app_publication_privacy.location_facts(${args}))) as "locationWithdrawn"`;
 }
 
 function withdrawal(alias: "l" | "w" | "s", scope: string) {
